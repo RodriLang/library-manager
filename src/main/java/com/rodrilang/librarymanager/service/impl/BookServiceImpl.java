@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -82,6 +83,17 @@ public class BookServiceImpl implements BookService {
     public BookDetailResponse getByIsbn(String isbn) {
 
         return bookMapper.toDetailResponse(getEntityByIsbn(isbn));
+    }
+
+    @Override
+    public Page<BookSummaryResponse> search(String query, Pageable pageable) {
+
+        if (query == null || query.isBlank()) {
+            return Page.empty(pageable);
+        }
+
+        return bookRepository.search(query, pageable)
+                .map(bookMapper::toSummaryResponse);
     }
 
     @Override

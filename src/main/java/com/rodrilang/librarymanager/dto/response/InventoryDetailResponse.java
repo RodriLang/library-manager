@@ -2,25 +2,18 @@ package com.rodrilang.librarymanager.dto.response;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Set;
 
 public record InventoryDetailResponse(
 
         Long id,
 
-        Long bookId,
-
-        String isbn,
-
-        String title,
-
-        String publisherName,
-
-        Set<AuthorResponse> authors,
+        BookDetailResponse book,
 
         Integer stock,
 
         BigDecimal salePrice,
+
+        BigDecimal costPrice,
 
         Boolean active,
 

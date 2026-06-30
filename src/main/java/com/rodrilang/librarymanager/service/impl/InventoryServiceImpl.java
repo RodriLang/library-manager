@@ -18,12 +18,14 @@ import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.InventoryService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class InventoryServiceImpl implements InventoryService {
@@ -83,6 +85,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public InventoryDetailResponse getByBookId(Long bookId) {
 
+        log.info("Buscando libro con ID: {} en el inventario", bookId);
         Inventory inventory = inventoryRepository.findByBookId(bookId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
@@ -162,6 +165,18 @@ public class InventoryServiceImpl implements InventoryService {
     public Page<InventorySummaryResponse> getAll(Pageable pageable) {
 
         return inventoryRepository.findAll(pageable)
+                .map(inventoryMapper::toSummaryResponse);
+    }
+
+    @Override
+    public Page<InventorySummaryResponse> search(String query, Pageable pageable) {
+
+        if (query == null || query.isBlank()) {
+            return inventoryRepository.findAll(pageable)
+                    .map(inventoryMapper::toSummaryResponse);
+        }
+
+        return inventoryRepository.search(query.trim(), pageable)
                 .map(inventoryMapper::toSummaryResponse);
     }
 

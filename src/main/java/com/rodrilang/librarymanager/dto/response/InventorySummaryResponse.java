@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.dto.response;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record InventorySummaryResponse(
 
@@ -11,6 +12,12 @@ public record InventorySummaryResponse(
         String isbn,
 
         String title,
+
+        List<String> authorNames,
+
+        String publisherName,
+
+        String thumbnailUrl,
 
         Integer stock,
 

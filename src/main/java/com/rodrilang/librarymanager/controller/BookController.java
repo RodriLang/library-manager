@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Libros", description = "Gestión de obras literarias")
@@ -29,7 +30,7 @@ public class BookController {
     private final BookService bookService;
 
     @PostMapping
-    public ResponseEntity<BookDetailResponse> create(@RequestBody BookRequest request){
+    public ResponseEntity<BookDetailResponse> create(@RequestBody BookRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(bookService.create(request));
     }
 
@@ -46,18 +47,27 @@ public class BookController {
     @GetMapping
     public ResponseEntity<PageResponse<BookSummaryResponse>> getAll(
             @ParameterObject
-            @PageableDefault(size = 20, sort = "name")Pageable pageable){
+            @PageableDefault(size = 20, sort = "title") Pageable pageable) {
 
         return ResponseEntity.ok(PageResponse.of(bookService.getAll(pageable)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<BookDetailResponse> getById(@PathVariable Long id){
+    public ResponseEntity<BookDetailResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(bookService.getById(id));
     }
 
     @GetMapping("/isbn/{ISBN}")
-    public ResponseEntity<BookDetailResponse> getByIsbn(@PathVariable("ISBN") String isbn){
+    public ResponseEntity<BookDetailResponse> getByIsbn(@PathVariable("ISBN") String isbn) {
         return ResponseEntity.ok(bookService.getByIsbn(isbn));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<PageResponse<BookSummaryResponse>> search(
+            @RequestParam String q,
+            @ParameterObject
+            @PageableDefault(size = 20) Pageable pageable
+    ) {
+        return ResponseEntity.ok(PageResponse.of(bookService.search(q.trim(), pageable)));
     }
 }

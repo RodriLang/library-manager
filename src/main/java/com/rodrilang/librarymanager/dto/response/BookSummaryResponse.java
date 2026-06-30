@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.dto.response;
 
+import java.util.Set;
+
 public record BookSummaryResponse(
 
         Long id,
@@ -8,6 +10,10 @@ public record BookSummaryResponse(
 
         String title,
 
-        String coverUrl
+        String thumbnailUrl,
+
+        String publisherName,
+
+        Set<AuthorResponse> authors
 ) {
 }

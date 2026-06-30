@@ -51,8 +51,8 @@ public class AuthorController {
 
     @GetMapping("/search")
     public ResponseEntity<List<AuthorResponse>> search(
-            @RequestParam String query) {
+            @RequestParam String q) {
 
-        return ResponseEntity.ok(authorService.search(query));
+        return ResponseEntity.ok(authorService.search(q));
     }
 }

@@ -56,6 +56,7 @@ public class BookCatalogServiceImpl implements BookCatalogService {
                 .language(metadata.language())
                 .pageCount(metadata.pageCount())
                 .publicationDate(metadata.publicationDate())
+                .thumbnailUrl(metadata.thumbnailUrl())
                 .coverUrl(metadata.coverUrl())
                 .publisher(publisher)
                 .authors(authors)

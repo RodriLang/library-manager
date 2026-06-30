@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -24,36 +25,42 @@ public class OpenLibraryProvider implements BookMetadataProvider {
 
     @Override
     public Optional<BookMetadata> findByIsbn(String isbn) {
-        String key = "ISBN:" + isbn;
+        try {
+            String key = "ISBN:" + isbn;
 
-        Map<String, OpenLibraryBookResponse> response = openLibraryRestClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/books")
-                        .queryParam("bibkeys", key)
-                        .queryParam("format", "json")
-                        .queryParam("jscmd", "data")
-                        .build())
-                .retrieve()
-                .body(new ParameterizedTypeReference<>() {});
+            Map<String, OpenLibraryBookResponse> response = openLibraryRestClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/books")
+                            .queryParam("bibkeys", key)
+                            .queryParam("format", "json")
+                            .queryParam("jscmd", "data")
+                            .build())
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<>() {
+                    });
 
-        if (response == null || !response.containsKey(key)) {
+            if (response == null || !response.containsKey(key)) {
+                return Optional.empty();
+            }
+
+            OpenLibraryBookResponse book = response.get(key);
+
+            return Optional.of(new BookMetadata(
+                    isbn,
+                    trimToNull(book.title()),
+                    trimToNull(book.subtitle()),
+                    trimToNull(book.description()),
+                    book.numberOfPages(),
+                    null,
+                    resolvePublisher(book),
+                    resolveAuthors(book),
+                    null,
+                    resolveThumbnailUrl(book),
+                    resolveCoverUrl(book)
+            ));
+        } catch (RestClientException ex) {
             return Optional.empty();
         }
-
-        OpenLibraryBookResponse book = response.get(key);
-
-        return Optional.of(new BookMetadata(
-                isbn,
-                trimToNull(book.title()),
-                trimToNull(book.subtitle()),
-                trimToNull(book.description()),
-                book.numberOfPages(),
-                null,
-                resolvePublisher(book),
-                resolveAuthors(book),
-                null,
-                resolveCoverUrl(book)
-        ));
     }
 
     @Override
@@ -81,13 +88,35 @@ public class OpenLibraryProvider implements BookMetadataProvider {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
+    private String resolveThumbnailUrl(OpenLibraryBookResponse book) {
+        if (book.cover() == null) {
+            return null;
+        }
+
+        if (book.cover().small() != null) {
+            return book.cover().small();
+        }
+
+        if (book.cover().medium() != null) {
+            return book.cover().medium();
+        }
+
+        return book.cover().large();
+    }
+
     private String resolveCoverUrl(OpenLibraryBookResponse book) {
         if (book.cover() == null) {
             return null;
         }
 
-        if (book.cover().large() != null) return book.cover().large();
-        if (book.cover().medium() != null) return book.cover().medium();
+        if (book.cover().large() != null) {
+            return book.cover().large();
+        }
+
+        if (book.cover().medium() != null) {
+            return book.cover().medium();
+        }
+
         return book.cover().small();
     }
 

@@ -30,4 +30,5 @@ public interface InventoryService {
 
     Page<InventorySummaryResponse> getAll(Pageable pageable);
 
+    Page<InventorySummaryResponse> search(String query, Pageable pageable);
 }

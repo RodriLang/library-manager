@@ -26,7 +26,7 @@ public record BookDetailResponse(
 
         Boolean active,
 
-        PublisherResponse publisherName,
+        PublisherResponse publisher,
 
         Set<AuthorResponse> authors,
 

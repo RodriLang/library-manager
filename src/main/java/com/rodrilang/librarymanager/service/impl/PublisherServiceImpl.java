@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.mapper.PublisherMapper;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.service.PublisherService;
+import com.rodrilang.librarymanager.utils.StringUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,11 +26,13 @@ public class PublisherServiceImpl implements PublisherService {
     @Override
     public PublisherResponse create(PublisherRequest request) {
 
-        if (publisherRepository.existsByNameIgnoreCase(request.name())) {
+        String name = StringUtils.normalizeName(request.name());
+
+        if (publisherRepository.existsNormalized(name)) {
             throw new DuplicateResourceException("La editorial ya existe");
         }
 
-        Publisher publisher = publisherMapper.toEntity(request);
+        Publisher publisher = publisherMapper.toEntity(new PublisherRequest(name));
 
         return publisherMapper.toResponse(
                 publisherRepository.save(publisher)

@@ -53,6 +53,10 @@ public class Book extends AuditableEntity {
 
     private LocalDate publicationDate;
 
+    @Column(length = 1000)
+    private String thumbnailUrl;
+
+    @Column(length = 1000)
     private String coverUrl;
 
     @Builder.Default

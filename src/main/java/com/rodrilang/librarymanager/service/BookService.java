@@ -18,6 +18,8 @@ public interface BookService {
 
     BookDetailResponse getByIsbn(String isbn);
 
+    Page<BookSummaryResponse> search(String query, Pageable pageable);
+
     Page<BookSummaryResponse> getAll(Pageable pageable);
 
     Book getEntityById(Long id);

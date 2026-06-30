@@ -25,43 +25,43 @@ public class GoogleBooksProvider implements BookMetadataProvider {
 
     @Override
     public Optional<BookMetadata> findByIsbn(String isbn) {
+        try {
+            GoogleBooksResponse response = googleBooksRestClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/books/v1/volumes")
+                            .queryParam("q", "isbn:" + isbn)
+                            .build())
+                    .retrieve()
+                    .body(GoogleBooksResponse.class);
 
-        try{
-        GoogleBooksResponse response = googleBooksRestClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/books/v1/volumes")
-                        .queryParam("q", "isbn:" + isbn)
-                        .build())
-                .retrieve()
-                .body(GoogleBooksResponse.class);
+            if (response == null || response.totalItems() == null || response.totalItems() == 0
+                    || response.items() == null || response.items().isEmpty()) {
+                return Optional.empty();
+            }
 
-        if (response == null || response.totalItems() == null || response.totalItems() == 0
-                || response.items() == null || response.items().isEmpty()) {
-            return Optional.empty();
-        }
+            GoogleVolumeInfoDto volume = response.items().stream()
+                    .map(GoogleBookItemDto::volumeInfo)
+                    .filter(v -> v != null && v.title() != null && !v.title().isBlank())
+                    .findFirst()
+                    .orElse(null);
 
-        GoogleVolumeInfoDto volume = response.items().stream()
-                .map(GoogleBookItemDto::volumeInfo)
-                .filter(v -> v != null && v.title() != null && !v.title().isBlank())
-                .findFirst()
-                .orElse(null);
+            if (volume == null) {
+                return Optional.empty();
+            }
 
-        if (volume == null) {
-            return Optional.empty();
-        }
-
-        return Optional.of(new BookMetadata(
-                isbn,
-                trimToNull(volume.title()),
-                trimToNull(volume.subtitle()),
-                trimToNull(volume.description()),
-                volume.pageCount(),
-                trimToNull(volume.language()),
-                trimToNull(volume.publisher()),
-                resolveAuthors(volume),
-                parsePublishedDate(volume.publishedDate()),
-                resolveCoverUrl(volume)
-        ));
+            return Optional.of(new BookMetadata(
+                    isbn,
+                    trimToNull(volume.title()),
+                    trimToNull(volume.subtitle()),
+                    trimToNull(volume.description()),
+                    volume.pageCount(),
+                    trimToNull(volume.language()),
+                    trimToNull(volume.publisher()),
+                    resolveAuthors(volume),
+                    parsePublishedDate(volume.publishedDate()),
+                    resolveThumbnailUrl(volume),
+                    resolveCoverUrl(volume)
+            ));
         } catch (RestClientException ex) {
             return Optional.empty();
         }
@@ -83,16 +83,49 @@ public class GoogleBooksProvider implements BookMetadataProvider {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
+    private String resolveThumbnailUrl(GoogleVolumeInfoDto volume) {
+        if (volume.imageLinks() == null) {
+            return null;
+        }
+
+        if (volume.imageLinks().smallThumbnail() != null) {
+            return normalizeImageUrl(volume.imageLinks().smallThumbnail());
+        }
+
+        return normalizeImageUrl(volume.imageLinks().thumbnail());
+    }
+
     private String resolveCoverUrl(GoogleVolumeInfoDto volume) {
         if (volume.imageLinks() == null) {
             return null;
         }
 
         if (volume.imageLinks().thumbnail() != null) {
-            return volume.imageLinks().thumbnail();
+            return buildHighResolutionImageUrl(volume.imageLinks().thumbnail());
         }
 
-        return volume.imageLinks().smallThumbnail();
+        return normalizeImageUrl(volume.imageLinks().smallThumbnail());
+    }
+
+    private String buildHighResolutionImageUrl(String url) {
+
+        String normalizedUrl = normalizeImageUrl(url);
+
+        if (normalizedUrl == null) {
+            return null;
+        }
+
+        return normalizedUrl
+                .replace("&zoom=1", "&zoom=0")
+                .replace("&edge=curl", "");
+    }
+
+    private String normalizeImageUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+
+        return url.trim().replace("http://", "https://");
     }
 
     private LocalDate parsePublishedDate(String publishedDate) {

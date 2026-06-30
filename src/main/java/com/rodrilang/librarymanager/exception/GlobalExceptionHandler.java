@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.exception;
 
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.data.mapping.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -86,6 +87,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(response);
+    }
+
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidSort(
+            PropertyReferenceException ex,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_SORT_PROPERTY",
+                "El campo de ordenamiento no existe: " + ex.getPropertyName(),
+                request.getRequestURI(),
+                null
+        );
     }
 
     @ExceptionHandler(Exception.class)

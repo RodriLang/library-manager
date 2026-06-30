@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.repository;
 
 import com.rodrilang.librarymanager.model.Author;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -12,5 +13,12 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
 
     List<Author> findByNameContainingIgnoreCase(String name);
 
-    boolean existsByNameIgnoreCase(String name);
+    @Query("""
+            SELECT COUNT(a) > 0
+            FROM Author a
+            WHERE function('unaccent', lower(a.name))
+                =
+                  function('unaccent', lower(:name))
+            """)
+    boolean existsNormalized(String name);
 }

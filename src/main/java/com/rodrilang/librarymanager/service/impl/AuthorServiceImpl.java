@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.mapper.AuthorMapper;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.repository.AuthorRepository;
 import com.rodrilang.librarymanager.service.AuthorService;
+import com.rodrilang.librarymanager.utils.StringUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,11 +28,13 @@ public class AuthorServiceImpl implements AuthorService {
     @Override
     public AuthorResponse create(AuthorRequest request) {
 
-        if (authorRepository.existsByNameIgnoreCase(request.name())) {
+        String name = StringUtils.normalizeName(request.name());
+
+        if (authorRepository.existsNormalized(name)) {
             throw new DuplicateResourceException("El autor ya existe");
         }
 
-        Author author = authorMapper.toEntity(request);
+        Author author = authorMapper.toEntity(new AuthorRequest(name));
 
         return authorMapper.toResponse(authorRepository.save(author));
     }
