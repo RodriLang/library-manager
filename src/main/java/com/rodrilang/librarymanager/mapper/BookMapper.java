@@ -23,10 +23,19 @@ public interface BookMapper {
     @Mapping(target = "active", ignore = true)
     @Mapping(target = "publisher", ignore = true)
     @Mapping(target = "authors", ignore = true)
+    @Mapping(target = "coverUrl", ignore = true)
+    @Mapping(target = "source", ignore = true)
     Book toEntity(BookRequest request);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "isbn", ignore = true)
+    @Mapping(target = "coverUrl", ignore = true)
     @Mapping(target = "publisher", ignore = true)
     @Mapping(target = "authors", ignore = true)
+    @Mapping(target = "source", ignore = true)
+    @Mapping(target = "active", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
     void updateEntity(UpdateBookRequest request, @MappingTarget Book inventory);
 }

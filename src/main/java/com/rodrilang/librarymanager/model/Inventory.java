@@ -9,9 +9,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
-
-import java.math.BigDecimal;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Builder.Default;
@@ -43,12 +40,6 @@ public class Inventory extends AuditableEntity {
     @Default
     @Column(nullable = false)
     private Integer minimumStock = 0;
-
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal salePrice;
-
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal costPrice;
 
     @Default
     @Column(nullable = false)

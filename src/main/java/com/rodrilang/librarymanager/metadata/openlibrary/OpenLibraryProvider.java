@@ -55,7 +55,6 @@ public class OpenLibraryProvider implements BookMetadataProvider {
                     resolvePublisher(book),
                     resolveAuthors(book),
                     null,
-                    resolveThumbnailUrl(book),
                     resolveCoverUrl(book)
             ));
         } catch (RestClientException ex) {
@@ -86,22 +85,6 @@ public class OpenLibraryProvider implements BookMetadataProvider {
                 .map(this::trimToNull)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private String resolveThumbnailUrl(OpenLibraryBookResponse book) {
-        if (book.cover() == null) {
-            return null;
-        }
-
-        if (book.cover().small() != null) {
-            return book.cover().small();
-        }
-
-        if (book.cover().medium() != null) {
-            return book.cover().medium();
-        }
-
-        return book.cover().large();
     }
 
     private String resolveCoverUrl(OpenLibraryBookResponse book) {

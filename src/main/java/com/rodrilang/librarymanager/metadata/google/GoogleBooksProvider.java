@@ -59,7 +59,6 @@ public class GoogleBooksProvider implements BookMetadataProvider {
                     trimToNull(volume.publisher()),
                     resolveAuthors(volume),
                     parsePublishedDate(volume.publishedDate()),
-                    resolveThumbnailUrl(volume),
                     resolveCoverUrl(volume)
             ));
         } catch (RestClientException ex) {
@@ -81,18 +80,6 @@ public class GoogleBooksProvider implements BookMetadataProvider {
                 .map(this::trimToNull)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private String resolveThumbnailUrl(GoogleVolumeInfoDto volume) {
-        if (volume.imageLinks() == null) {
-            return null;
-        }
-
-        if (volume.imageLinks().smallThumbnail() != null) {
-            return normalizeImageUrl(volume.imageLinks().smallThumbnail());
-        }
-
-        return normalizeImageUrl(volume.imageLinks().thumbnail());
     }
 
     private String resolveCoverUrl(GoogleVolumeInfoDto volume) {

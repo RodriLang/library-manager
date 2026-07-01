@@ -1,6 +1,5 @@
 package com.rodrilang.librarymanager.controller;
 
-import com.rodrilang.librarymanager.dto.request.AddAuthorsRequest;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.LookupBookByIsbnRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
@@ -25,59 +24,71 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Libros", description = "Gestión de obras literarias")
 @RestController
 @RequestMapping("/api/books")
 @RequiredArgsConstructor
+@Tag(name = "Libros", description = "Gestión del catálogo de libros")
 public class BookController {
 
     private final BookService bookService;
 
     @PostMapping
-    public ResponseEntity<BookDetailResponse> create(@Valid @RequestBody BookRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(bookService.create(request));
-    }
-
-    @PostMapping("/{bookId}/authors")
-    public ResponseEntity<BookDetailResponse> addAuthors(
-            @PathVariable Long bookId,
-            @Valid @RequestBody AddAuthorsRequest request
+    public ResponseEntity<BookDetailResponse> create(
+            @Valid @RequestBody BookRequest request
     ) {
-        return ResponseEntity.ok(
-                bookService.addAuthors(bookId, request)
-        );
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(bookService.create(request));
     }
 
     @PostMapping("/lookup")
-    public ResponseEntity<BookDetailResponse> lookupByIsbn(@Valid @RequestBody LookupBookByIsbnRequest request) {
-        return ResponseEntity.ok(bookService.lookupByIsbn(request.isbn()));
+    public ResponseEntity<BookDetailResponse> lookupByIsbn(
+            @Valid @RequestBody LookupBookByIsbnRequest request
+    ) {
+        return ResponseEntity.ok(
+                bookService.lookupByIsbn(request.isbn())
+        );
     }
 
     @GetMapping
     public ResponseEntity<PageResponse<BookSummaryResponse>> getAll(
             @ParameterObject
-            @PageableDefault(size = 20, sort = "title") Pageable pageable) {
-
-        return ResponseEntity.ok(PageResponse.of(bookService.getAll(pageable)));
+            @PageableDefault(size = 20, sort = "title")
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(
+                PageResponse.of(bookService.getAll(pageable))
+        );
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<BookDetailResponse> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(bookService.getById(id));
+    public ResponseEntity<BookDetailResponse> getById(
+            @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(
+                bookService.getById(id)
+        );
     }
 
-    @GetMapping("/isbn/{ISBN}")
-    public ResponseEntity<BookDetailResponse> getByIsbn(@PathVariable("ISBN") String isbn) {
-        return ResponseEntity.ok(bookService.getByIsbn(isbn));
+    @GetMapping("/isbn/{isbn}")
+    public ResponseEntity<BookDetailResponse> getByIsbn(
+            @PathVariable String isbn
+    ) {
+        return ResponseEntity.ok(
+                bookService.getByIsbn(isbn)
+        );
     }
 
     @GetMapping("/search")
     public ResponseEntity<PageResponse<BookSummaryResponse>> search(
             @RequestParam String q,
             @ParameterObject
-            @PageableDefault(size = 20) Pageable pageable
+            @PageableDefault(size = 20)
+            Pageable pageable
     ) {
-        return ResponseEntity.ok(PageResponse.of(bookService.search(q.trim(), pageable)));
+        return ResponseEntity.ok(
+                PageResponse.of(bookService.search(q.trim(), pageable))
+        );
     }
 
     @PutMapping("/{bookId}")
@@ -85,7 +96,8 @@ public class BookController {
             @PathVariable Long bookId,
             @Valid @RequestBody UpdateBookRequest request
     ) {
-        return ResponseEntity.ok(bookService.update(bookId, request));
+        return ResponseEntity.ok(
+                bookService.update(bookId, request)
+        );
     }
-
 }

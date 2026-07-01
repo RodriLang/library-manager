@@ -1,6 +1,5 @@
 package com.rodrilang.librarymanager.service;
 
-import com.rodrilang.librarymanager.dto.request.AddAuthorsRequest;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
@@ -12,8 +11,6 @@ import org.springframework.data.domain.Pageable;
 public interface BookService {
 
     BookDetailResponse create(BookRequest request);
-
-    BookDetailResponse addAuthors(Long bookId, AddAuthorsRequest request);
 
     BookDetailResponse getById(Long id);
 
@@ -30,5 +27,9 @@ public interface BookService {
     Book getEntityById(Long id);
 
     Book getEntityByIsbn(String isbn);
+
+    boolean existsById(Long bookId);
+
+    boolean existsByIsbn(String isbn);
 
 }

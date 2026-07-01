@@ -2,12 +2,13 @@ package com.rodrilang.librarymanager.dto.request;
 
 import jakarta.validation.constraints.Min;
 
-public record UpdateInventoryRequest(
+public record AddBookToInventoryRequest(
 
         @Min(0)
-        Integer minimumStock,
+        Integer initialStock,
 
-        Boolean active
+        @Min(0)
+        Integer minimumStock
 
 ) {
 }

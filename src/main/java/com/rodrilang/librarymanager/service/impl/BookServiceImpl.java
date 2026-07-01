@@ -1,10 +1,10 @@
 package com.rodrilang.librarymanager.service.impl;
 
-import com.rodrilang.librarymanager.dto.request.AddAuthorsRequest;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
+import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.mapper.BookMapper;
@@ -23,7 +23,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.HashSet;
 import java.util.Set;
 
 @Service
@@ -40,12 +39,17 @@ public class BookServiceImpl implements BookService {
     @Override
     public BookDetailResponse create(BookRequest request) {
 
+        if (bookRepository.existsByIsbn(request.isbn())) {
+            throw new DuplicateResourceException("ISBN ya registrado");
+        }
+
         Publisher publisher = publisherService.getEntityById(request.publisherId());
         Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
 
         Book book = bookMapper.toEntity(request);
         book.setPublisher(publisher);
         book.setAuthors(authors);
+        book.setSource(BookSource.MANUAL);
 
         try {
             Book saved = bookRepository.save(book);
@@ -53,26 +57,6 @@ public class BookServiceImpl implements BookService {
         } catch (DataIntegrityViolationException ex) {
             throw new DuplicateResourceException("ISBN ya registrado");
         }
-    }
-
-    @Override
-    @Transactional
-    public BookDetailResponse addAuthors(Long bookId, AddAuthorsRequest request) {
-
-        Book book = bookRepository.findById(bookId)
-                .orElseThrow(() -> new ResourceNotFoundException("No se encontró un libro con el ID: " + bookId));
-
-        Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
-
-        if (book.getAuthors() == null) {
-            book.setAuthors(new HashSet<>());
-        }
-
-        book.getAuthors().addAll(authors);
-
-        Book saved = bookRepository.save(book);
-
-        return bookMapper.toDetailResponse(saved);
     }
 
     @Override
@@ -102,6 +86,16 @@ public class BookServiceImpl implements BookService {
         Book book = getEntityById(bookId);
 
         bookMapper.updateEntity(request, book);
+
+        if (request.publisherId() != null) {
+            Publisher publisher = publisherService.getEntityById(request.publisherId());
+            book.setPublisher(publisher);
+        }
+
+        if (request.authorIds() != null) {
+            Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
+            book.setAuthors(authors);
+        }
 
         Book saved = bookRepository.save(book);
 
@@ -135,5 +129,15 @@ public class BookServiceImpl implements BookService {
     public Book getEntityByIsbn(String isbn) {
         return bookRepository.findByIsbn(isbn)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró un libro con el ISBN: " + isbn));
+    }
+
+    @Override
+    public boolean existsById(Long bookId) {
+        return bookRepository.existsById(bookId);
+    }
+
+    @Override
+    public boolean existsByIsbn(String isbn) {
+        return bookRepository.existsByIsbn(isbn);
     }
 }

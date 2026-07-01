@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.service.impl;
 
+import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.ManualBookRequiredException;
-import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.metadata.BookMetadata;
 import com.rodrilang.librarymanager.metadata.BookMetadataService;
 import com.rodrilang.librarymanager.model.Author;
@@ -40,9 +40,7 @@ public class BookCatalogServiceImpl implements BookCatalogService {
                 .orElseThrow(() -> new ManualBookRequiredException(isbn));
 
         if (metadata.title() == null || metadata.title().isBlank()) {
-            throw new ResourceNotFoundException(
-                    "No se encontraron datos suficientes para crear el libro. Requiere carga manual."
-            );
+            throw new ManualBookRequiredException(isbn);
         }
 
         Publisher publisher = resolvePublisher(metadata.publisher());
@@ -56,8 +54,8 @@ public class BookCatalogServiceImpl implements BookCatalogService {
                 .language(metadata.language())
                 .pageCount(metadata.pageCount())
                 .publicationDate(metadata.publicationDate())
-                .thumbnailUrl(metadata.thumbnailUrl())
                 .coverUrl(metadata.coverUrl())
+                .source(BookSource.EXTERNAL_METADATA)
                 .publisher(publisher)
                 .authors(authors)
                 .active(true)

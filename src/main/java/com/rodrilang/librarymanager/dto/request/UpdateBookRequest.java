@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.dto.request;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Set;
 
 public record UpdateBookRequest(
 
@@ -16,7 +18,15 @@ public record UpdateBookRequest(
 
         LocalDate publicationDate,
 
-        String coverUrl
+        String coverUrl,
+
+        BigDecimal retailPrice,
+
+        LocalDate retailPriceUpdatedAt,
+
+        Long publisherId,
+
+        Set<Long> authorIds
 
 ) {
 }

@@ -18,8 +18,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
-
 @Entity
 @Table(name = "inventory_movements")
 @Getter
@@ -38,15 +36,16 @@ public class InventoryMovement extends AuditableEntity {
     private Inventory inventory;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "movement_type", nullable = false)
     private InventoryMovementType type;
 
     @Column(nullable = false)
     private Integer quantity;
 
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal costPrice;
+    private Integer stockBefore;
 
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal salePrice;
+    private Integer stockAfter;
+
+    private String reason;
+
 }

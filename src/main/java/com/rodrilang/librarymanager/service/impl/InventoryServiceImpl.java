@@ -1,23 +1,17 @@
 package com.rodrilang.librarymanager.service.impl;
 
-import com.rodrilang.librarymanager.dto.request.AddStockRequest;
-import com.rodrilang.librarymanager.dto.request.InventoryMovementRequest;
-import com.rodrilang.librarymanager.dto.request.PurchaseItemRequest;
-import com.rodrilang.librarymanager.dto.request.RegisterBookPurchaseRequest;
-import com.rodrilang.librarymanager.dto.request.RegisterManualBookPurchaseRequest;
-import com.rodrilang.librarymanager.dto.request.RegisterPurchaseRequest;
+import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
+import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
-import com.rodrilang.librarymanager.dto.request.UpdateInventoryStatusRequest;
-import com.rodrilang.librarymanager.dto.request.UpdatePriceRequest;
-import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
+import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
-import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.InventoryService;
 import jakarta.transaction.Transactional;
@@ -27,8 +21,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -37,53 +29,65 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
-    private final BookCatalogService bookCatalogService;
 
     @Transactional
     @Override
-    public InventoryDetailResponse addStock(AddStockRequest request) {
+    public InventoryDetailResponse addToInventory(Long bookId, AddBookToInventoryRequest request) {
 
-        Book book = bookService.getEntityById(request.bookId());
+        Book book = bookService.getEntityById(bookId);
 
-        Inventory inventory = inventoryRepository
-                .findByBookId(book.getId())
-                .orElseGet(() -> Inventory.builder()
-                        .book(book)
-                        .stock(0)
-                        .costPrice(request.costPrice())
-                        .salePrice(request.salePrice())
-                        .active(true)
-                        .build());
+        if (inventoryRepository.existsByBookId(bookId)) {
+            throw new DuplicateResourceException(String.format(
+                    "El libro ISBN: %s ya se encuentra registrado en el inventario", book.getIsbn())
+            );
+        }
 
+        Inventory inventory = Inventory.builder()
+                .book(book)
+                .stock(request.initialStock())
+                .minimumStock(request.minimumStock() != null ? request.minimumStock() : 0)
+                .active(true)
+                .build();
+
+        return saveAndMapToDetailResponse(inventory);
+    }
+
+    @Transactional
+    @Override
+    public InventoryDetailResponse addStock(Long bookId, InventoryQuantityRequest request) {
+
+        Inventory inventory = getEntityByBookId(bookId);
         inventory.setStock(inventory.getStock() + request.quantity());
-        inventory.setCostPrice(request.costPrice());
-        inventory.setSalePrice(request.salePrice());
 
-        Inventory saved = inventoryRepository.save(inventory);
-
-        return inventoryMapper.toDetailResponse(saved);
+        return saveAndMapToDetailResponse(inventory);
     }
 
     @Transactional
     @Override
-    public InventoryDetailResponse updatePrice(Long inventoryId, UpdatePriceRequest request) {
+    public InventoryDetailResponse recordSale(Long bookId, InventoryQuantityRequest request) {
 
-        Inventory inventory = getEntityById(inventoryId);
+        Inventory inventory = getEntityByBookId(bookId);
 
-        inventory.setSalePrice(request.salePrice());
+        if (inventory.getStock() < request.quantity()) {
+            throw new BusinessException(
+                    "No hay stock suficiente para registrar la venta."
+            );
+        }
 
-        return inventoryMapper.toDetailResponse(inventoryRepository.save(inventory));
+        inventory.setStock(inventory.getStock() - request.quantity());
+
+        return saveAndMapToDetailResponse(inventory);
     }
 
     @Transactional
     @Override
-    public InventoryDetailResponse updateActive(Long inventoryId, UpdateInventoryStatusRequest request) {
+    public InventoryDetailResponse update(Long bookId, UpdateInventoryRequest request) {
 
-        Inventory inventory = getEntityById(inventoryId);
+        Inventory inventory = getEntityByBookId(bookId);
 
-        inventory.setActive(request.active());
+        inventoryMapper.updateEntity(request, inventory);
 
-        return inventoryMapper.toDetailResponse(inventoryRepository.save(inventory));
+        return saveAndMapToDetailResponse(inventory);
     }
 
     @Override
@@ -93,143 +97,6 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inventory = getEntityByBookId(bookId);
 
         return inventoryMapper.toDetailResponse(inventory);
-    }
-
-    @Transactional
-    @Override
-    public InventoryDetailResponse registerSale(Long bookId, InventoryMovementRequest request) {
-        Inventory inventory = getEntityByBookId(bookId);
-
-        if (inventory.getStock() < request.quantity()) {
-            throw new IllegalArgumentException(
-                    "No hay stock suficiente para registrar la venta."
-            );
-        }
-
-        inventory.setStock(inventory.getStock() - request.quantity());
-
-        Inventory saved = inventoryRepository.save(inventory);
-
-        return inventoryMapper.toDetailResponse(saved);
-    }
-
-    @Transactional
-    @Override
-    public InventoryDetailResponse registerReturn(Long bookId, InventoryMovementRequest request) {
-        Inventory inventory = inventoryRepository.findByBookId(bookId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No se encontró inventario para el libro con ID: " + bookId
-                ));
-
-        inventory.setStock(inventory.getStock() + request.quantity());
-
-        Inventory saved = inventoryRepository.save(inventory);
-
-        return inventoryMapper.toDetailResponse(saved);
-    }
-
-    @Override
-    public InventoryDetailResponse getByIsbn(String isbn) {
-
-        Inventory inventory = inventoryRepository.findByBookIsbn(isbn)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No se encontró inventario para el ISBN: " + isbn
-                ));
-
-        return inventoryMapper.toDetailResponse(inventory);
-    }
-
-    @Transactional
-    @Override
-    public InventoryDetailResponse updateByBookId(Long bookId, UpdateInventoryRequest request) {
-
-        Inventory inventory = getEntityByBookId(bookId);
-
-        inventoryMapper.updateEntity(request, inventory);
-
-        Inventory saved = inventoryRepository.save(inventory);
-
-        return inventoryMapper.toDetailResponse(saved);
-    }
-
-    @Transactional
-    @Override
-    public List<InventoryDetailResponse> registerPurchase(RegisterPurchaseRequest request) {
-        return request.items()
-                .stream()
-                .map(this::registerPurchaseItem)
-                .toList();
-    }
-
-    @Transactional
-    @Override
-    public InventoryDetailResponse registerPurchaseItem(Long bookId, RegisterBookPurchaseRequest item) {
-        Book book = bookService.getEntityById(bookId);
-
-        Inventory inventory = inventoryRepository.findByBookId(book.getId())
-                .orElseGet(() -> Inventory.builder()
-                        .book(book)
-                        .stock(0)
-                        .costPrice(item.costPrice())
-                        .salePrice(item.salePrice())
-                        .active(true)
-                        .build());
-
-        inventory.setStock(inventory.getStock() + item.quantity());
-        inventory.setCostPrice(item.costPrice());
-        inventory.setSalePrice(item.salePrice());
-
-        Inventory saved = inventoryRepository.save(inventory);
-
-        return inventoryMapper.toDetailResponse(saved);
-    }
-
-    @Transactional
-    @Override
-    public InventoryDetailResponse registerPurchaseWithManualBook(RegisterManualBookPurchaseRequest request) {
-
-        BookDetailResponse bookResponse = bookService.create(request.book());
-
-        Book book = bookService.getEntityById(bookResponse.id());
-
-        Inventory inventory = inventoryRepository.findByBookId(book.getId())
-                .orElseGet(() -> Inventory.builder()
-                        .book(book)
-                        .stock(0)
-                        .costPrice(request.costPrice())
-                        .salePrice(request.salePrice())
-                        .active(true)
-                        .build());
-
-        inventory.setStock(inventory.getStock() + request.quantity());
-        inventory.setCostPrice(request.costPrice());
-        inventory.setSalePrice(request.salePrice());
-
-        Inventory saved = inventoryRepository.save(inventory);
-
-        return inventoryMapper.toDetailResponse(saved);
-    }
-
-    private InventoryDetailResponse registerPurchaseItem(PurchaseItemRequest request) {
-
-        Book book = bookService.getEntityById(request.bookId());
-
-        Inventory inventory = inventoryRepository.findByBookId(book.getId())
-                .orElseGet(() -> Inventory.builder()
-                        .book(book)
-                        .stock(0)
-                        .costPrice(request.costPrice())
-                        .salePrice(request.salePrice())
-                        .active(true)
-                        .build());
-
-        inventory.setStock(inventory.getStock() + request.quantity());
-        inventory.setCostPrice(request.costPrice());
-        inventory.setSalePrice(request.salePrice());
-
-        Inventory saved = inventoryRepository.save(inventory);
-
-        return inventoryMapper.toDetailResponse(saved);
     }
 
     @Override
@@ -251,12 +118,14 @@ public class InventoryServiceImpl implements InventoryService {
                 .map(inventoryMapper::toSummaryResponse);
     }
 
-    private Inventory getEntityById(Long id) {
+    @Transactional
+    @Override
+    public void removeBook(Long bookId) {
 
-        return inventoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No se encontró inventario con ID: " + id
-                ));
+        Inventory inventory = getEntityByBookId(bookId);
+        inventory.setActive(false);
+
+        inventoryRepository.save(inventory);
     }
 
     private Inventory getEntityByBookId(Long bookId) {
@@ -265,5 +134,10 @@ public class InventoryServiceImpl implements InventoryService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
                 ));
+    }
+
+    private InventoryDetailResponse saveAndMapToDetailResponse(Inventory inventory) {
+        Inventory saved = inventoryRepository.save(inventory);
+        return inventoryMapper.toDetailResponse(saved);
     }
 }

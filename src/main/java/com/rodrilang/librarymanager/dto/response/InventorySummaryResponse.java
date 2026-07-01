@@ -17,11 +17,11 @@ public record InventorySummaryResponse(
 
         String publisherName,
 
-        String thumbnailUrl,
+        String coverUrl,
 
         Integer stock,
 
-        BigDecimal salePrice,
+        BigDecimal retailPrice,
 
         Boolean active
 

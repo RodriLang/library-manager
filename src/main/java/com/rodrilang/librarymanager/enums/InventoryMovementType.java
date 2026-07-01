@@ -1,7 +1,9 @@
 package com.rodrilang.librarymanager.enums;
 
 public enum InventoryMovementType {
-    PURCHASE,
+
+    INITIAL_STOCK,
+    ENTRY,
     SALE,
     ADJUSTMENT
 }

@@ -23,8 +23,6 @@ public record BookMetadata(
 
         LocalDate publicationDate,
 
-        String thumbnailUrl,
-
         String coverUrl
 ) {
 }

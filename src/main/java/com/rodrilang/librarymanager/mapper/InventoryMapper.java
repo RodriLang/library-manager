@@ -22,7 +22,8 @@ public interface InventoryMapper {
     @Mapping(target = "isbn", source = "book.isbn")
     @Mapping(target = "title", source = "book.title")
     @Mapping(target = "publisherName", source = "book.publisher.name")
-    @Mapping(target = "thumbnailUrl", source = "book.thumbnailUrl")
+    @Mapping(target = "coverUrl", source = "book.coverUrl")
+    @Mapping(target = "retailPrice", source = "book.retailPrice")
     @Mapping(target = "authorNames", expression = "java(toAuthorNames(inventory))")
     InventorySummaryResponse toSummaryResponse(Inventory inventory);
 
@@ -39,5 +40,10 @@ public interface InventoryMapper {
     }
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "book", ignore = true)
+    @Mapping(target = "stock", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
     void updateEntity(UpdateInventoryRequest request, @MappingTarget Inventory inventory);
 }
