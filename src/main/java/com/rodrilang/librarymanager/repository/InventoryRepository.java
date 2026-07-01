@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.repository;
 import com.rodrilang.librarymanager.model.Inventory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,11 +12,27 @@ import java.util.Optional;
 
 public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
-    Optional<Inventory> findByBookId(Long bookId);
-
     Optional<Inventory> findByBookIsbn(String isbn);
 
     boolean existsByBookId(Long bookId);
+
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.publisher",
+            "book.authors"
+
+    })
+
+    @Query("SELECT i FROM Inventory i")
+    Page<Inventory> findAllWithBookDetails(Pageable pageable);
+
+
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.publisher",
+            "book.authors"
+    })
+    Optional<Inventory> findWithBookDetailsByBookId(Long bookId);
 
     @Query(
             value = """

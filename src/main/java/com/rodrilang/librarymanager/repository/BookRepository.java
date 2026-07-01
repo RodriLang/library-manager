@@ -7,13 +7,26 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface BookRepository extends JpaRepository<Book, Long> {
 
     Optional<Book> findByIsbn(String isbn);
 
+    @Query("""
+            SELECT DISTINCT b
+            FROM Book b
+            LEFT JOIN FETCH b.publisher
+            LEFT JOIN FETCH b.authors
+            WHERE b.isbn = :isbn
+            """)
+    Optional<Book> findByIsbnWithDetails(String isbn);
+
     boolean existsByIsbn(String isbn);
+
+    List<Book> findByIsbnIn(Collection<String> isbns);
 
     @Query(
             value = """
@@ -21,7 +34,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     FROM books b
                     LEFT JOIN publishers p ON p.id = b.publisher_id
                     WHERE
-                        lower(b.isbn) LIKE lower(concat('%', :query, '%'))
+                        lower(coalesce(b.isbn, '')) LIKE lower(concat('%', :query, '%'))
                         OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
                         OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
                         OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
@@ -44,8 +57,8 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                         )
                     ORDER BY
                         CASE
-                            WHEN lower(b.isbn) = lower(:query) THEN 1
-                            WHEN lower(b.isbn) LIKE lower(concat(:query, '%')) THEN 2
+                            WHEN lower(coalesce(b.isbn, '')) = lower(:query) THEN 1
+                            WHEN lower(coalesce(b.isbn, '')) LIKE lower(concat(:query, '%')) THEN 2
                             WHEN unaccent(lower(b.title)) LIKE unaccent(lower(concat(:query, '%'))) THEN 3
                             WHEN EXISTS (
                                 SELECT 1

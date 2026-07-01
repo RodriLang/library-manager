@@ -111,7 +111,7 @@ public class GlobalExceptionHandler {
         return buildError(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
-                "Error inesperado",
+                ex.getMessage(),
                 request.getRequestURI(),
                 null
         );

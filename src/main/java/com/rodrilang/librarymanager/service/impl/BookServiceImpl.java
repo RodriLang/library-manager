@@ -16,12 +16,12 @@ import com.rodrilang.librarymanager.service.AuthorService;
 import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.PublisherService;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 
@@ -102,6 +102,7 @@ public class BookServiceImpl implements BookService {
         return bookMapper.toDetailResponse(saved);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Page<BookSummaryResponse> search(String query, Pageable pageable) {
 
@@ -113,6 +114,7 @@ public class BookServiceImpl implements BookService {
                 .map(bookMapper::toSummaryResponse);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Page<BookSummaryResponse> getAll(Pageable pageable) {
         return bookRepository.findAll(pageable).map(bookMapper::toSummaryResponse);
@@ -127,7 +129,7 @@ public class BookServiceImpl implements BookService {
 
     @Override
     public Book getEntityByIsbn(String isbn) {
-        return bookRepository.findByIsbn(isbn)
+        return bookRepository.findByIsbnWithDetails(isbn)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró un libro con el ISBN: " + isbn));
     }
 

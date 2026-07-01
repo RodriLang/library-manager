@@ -1,0 +1,2 @@
+ALTER TABLE books
+    ALTER COLUMN isbn DROP NOT NULL;

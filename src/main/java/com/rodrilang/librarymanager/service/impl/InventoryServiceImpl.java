@@ -14,12 +14,12 @@ import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.InventoryService;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -99,18 +99,20 @@ public class InventoryServiceImpl implements InventoryService {
         return inventoryMapper.toDetailResponse(inventory);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Page<InventorySummaryResponse> getAll(Pageable pageable) {
 
-        return inventoryRepository.findAll(pageable)
+        return inventoryRepository.findAllWithBookDetails(pageable)
                 .map(inventoryMapper::toSummaryResponse);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Page<InventorySummaryResponse> search(String query, Pageable pageable) {
 
         if (query == null || query.isBlank()) {
-            return inventoryRepository.findAll(pageable)
+            return inventoryRepository.findAllWithBookDetails(pageable)
                     .map(inventoryMapper::toSummaryResponse);
         }
 
@@ -130,7 +132,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     private Inventory getEntityByBookId(Long bookId) {
 
-        return inventoryRepository.findByBookId(bookId)
+        return inventoryRepository.findWithBookDetailsByBookId(bookId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
                 ));

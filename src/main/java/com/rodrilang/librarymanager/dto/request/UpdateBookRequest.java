@@ -20,6 +20,8 @@ public record UpdateBookRequest(
 
         String coverUrl,
 
+        String categoryName,
+
         BigDecimal retailPrice,
 
         LocalDate retailPriceUpdatedAt,

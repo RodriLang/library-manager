@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.model;
 
 import com.rodrilang.librarymanager.enums.BookSource;
+import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -40,7 +41,7 @@ public class Book extends AuditableEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 20)
+    @Column(unique = true, length = 20)
     private String isbn;
 
     @Column(nullable = false)
@@ -65,7 +66,15 @@ public class Book extends AuditableEntity {
     private LocalDate retailPriceUpdatedAt;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false)
     private BookSource source;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "price_list_source")
+    private PriceListSource priceListSource;
+
+    @Column(name = "category_name")
+    private String categoryName;
 
     @Builder.Default
     @Column(nullable = false)
