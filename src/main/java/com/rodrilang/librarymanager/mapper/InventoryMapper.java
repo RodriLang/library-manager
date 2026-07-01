@@ -1,11 +1,15 @@
 package com.rodrilang.librarymanager.mapper;
 
+import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Inventory;
+import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
+import org.mapstruct.NullValuePropertyMappingStrategy;
 
 import java.util.List;
 
@@ -33,4 +37,7 @@ public interface InventoryMapper {
                 .sorted()
                 .toList();
     }
+
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    void updateEntity(UpdateInventoryRequest request, @MappingTarget Inventory inventory);
 }

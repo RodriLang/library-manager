@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.dto.request.AddAuthorsRequest;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
+import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
@@ -12,6 +13,7 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.service.AuthorService;
+import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.PublisherService;
 import jakarta.transaction.Transactional;
@@ -22,7 +24,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @Service
@@ -33,6 +34,7 @@ public class BookServiceImpl implements BookService {
     private final BookMapper bookMapper;
     private final PublisherService publisherService;
     private final AuthorService authorService;
+    private final BookCatalogService bookCatalogService;
 
     @Transactional
     @Override
@@ -83,6 +85,27 @@ public class BookServiceImpl implements BookService {
     public BookDetailResponse getByIsbn(String isbn) {
 
         return bookMapper.toDetailResponse(getEntityByIsbn(isbn));
+    }
+
+    @Override
+    @Transactional
+    public BookDetailResponse lookupByIsbn(String isbn) {
+        Book book = bookCatalogService.getOrCreateByIsbn(isbn);
+
+        return bookMapper.toDetailResponse(book);
+    }
+
+    @Transactional
+    @Override
+    public BookDetailResponse update(Long bookId, UpdateBookRequest request) {
+
+        Book book = getEntityById(bookId);
+
+        bookMapper.updateEntity(request, book);
+
+        Book saved = bookRepository.save(book);
+
+        return bookMapper.toDetailResponse(saved);
     }
 
     @Override

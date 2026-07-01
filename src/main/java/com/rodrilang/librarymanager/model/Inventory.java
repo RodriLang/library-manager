@@ -40,6 +40,10 @@ public class Inventory extends AuditableEntity {
     @Column(nullable = false)
     private Integer stock = 0;
 
+    @Default
+    @Column(nullable = false)
+    private Integer minimumStock = 0;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal salePrice;
 

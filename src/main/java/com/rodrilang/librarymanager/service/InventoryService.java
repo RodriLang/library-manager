@@ -1,8 +1,12 @@
 package com.rodrilang.librarymanager.service;
 
 import com.rodrilang.librarymanager.dto.request.AddStockRequest;
+import com.rodrilang.librarymanager.dto.request.InventoryMovementRequest;
+import com.rodrilang.librarymanager.dto.request.RegisterBookPurchaseRequest;
 import com.rodrilang.librarymanager.dto.request.RegisterManualBookPurchaseRequest;
-import com.rodrilang.librarymanager.dto.request.RegisterPurchaseItemRequest;
+import com.rodrilang.librarymanager.dto.request.PurchaseItemRequest;
+import com.rodrilang.librarymanager.dto.request.RegisterPurchaseRequest;
+import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryStatusRequest;
 import com.rodrilang.librarymanager.dto.request.UpdatePriceRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
@@ -22,9 +26,17 @@ public interface InventoryService {
 
     InventoryDetailResponse getByBookId(Long bookId);
 
+    InventoryDetailResponse registerSale(Long bookId, InventoryMovementRequest request);
+
+    InventoryDetailResponse registerReturn(Long bookId, InventoryMovementRequest request);
+
     InventoryDetailResponse getByIsbn(String isbn);
 
-    List<InventoryDetailResponse> registerPurchase(List<RegisterPurchaseItemRequest> request);
+    InventoryDetailResponse updateByBookId(Long bookId, UpdateInventoryRequest request);
+
+    List<InventoryDetailResponse> registerPurchase(RegisterPurchaseRequest request);
+
+    InventoryDetailResponse registerPurchaseItem(Long bookId, RegisterBookPurchaseRequest item);
 
     InventoryDetailResponse registerPurchaseWithManualBook(RegisterManualBookPurchaseRequest request);
 

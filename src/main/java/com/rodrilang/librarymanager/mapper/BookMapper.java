@@ -1,11 +1,15 @@
 package com.rodrilang.librarymanager.mapper;
 
 import com.rodrilang.librarymanager.dto.request.BookRequest;
+import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.model.Book;
+import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
+import org.mapstruct.NullValuePropertyMappingStrategy;
 
 @Mapper(componentModel = "spring", uses = {AuthorMapper.class, PublisherMapper.class})
 public interface BookMapper {
@@ -20,4 +24,9 @@ public interface BookMapper {
     @Mapping(target = "publisher", ignore = true)
     @Mapping(target = "authors", ignore = true)
     Book toEntity(BookRequest request);
+
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "publisher", ignore = true)
+    @Mapping(target = "authors", ignore = true)
+    void updateEntity(UpdateBookRequest request, @MappingTarget Book inventory);
 }

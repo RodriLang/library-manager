@@ -1,0 +1,2 @@
+ALTER TABLE inventory
+    ADD COLUMN minimum_stock INTEGER NOT NULL DEFAULT 0;

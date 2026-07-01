@@ -15,6 +15,8 @@ public record InventoryDetailResponse(
 
         BigDecimal costPrice,
 
+        Integer minimumStock,
+
         Boolean active,
 
         Instant createdAt,

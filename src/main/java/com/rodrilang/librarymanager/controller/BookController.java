@@ -2,11 +2,14 @@ package com.rodrilang.librarymanager.controller;
 
 import com.rodrilang.librarymanager.dto.request.AddAuthorsRequest;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
+import com.rodrilang.librarymanager.dto.request.LookupBookByIsbnRequest;
+import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.service.BookService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
@@ -16,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,18 +34,23 @@ public class BookController {
     private final BookService bookService;
 
     @PostMapping
-    public ResponseEntity<BookDetailResponse> create(@RequestBody BookRequest request) {
+    public ResponseEntity<BookDetailResponse> create(@Valid @RequestBody BookRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(bookService.create(request));
     }
 
     @PostMapping("/{bookId}/authors")
     public ResponseEntity<BookDetailResponse> addAuthors(
             @PathVariable Long bookId,
-            @RequestBody AddAuthorsRequest request
+            @Valid @RequestBody AddAuthorsRequest request
     ) {
         return ResponseEntity.ok(
                 bookService.addAuthors(bookId, request)
         );
+    }
+
+    @PostMapping("/lookup")
+    public ResponseEntity<BookDetailResponse> lookupByIsbn(@Valid @RequestBody LookupBookByIsbnRequest request) {
+        return ResponseEntity.ok(bookService.lookupByIsbn(request.isbn()));
     }
 
     @GetMapping
@@ -70,4 +79,13 @@ public class BookController {
     ) {
         return ResponseEntity.ok(PageResponse.of(bookService.search(q.trim(), pageable)));
     }
+
+    @PutMapping("/{bookId}")
+    public ResponseEntity<BookDetailResponse> update(
+            @PathVariable Long bookId,
+            @Valid @RequestBody UpdateBookRequest request
+    ) {
+        return ResponseEntity.ok(bookService.update(bookId, request));
+    }
+
 }
