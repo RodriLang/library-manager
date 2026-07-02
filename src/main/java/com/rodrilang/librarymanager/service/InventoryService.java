@@ -25,4 +25,8 @@ public interface InventoryService {
     Page<InventorySummaryResponse> search(String query, Pageable pageable);
 
     void removeBook(Long bookId);
+
+    void decreaseStockByBookId(Long bookId, Integer quantity);
+
+    void increaseStockByBookId(Long bookId, Integer quantity);
 }
