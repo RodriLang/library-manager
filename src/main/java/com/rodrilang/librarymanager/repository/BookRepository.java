@@ -20,6 +20,15 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             FROM Book b
             LEFT JOIN FETCH b.publisher
             LEFT JOIN FETCH b.authors
+            WHERE b.id = :id
+            """)
+    Optional<Book> findByIdWithDetails(Long id);
+
+    @Query("""
+            SELECT DISTINCT b
+            FROM Book b
+            LEFT JOIN FETCH b.publisher
+            LEFT JOIN FETCH b.authors
             WHERE b.isbn = :isbn
             """)
     Optional<Book> findByIsbnWithDetails(String isbn);

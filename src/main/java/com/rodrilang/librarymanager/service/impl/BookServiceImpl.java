@@ -17,6 +17,7 @@ import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.PublisherService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BookServiceImpl implements BookService {
@@ -83,6 +85,7 @@ public class BookServiceImpl implements BookService {
     @Override
     public BookDetailResponse update(Long bookId, UpdateBookRequest request) {
 
+        log.info("REQUEST coverUrl: {}", request.coverUrl());
         Book book = getEntityById(bookId);
 
         bookMapper.updateEntity(request, book);
@@ -123,7 +126,7 @@ public class BookServiceImpl implements BookService {
     @Override
     public Book getEntityById(Long id) {
 
-        return bookRepository.findById(id)
+        return bookRepository.findByIdWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró un libro con el ID: " + id));
     }
 
