@@ -21,5 +21,7 @@ public interface AuthorService {
 
     Author getEntityById(Long id);
 
+    Author findOrCreateByName(String name);
+
     Set<Author> getEntitiesByIds(Set<Long> ids);
 }

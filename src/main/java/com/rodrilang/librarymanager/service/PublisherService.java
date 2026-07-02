@@ -19,4 +19,6 @@ public interface PublisherService {
     List<PublisherResponse> search(String query);
 
     Publisher getEntityById(Long id);
+
+    Publisher findOrCreateByName(String name);
 }

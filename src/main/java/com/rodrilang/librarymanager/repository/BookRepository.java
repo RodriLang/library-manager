@@ -117,4 +117,21 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     )
     Page<Book> search(@Param("query") String query, Pageable pageable);
 
+    @Query("""
+                select b
+                from Book b
+                where b.active = true
+                  and b.isbn is not null
+                  and (
+                      b.subtitle is null
+                      or b.description is null
+                      or b.language is null
+                      or b.pageCount is null
+                      or b.publicationDate is null
+                      or b.coverUrl is null
+                      or b.publisher is null
+                      or b.authors is empty
+                  )
+            """)
+    List<Book> findBooksPendingMetadataEnrichment(Pageable pageable);
 }

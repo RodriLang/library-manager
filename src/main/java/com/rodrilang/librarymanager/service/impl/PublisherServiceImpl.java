@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -23,6 +24,7 @@ public class PublisherServiceImpl implements PublisherService {
     private final PublisherRepository publisherRepository;
     private final PublisherMapper publisherMapper;
 
+    @Transactional
     @Override
     public PublisherResponse create(PublisherRequest request) {
 
@@ -39,6 +41,7 @@ public class PublisherServiceImpl implements PublisherService {
         );
     }
 
+    @Transactional(readOnly = true)
     @Override
     public PublisherResponse findById(Long id) {
 
@@ -48,6 +51,7 @@ public class PublisherServiceImpl implements PublisherService {
         return publisherMapper.toResponse(publisher);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Page<PublisherResponse> findAll(Pageable pageable) {
 
@@ -55,6 +59,7 @@ public class PublisherServiceImpl implements PublisherService {
                 .map(publisherMapper::toResponse);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public List<PublisherResponse> search(String query) {
 
@@ -71,4 +76,21 @@ public class PublisherServiceImpl implements PublisherService {
         return publisherRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró editorial con ID: " + id));
     }
+
+    @Override
+    @Transactional
+    public Publisher findOrCreateByName(String name) {
+
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+
+        return publisherRepository.findByNameIgnoreCase(name.trim())
+                .orElseGet(() -> publisherRepository.save(
+                        Publisher.builder()
+                                .name(name.trim())
+                                .build()
+                ));
+    }
+
 }

@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
@@ -25,6 +26,7 @@ public class AuthorServiceImpl implements AuthorService {
     private final AuthorRepository authorRepository;
     private final AuthorMapper authorMapper;
 
+    @Transactional
     @Override
     public AuthorResponse create(AuthorRequest request) {
 
@@ -39,6 +41,7 @@ public class AuthorServiceImpl implements AuthorService {
         return authorMapper.toResponse(authorRepository.save(author));
     }
 
+    @Transactional(readOnly = true)
     @Override
     public AuthorResponse findById(Long id) {
 
@@ -48,12 +51,14 @@ public class AuthorServiceImpl implements AuthorService {
         return authorMapper.toResponse(author);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Page<AuthorResponse> findAll(Pageable pageable) {
 
         return authorRepository.findAll(pageable).map(authorMapper::toResponse);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public List<AuthorResponse> search(String query) {
 
@@ -63,6 +68,7 @@ public class AuthorServiceImpl implements AuthorService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Author getEntityById(Long id) {
 
@@ -70,6 +76,23 @@ public class AuthorServiceImpl implements AuthorService {
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró autor con ID: " + id));
     }
 
+    @Override
+    @Transactional
+    public Author findOrCreateByName(String name) {
+
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+
+        return authorRepository.findByNameIgnoreCase(name.trim())
+                .orElseGet(() -> authorRepository.save(
+                        Author.builder()
+                                .name(name.trim())
+                                .build()
+                ));
+    }
+
+    @Transactional(readOnly = true)
     @Override
     public Set<Author> getEntitiesByIds(Set<Long> ids) {
 

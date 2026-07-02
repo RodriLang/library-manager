@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.importer.price.parser;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.util.PriceParserUtils;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
@@ -51,7 +52,7 @@ public class FcePriceListParser implements PriceListParser {
                 String isbn = getCellValue(row, ISBN_COLUMN);
                 String title = getCellValue(row, TITLE_COLUMN);
                 String authorName = getCellValue(row, AUTHOR_COLUMN);
-                BigDecimal retailPrice = getPrice(row.getCell(PRICE_COLUMN));
+                BigDecimal retailPrice = PriceParserUtils.getPrice(row.getCell(PRICE_COLUMN));
 
                 rows.add(new PriceListRow(
                         i + 1,
@@ -83,21 +84,5 @@ public class FcePriceListParser implements PriceListParser {
     private String getCellValue(Row row, int columnIndex) {
         Cell cell = row.getCell(columnIndex);
         return dataFormatter.formatCellValue(cell).trim();
-    }
-
-    private BigDecimal getPrice(Cell cell) {
-        String value = dataFormatter.formatCellValue(cell).trim();
-
-        if (value.isBlank()) {
-            return null;
-        }
-
-        String normalized = value
-                .replace("$", "")
-                .replace(".", "")
-                .replace(",", ".")
-                .trim();
-
-        return new BigDecimal(normalized);
     }
 }
