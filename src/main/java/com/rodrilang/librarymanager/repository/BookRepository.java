@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.repository;
 
+import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import com.rodrilang.librarymanager.model.Book;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +37,8 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     boolean existsByIsbn(String isbn);
 
     List<Book> findByIsbnIn(Collection<String> isbns);
+
+    Optional<Book> findFirstByTitleIgnoreCaseAndPriceListSource(String title, PriceListSource priceListSource);
 
     @Query(
             value = """

@@ -73,9 +73,18 @@ public class PriceListImportServiceImpl implements PriceListImportService {
             try {
                 String isbn = normalizeIsbn(row.isbn());
 
-                Book existingBook = isbn != null
-                        ? context.booksByIsbn().get(isbn)
-                        : null;
+                Book existingBook;
+
+                if (isbn != null) {
+                    existingBook = context.booksByIsbn().get(isbn);
+                } else {
+                    existingBook = bookRepository
+                            .findFirstByTitleIgnoreCaseAndPriceListSource(
+                                    row.title().trim(),
+                                    row.priceListSource()
+                            )
+                            .orElse(null);
+                }
 
                 if (existingBook == null) {
                     Book newBook = createBook(row, context, today);
