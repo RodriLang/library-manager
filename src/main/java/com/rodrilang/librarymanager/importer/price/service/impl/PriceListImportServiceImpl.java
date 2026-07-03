@@ -1,122 +1,112 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListImportResult;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListValidationResult;
-import com.rodrilang.librarymanager.importer.price.factory.ImportContextFactory;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListParser;
+import com.rodrilang.librarymanager.importer.price.dto.PriceListImportJobErrorResponse;
+import com.rodrilang.librarymanager.importer.price.dto.PriceListImportJobStatusResponse;
+import com.rodrilang.librarymanager.importer.price.dto.PriceListImportStartResponse;
+import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
+import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatus;
 import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
-import com.rodrilang.librarymanager.importer.price.service.PriceListBookUpsertService;
+import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobErrorRepository;
+import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
+import com.rodrilang.librarymanager.importer.price.service.PriceListAsyncProcessor;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
-import com.rodrilang.librarymanager.importer.price.validator.PriceListImportErrorValidator;
-import com.rodrilang.librarymanager.importer.price.validator.PriceListImportSafetyValidator;
-import com.rodrilang.librarymanager.importer.price.validator.PriceListValidationService;
-import com.rodrilang.librarymanager.model.Book;
-import com.rodrilang.librarymanager.repository.BookRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.List;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PriceListImportServiceImpl implements PriceListImportService {
 
-    private final List<PriceListParser> parsers;
-    private final BookRepository bookRepository;
-    private final PriceListImportSafetyValidator safetyValidator;
-    private final PriceListImportErrorValidator importErrorValidator;
-    private final PriceListBookUpsertService bookUpsertService;
-    private final PriceListValidationService validationService;
-    private final ImportContextFactory importContextFactory;
+    private final PriceListImportJobRepository jobRepository;
+    private final PriceListImportJobErrorRepository errorRepository;
+    private final PriceListAsyncProcessor asyncProcessor;
 
-    @Transactional
     @Override
-    public synchronized PriceListImportResult importPriceList(PriceListSource priceListSource, MultipartFile file) {
-        log.info("Importing price list of {}", priceListSource);
-
-        PriceListParser parser = resolveParser(priceListSource);
-
-        try (InputStream inputStream = file.getInputStream();
-             Workbook workbook = WorkbookFactory.create(inputStream)) {
-
-            parser.validateTemplate(workbook);
-
-            List<PriceListRow> rows = parser.parse(workbook);
-
-            PriceListValidationResult validation = validationService.validate(rows);
-
-            safetyValidator.validate(rows, validation.validRows());
-
-            validation.errors().forEach(error ->
-                    log.warn(
-                            "Import error row={} isbn={} severity={} message={}",
-                            error.rowNumber(),
-                            error.isbn(),
-                            error.severity(),
-                            error.message()
-                    )
-            );
-
-            importErrorValidator.validate(validation.errors());
-
-            ImportContext context = importContextFactory.create(validation.validRows());
-
-            int createdBooks = 0;
-            int updatedBooks = 0;
-
-            List<Book> booksToSave = new ArrayList<>();
-            LocalDate today = LocalDate.now(ZoneId.systemDefault());
-
-            for (PriceListRow row : validation.validRows()) {
-                boolean existed = bookUpsertService.exists(row, context);
-
-                Book book = bookUpsertService.upsert(row, context, today);
-                booksToSave.add(book);
-
-                if (existed) {
-                    updatedBooks++;
-                } else {
-                    createdBooks++;
-                }
-            }
-
-            bookRepository.saveAll(booksToSave);
-
-            return new PriceListImportResult(
-                    rows.size(),
-                    createdBooks,
-                    updatedBooks,
-                    validation.errors().size(),
-                    validation.errors()
-            );
-
-        } catch (IOException ex) {
-            throw new BusinessException(
-                    "No se pudo leer el archivo Excel: " + ex.getMessage()
-            );
-        }
+    @Transactional
+    public PriceListImportStartResponse startImport(
+            PriceListSource priceListSource,
+            MultipartFile file,
+            String idempotencyKey
+    ) {
+        return jobRepository.findByIdempotencyKey(idempotencyKey)
+                .map(existingJob -> new PriceListImportStartResponse(
+                        existingJob.getId(),
+                        existingJob.getStatus(),
+                        "La importación ya había sido iniciada."
+                ))
+                .orElseGet(() -> createAndStartJob(priceListSource, file, idempotencyKey));
     }
 
-    private PriceListParser resolveParser(PriceListSource priceListSource) {
-        return parsers.stream()
-                .filter(parser -> parser.supports(priceListSource))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(
-                        "No existe un parser configurado para la lista: " + priceListSource
-                ));
+    private PriceListImportStartResponse createAndStartJob(
+            PriceListSource priceListSource,
+            MultipartFile file,
+            String idempotencyKey
+    ) {
+        byte[] fileBytes;
+
+        try {
+            fileBytes = file.getBytes();
+        } catch (IOException ex) {
+            throw new BusinessException("No se pudo leer el archivo Excel: " + ex.getMessage());
+        }
+
+        PriceListImportJob job = PriceListImportJob.builder()
+                .idempotencyKey(idempotencyKey)
+                .priceListSource(priceListSource)
+                .status(PriceListImportJobStatus.PENDING)
+                .createdAt(LocalDateTime.now(ZoneId.systemDefault()))
+                .build();
+
+        PriceListImportJob savedJob = jobRepository.save(job);
+
+        asyncProcessor.process(savedJob.getId(), priceListSource, fileBytes);
+
+        return new PriceListImportStartResponse(
+                savedJob.getId(),
+                savedJob.getStatus(),
+                "La importación fue iniciada."
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PriceListImportJobStatusResponse getStatus(Long jobId) {
+        PriceListImportJob job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new BusinessException("No se encontró la importación solicitada."));
+
+        int progress = job.getTotalRows() == 0
+                ? 0
+                : (job.getProcessedRows() * 100) / job.getTotalRows();
+
+        List<PriceListImportJobErrorResponse> errors = errorRepository.findByJobIdOrderByRowNumberAsc(jobId)
+                .stream()
+                .map(error -> new PriceListImportJobErrorResponse(
+                        error.getRowNumber(),
+                        error.getIsbn(),
+                        error.getMessage(),
+                        error.getSeverity()
+                ))
+                .toList();
+
+        return new PriceListImportJobStatusResponse(
+                job.getId(),
+                job.getStatus(),
+                job.getTotalRows(),
+                job.getProcessedRows(),
+                job.getCreatedBooks(),
+                job.getUpdatedBooks(),
+                job.getErrorCount(),
+                progress,
+                job.getErrorMessage(),
+                errors
+        );
     }
 }
