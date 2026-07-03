@@ -16,6 +16,7 @@ import com.rodrilang.librarymanager.service.AuthorService;
 import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.PublisherService;
+import com.rodrilang.librarymanager.util.PageableUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,6 +25,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -36,6 +38,8 @@ public class BookServiceImpl implements BookService {
     private final PublisherService publisherService;
     private final AuthorService authorService;
     private final BookCatalogService bookCatalogService;
+
+    private static final Map<String, String> BOOK_SORT_MAPPING = Map.of("title", "titleSort");
 
     @Transactional
     @Override
@@ -120,7 +124,9 @@ public class BookServiceImpl implements BookService {
     @Transactional(readOnly = true)
     @Override
     public Page<BookSummaryResponse> getAll(Pageable pageable) {
-        return bookRepository.findAll(pageable).map(bookMapper::toSummaryResponse);
+
+        Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, BOOK_SORT_MAPPING);
+        return bookRepository.findAll(normalizedPageable).map(bookMapper::toSummaryResponse);
     }
 
     @Override

@@ -8,7 +8,7 @@ import com.rodrilang.librarymanager.mapper.PublisherMapper;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.service.PublisherService;
-import com.rodrilang.librarymanager.utils.StringUtils;
+import com.rodrilang.librarymanager.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

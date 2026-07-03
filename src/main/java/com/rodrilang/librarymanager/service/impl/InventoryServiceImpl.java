@@ -14,12 +14,15 @@ import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.InventoryService;
+import com.rodrilang.librarymanager.util.PageableUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -29,6 +32,8 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
+
+    private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of("title", "book.titleSort");
 
     @Transactional
     @Override
@@ -103,6 +108,8 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public Page<InventorySummaryResponse> getAll(Pageable pageable) {
 
+        pageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
+
         return inventoryRepository.findAllWithBookDetails(pageable)
                 .map(inventoryMapper::toSummaryResponse);
     }
@@ -112,7 +119,9 @@ public class InventoryServiceImpl implements InventoryService {
     public Page<InventorySummaryResponse> search(String query, Pageable pageable) {
 
         if (query == null || query.isBlank()) {
-            return inventoryRepository.findAllWithBookDetails(pageable)
+            Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
+
+            return inventoryRepository.findAllWithBookDetails(normalizedPageable)
                     .map(inventoryMapper::toSummaryResponse);
         }
 

@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.model;
 
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,6 +15,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
@@ -46,6 +49,9 @@ public class Book extends AuditableEntity {
 
     @Column(nullable = false)
     private String title;
+
+    @Column(name = "title_sort", nullable = false)
+    private String titleSort;
 
     private String subtitle;
 
@@ -92,4 +98,10 @@ public class Book extends AuditableEntity {
             inverseJoinColumns = @JoinColumn(name = "author_id")
     )
     private Set<Author> authors = new HashSet<>();
+
+    @PrePersist
+    @PreUpdate
+    private void normalizeSortFields() {
+        this.titleSort = TextNormalizer.normalizeForSort(this.title);
+    }
 }
