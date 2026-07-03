@@ -4,19 +4,21 @@ import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.util.PriceParserUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.apache.commons.lang3.StringUtils.containsAny;
+
+@Slf4j
 @Component
 public class FcePriceListParser implements PriceListParser {
 
@@ -35,10 +37,35 @@ public class FcePriceListParser implements PriceListParser {
     }
 
     @Override
-    public List<PriceListRow> parse(MultipartFile file) {
-        try (InputStream inputStream = file.getInputStream();
-             Workbook workbook = WorkbookFactory.create(inputStream)) {
+    public void validateTemplate(Workbook workbook) {
+        Sheet sheet = workbook.getSheetAt(0);
+        Row headerRow = sheet.getRow(3);
 
+        if (headerRow == null) {
+            throw new BusinessException("El archivo seleccionado no corresponde al formato esperado para FCE.");
+        }
+
+        String isbnHeader = getNormalizedCellValue(headerRow, ISBN_COLUMN);
+        String titleHeader = getNormalizedCellValue(headerRow, TITLE_COLUMN);
+        String authorHeader = getNormalizedCellValue(headerRow, AUTHOR_COLUMN);
+        String priceHeader = getNormalizedCellValue(headerRow, PRICE_COLUMN);
+
+        boolean valid =
+                containsAny(isbnHeader, "cod.barra", "codigo", "código", "barra", "isbn")
+                        && containsAny(titleHeader, "titulo", "título")
+                        && containsAny(authorHeader, "autor")
+                        && containsAny(priceHeader, "pvp", "precio");
+
+        if (!valid) {
+            throw new BusinessException(
+                    "El archivo seleccionado no corresponde al formato esperado para FCE."
+            );
+        }
+    }
+
+    @Override
+    public List<PriceListRow> parse(Workbook workbook) {
+        try {
             List<PriceListRow> rows = new ArrayList<>();
             var sheet = workbook.getSheetAt(0);
 
@@ -84,5 +111,11 @@ public class FcePriceListParser implements PriceListParser {
     private String getCellValue(Row row, int columnIndex) {
         Cell cell = row.getCell(columnIndex);
         return dataFormatter.formatCellValue(cell).trim();
+    }
+
+    private String getNormalizedCellValue(Row row, int columnIndex) {
+        return getCellValue(row, columnIndex)
+                .toLowerCase()
+                .trim();
     }
 }
