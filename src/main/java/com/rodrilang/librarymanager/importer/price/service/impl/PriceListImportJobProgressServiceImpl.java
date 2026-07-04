@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.importer.price.dto.ImportStatistics;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportError;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobError;
@@ -42,33 +43,27 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
-    public void updateProgress(
-            Long jobId,
-            int processedRows,
-            int createdBooks,
-            int updatedBooks
-    ) {
+    public void updateProgress(Long jobId, ImportStatistics importStatistics) {
         PriceListImportJob job = getJob(jobId);
-        job.setProcessedRows(processedRows);
-        job.setCreatedBooks(createdBooks);
-        job.setUpdatedBooks(updatedBooks);
+        job.setProcessedRows(importStatistics.processedRows());
+        job.setCreatedBooks(importStatistics.createdBooks());
+        job.setCreatedPrices(importStatistics.createdPrices());
+        job.setUpdatedPrices(importStatistics.updatedPrices());
+        job.setErrorCount(importStatistics.errors());
+        job.setUnchangedPrices(importStatistics.unchangedPrices());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
-    public void markCompleted(
-            Long jobId,
-            int processedRows,
-            int createdBooks,
-            int updatedBooks,
-            int errorCount
-    ) {
+    public void markCompleted(Long jobId, ImportStatistics importStatistics) {
         PriceListImportJob job = getJob(jobId);
         job.setStatus(PriceListImportJobStatus.COMPLETED);
-        job.setProcessedRows(processedRows);
-        job.setCreatedBooks(createdBooks);
-        job.setUpdatedBooks(updatedBooks);
-        job.setErrorCount(errorCount);
+        job.setProcessedRows(importStatistics.processedRows());
+        job.setCreatedBooks(importStatistics.createdBooks());
+        job.setCreatedPrices(importStatistics.createdPrices());
+        job.setUpdatedPrices(importStatistics.updatedPrices());
+        job.setErrorCount(importStatistics.errors());
+        job.setUnchangedPrices(importStatistics.unchangedPrices());
         job.setFinishedAt(LocalDateTime.now(ZoneId.systemDefault()));
     }
 

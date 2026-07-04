@@ -1,21 +1,27 @@
 package com.rodrilang.librarymanager.service.impl;
 
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
+import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
+import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.mapper.BookMapper;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.service.AuthorService;
 import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
+import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.PublisherService;
+import com.rodrilang.librarymanager.util.IsbnUtils;
 import com.rodrilang.librarymanager.util.PageableUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +44,8 @@ public class BookServiceImpl implements BookService {
     private final PublisherService publisherService;
     private final AuthorService authorService;
     private final BookCatalogService bookCatalogService;
+    private final BookstoreService bookstoreService;
+    private final BookstoreContext bookstoreContext;
 
     private static final Map<String, String> BOOK_SORT_MAPPING = Map.of("title", "titleSort");
 
@@ -45,23 +53,31 @@ public class BookServiceImpl implements BookService {
     @Override
     public BookDetailResponse create(BookRequest request) {
 
-        if (bookRepository.existsByIsbn(request.isbn())) {
+        String normalizedIsbn = IsbnUtils.normalize(request.isbn());
+
+        if (bookRepository.existsByIsbn(normalizedIsbn)) {
             throw new DuplicateResourceException("ISBN ya registrado");
         }
 
         Publisher publisher = publisherService.getEntityById(request.publisherId());
         Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
+        Bookstore bookstore = bookstoreService.getEntityById(bookstoreContext.getCurrentBookstoreId());
 
         Book book = bookMapper.toEntity(request);
+        book.setIsbn(normalizedIsbn);
         book.setPublisher(publisher);
         book.setAuthors(authors);
         book.setSource(BookSource.MANUAL);
+        book.setCatalogStatus(BookCatalogStatus.PENDING_REVIEW);
+        book.setCreatedByBookstore(bookstore);
+        book.setActive(true);
 
         try {
             Book saved = bookRepository.save(book);
             return bookMapper.toDetailResponse(saved);
         } catch (DataIntegrityViolationException ex) {
-            throw new DuplicateResourceException("ISBN ya registrado");
+            log.error("Error de integridad al crear libro. isbn={}", normalizedIsbn, ex);
+            throw new BusinessException("No se pudo registrar el libro. Verifique los datos ingresados.");
         }
     }
 

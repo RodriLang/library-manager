@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
+
 @RestController
 @RequestMapping("/api/price-lists")
 @RequiredArgsConstructor
@@ -30,10 +32,11 @@ public class PriceListImportController {
     public ResponseEntity<PriceListImportStartResponse> importPriceList(
             @RequestParam PriceListSource priceListSource,
             @RequestParam MultipartFile file,
+            @RequestParam LocalDate validFrom,
             @RequestHeader("Idempotency-Key") String idempotencyKey
     ) {
         return ResponseEntity.accepted().body(
-                priceListImportService.startImport(priceListSource, file, idempotencyKey)
+                priceListImportService.startImport(priceListSource, file, validFrom, idempotencyKey)
         );
     }
 

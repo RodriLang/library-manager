@@ -38,7 +38,9 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
     List<Book> findByIsbnIn(Collection<String> isbns);
 
-    Optional<Book> findFirstByTitleIgnoreCaseAndPriceListSource(String title, PriceListSource priceListSource);
+    Optional<Book> findFirstByTitleIgnoreCase(String title);
+
+    Optional<Book> findFirstByTitleIgnoreCaseAndPublisher_NameIgnoreCase(String title, String publisherName);
 
     @Query(
             value = """

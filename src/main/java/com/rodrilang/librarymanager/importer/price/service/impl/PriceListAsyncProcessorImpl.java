@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+
 @Component
 @RequiredArgsConstructor
 public class PriceListAsyncProcessorImpl implements PriceListAsyncProcessor {
@@ -18,8 +20,9 @@ public class PriceListAsyncProcessorImpl implements PriceListAsyncProcessor {
     public void process(
             Long jobId,
             PriceListSource priceListSource,
+            LocalDate validFrom,
             byte[] fileBytes
     ) {
-        processor.process(jobId, priceListSource, fileBytes);
+        processor.process(jobId, priceListSource, validFrom, fileBytes);
     }
 }

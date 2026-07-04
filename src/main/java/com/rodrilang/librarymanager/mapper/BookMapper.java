@@ -25,6 +25,8 @@ public interface BookMapper {
     @Mapping(target = "authors", ignore = true)
     @Mapping(target = "coverUrl", ignore = true)
     @Mapping(target = "source", ignore = true)
+    @Mapping(target = "titleSort", ignore = true)
+    @Mapping(target = "createdByBookstore", ignore = true)
     Book toEntity(BookRequest request);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
@@ -35,5 +37,8 @@ public interface BookMapper {
     @Mapping(target = "source", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "active", ignore = true)
+    @Mapping(target = "titleSort", ignore = true)
+    @Mapping(target = "createdByBookstore", ignore = true)
     void updateEntity(UpdateBookRequest request, @MappingTarget Book inventory);
 }

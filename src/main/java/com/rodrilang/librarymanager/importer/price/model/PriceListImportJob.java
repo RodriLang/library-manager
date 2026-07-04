@@ -16,6 +16,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -46,6 +47,9 @@ public class PriceListImportJob {
     @Column(name = "price_list_source", nullable = false)
     private PriceListSource priceListSource;
 
+    @Column(name = "valid_from", nullable = false)
+    private LocalDate validFrom;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PriceListImportJobStatus status;
@@ -59,8 +63,14 @@ public class PriceListImportJob {
     @Column(name = "created_books", nullable = false)
     private int createdBooks;
 
-    @Column(name = "updated_books", nullable = false)
-    private int updatedBooks;
+    @Column(name = "created_prices", nullable = false)
+    private int createdPrices;
+
+    @Column(name = "updated_prices", nullable = false)
+    private int updatedPrices;
+
+    @Column(name = "unchanged_prices", nullable = false)
+    private int unchangedPrices;
 
     @Column(name = "error_count", nullable = false)
     private int errorCount;
