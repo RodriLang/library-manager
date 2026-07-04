@@ -10,8 +10,9 @@ public record PriceListImportJobStatusResponse(
         int totalRows,
         int processedRows,
         int createdBooks,
-        int updatedBooks,
-        int errorCount,
+        int createdPrices,
+        int updatedPrices,
+        int unchangedPrices,
         int progressPercentage,
         String errorMessage,
         List<PriceListImportJobErrorResponse> errors

@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
+import com.rodrilang.librarymanager.dto.internal.BookImportResult;
+import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
@@ -36,7 +38,7 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         Book book = findExistingBook(row, context, isbn);
 
         if (book == null) {
-            Book newBook = createBook(row, context, today);
+            Book newBook = createBook(row, context);
 
             if (isbn != null) {
                 context.booksByIsbn().put(isbn, newBook);
@@ -45,7 +47,7 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             return newBook;
         }
 
-        updateExistingBook(book, row, context, today);
+        updateExistingBook(book, row, context);
         return book;
     }
 
@@ -58,18 +60,35 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         return findExistingBook(row, context, isbn) != null;
     }
 
+    @Override
+    public BookImportResult findOrCreate(PriceListRow row, ImportContext context) {
+
+        String isbn = normalizeIsbn(row.isbn());
+
+        Book existingBook = findExistingBook(row, context, isbn);
+
+        if (existingBook != null) {
+            return new BookImportResult(existingBook, false);
+        }
+
+        Book newBook = createBook(row, context);
+
+        if (isbn != null) {
+            context.booksByIsbn().put(isbn, newBook);
+        }
+
+        return new BookImportResult(newBook, true);
+    }
+
     private Book createBook(
             PriceListRow row,
-            ImportContext context,
-            LocalDate today
+            ImportContext context
     ) {
         return Book.builder()
                 .isbn(normalizeIsbn(row.isbn()))
                 .title(row.title().trim())
-                .retailPrice(row.retailPrice())
-                .retailPriceUpdatedAt(today)
                 .source(BookSource.EDITORIAL_PRICE_LIST)
-                .priceListSource(row.priceListSource())
+                .catalogStatus(BookCatalogStatus.VERIFIED)
                 .categoryName(formatNullable(row.categoryName()))
                 .publisher(publisherResolver.resolve(row, context))
                 .authors(authorResolver.resolve(row, context))
@@ -80,11 +99,8 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
     private void updateExistingBook(
             Book book,
             PriceListRow row,
-            ImportContext context,
-            LocalDate today
+            ImportContext context
     ) {
-        book.setRetailPrice(row.retailPrice());
-        book.setRetailPriceUpdatedAt(today);
 
         if (!hasText(book.getTitle()) && hasText(row.title())) {
             book.setTitle(row.title().trim());
@@ -109,11 +125,17 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             return context.booksByIsbn().get(isbn);
         }
 
+        if (hasText(row.publisherName())) {
+            return bookRepository
+                    .findFirstByTitleIgnoreCaseAndPublisher_NameIgnoreCase(
+                            row.title().trim(),
+                            row.publisherName().trim()
+                    )
+                    .orElse(null);
+        }
+
         return bookRepository
-                .findFirstByTitleIgnoreCaseAndPriceListSource(
-                        row.title().trim(),
-                        row.priceListSource()
-                )
+                .findFirstByTitleIgnoreCase(row.title().trim())
                 .orElse(null);
     }
 }

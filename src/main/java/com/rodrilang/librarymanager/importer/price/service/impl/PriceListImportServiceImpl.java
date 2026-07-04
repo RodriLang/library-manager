@@ -11,12 +11,14 @@ import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJob
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.importer.price.service.PriceListAsyncProcessor;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
+import com.rodrilang.librarymanager.importer.price.validator.PriceListImportDateValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -34,20 +36,24 @@ public class PriceListImportServiceImpl implements PriceListImportService {
     public PriceListImportStartResponse startImport(
             PriceListSource priceListSource,
             MultipartFile file,
+            LocalDate validFrom,
             String idempotencyKey
     ) {
+        PriceListImportDateValidator.validateValidFrom(validFrom);
+
         return jobRepository.findByIdempotencyKey(idempotencyKey)
                 .map(existingJob -> new PriceListImportStartResponse(
                         existingJob.getId(),
                         existingJob.getStatus(),
                         "La importación ya había sido iniciada."
                 ))
-                .orElseGet(() -> createAndStartJob(priceListSource, file, idempotencyKey));
+                .orElseGet(() -> createAndStartJob(priceListSource, file, validFrom, idempotencyKey));
     }
 
     private PriceListImportStartResponse createAndStartJob(
             PriceListSource priceListSource,
             MultipartFile file,
+            LocalDate validFrom,
             String idempotencyKey
     ) {
         byte[] fileBytes;
@@ -61,13 +67,14 @@ public class PriceListImportServiceImpl implements PriceListImportService {
         PriceListImportJob job = PriceListImportJob.builder()
                 .idempotencyKey(idempotencyKey)
                 .priceListSource(priceListSource)
+                .validFrom(validFrom)
                 .status(PriceListImportJobStatus.PENDING)
                 .createdAt(LocalDateTime.now(ZoneId.systemDefault()))
                 .build();
 
         PriceListImportJob savedJob = jobRepository.save(job);
 
-        asyncProcessor.process(savedJob.getId(), priceListSource, fileBytes);
+        asyncProcessor.process(savedJob.getId(), priceListSource, validFrom, fileBytes);
 
         return new PriceListImportStartResponse(
                 savedJob.getId(),
@@ -102,8 +109,9 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 job.getTotalRows(),
                 job.getProcessedRows(),
                 job.getCreatedBooks(),
-                job.getUpdatedBooks(),
-                job.getErrorCount(),
+                job.getCreatedPrices(),
+                job.getUpdatedPrices(),
+                job.getUnchangedPrices(),
                 progress,
                 job.getErrorMessage(),
                 errors

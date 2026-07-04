@@ -5,9 +5,11 @@ import com.rodrilang.librarymanager.importer.price.dto.PriceListImportStartRespo
 import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
+
 public interface PriceListImportService {
 
-    PriceListImportStartResponse startImport(PriceListSource priceListSource, MultipartFile file, String idempotencyKey);
+    PriceListImportStartResponse startImport(PriceListSource priceListSource, MultipartFile file, LocalDate validFrom, String idempotencyKey);
 
     PriceListImportJobStatusResponse getStatus(Long jobId);
 }

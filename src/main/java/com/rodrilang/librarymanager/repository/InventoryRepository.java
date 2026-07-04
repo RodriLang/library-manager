@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.repository;
 
+import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.model.Inventory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,7 +13,7 @@ import java.util.Optional;
 
 public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
-    boolean existsByBookId(Long bookId);
+    boolean existsByBookIdAndBookstoreIdAndCondition(Long bookId, Long bookStoreId, BookCondition condition);
 
     @EntityGraph(attributePaths = {
             "book",
@@ -28,9 +29,14 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     @EntityGraph(attributePaths = {
             "book",
             "book.publisher",
-            "book.authors"
+            "book.authors",
+            "bookstore"
     })
-    Optional<Inventory> findWithBookDetailsByBookId(Long bookId);
+    Optional<Inventory> findWithBookDetailsByBookIdAndBookstoreIdAndCondition(
+            Long bookId,
+            Long bookstoreId,
+            BookCondition condition
+    );
 
     @Query(
             value = """

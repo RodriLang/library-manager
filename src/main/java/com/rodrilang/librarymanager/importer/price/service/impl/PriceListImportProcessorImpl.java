@@ -1,7 +1,11 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
+import com.rodrilang.librarymanager.dto.internal.BookImportResult;
+import com.rodrilang.librarymanager.dto.internal.EditorialPriceImportResult;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
+import com.rodrilang.librarymanager.importer.price.dto.ImportStatistics;
+import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListValidationResult;
 import com.rodrilang.librarymanager.importer.price.factory.ImportContextFactory;
@@ -15,16 +19,17 @@ import com.rodrilang.librarymanager.importer.price.validator.PriceListImportSafe
 import com.rodrilang.librarymanager.importer.price.validator.PriceListValidationService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.repository.BookRepository;
+import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,7 +38,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
-    private static final int PROGRESS_UPDATE_EVERY_ROWS = 50;
+    @Value("${app.price-import.progress-update-every-rows:200}")
+    private int progressUpdateEveryRows;
 
     private final List<PriceListParser> parsers;
     private final BookRepository bookRepository;
@@ -43,12 +49,14 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
     private final PriceListValidationService validationService;
     private final ImportContextFactory importContextFactory;
     private final PriceListImportJobProgressService progressService;
+    private final EditorialPriceService editorialPriceService;
 
     @Transactional
     @Override
     public void process(
             Long jobId,
             PriceListSource priceListSource,
+            LocalDate validFrom,
             byte[] fileBytes
     ) {
         try {
@@ -85,7 +93,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
                 importErrorValidator.validate(validation.errors());
 
-                processValidRows(jobId, validation);
+                processValidRows(jobId, validation, validFrom);
 
             }
 
@@ -104,55 +112,115 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
     private void processValidRows(
             Long jobId,
-            PriceListValidationResult validation
+            PriceListValidationResult validation,
+            LocalDate validFrom
     ) {
         ImportContext context = importContextFactory.create(validation.validRows());
 
         int createdBooks = 0;
-        int updatedBooks = 0;
+        int createdPrices = 0;
+        int updatedPrices = 0;
+        int unchangedPrices = 0;
         int processedRows = 0;
 
-        List<Book> booksToSave = new ArrayList<>();
-        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        List<Book> newBooksToSave = new ArrayList<>();
+        List<PriceListRow> newBookRows = new ArrayList<>();
+
+        List<Book> priceBooks = new ArrayList<>();
+        List<PriceListRow> priceRows = new ArrayList<>();
 
         for (PriceListRow row : validation.validRows()) {
-            boolean existed = bookUpsertService.exists(row, context);
+            BookImportResult result = bookUpsertService.findOrCreate(row, context);
 
-            Book book = bookUpsertService.upsert(row, context, today);
-            booksToSave.add(book);
-
-            if (existed) {
-                updatedBooks++;
-            } else {
+            if (result.created()) {
+                newBooksToSave.add(result.book());
+                newBookRows.add(row);
                 createdBooks++;
+            } else {
+                priceBooks.add(result.book());
+                priceRows.add(row);
             }
 
             processedRows++;
 
-            if (processedRows % PROGRESS_UPDATE_EVERY_ROWS == 0) {
-                bookRepository.saveAll(booksToSave);
-                booksToSave.clear();
+            if (processedRows % progressUpdateEveryRows == 0) {
+                PriceImportCounters counters = flushImportBatch(
+                        newBooksToSave,
+                        newBookRows,
+                        priceBooks,
+                        priceRows,
+                        validFrom
+                );
 
-                progressService.updateProgress(
-                        jobId,
+                createdPrices += counters.createdPrices();
+                updatedPrices += counters.updatedPrices();
+                unchangedPrices += counters.unchangedPrices();
+
+                progressService.updateProgress(jobId, new ImportStatistics(
                         processedRows,
                         createdBooks,
-                        updatedBooks
-                );
+                        createdPrices,
+                        updatedPrices,
+                        unchangedPrices,
+                        validation.errors().size()
+                ));
             }
         }
 
-        if (!booksToSave.isEmpty()) {
-            bookRepository.saveAll(booksToSave);
-        }
+        PriceImportCounters counters = flushImportBatch(
+                newBooksToSave,
+                newBookRows,
+                priceBooks,
+                priceRows,
+                validFrom
+        );
 
-        progressService.markCompleted(
-                jobId,
+        createdPrices += counters.createdPrices();
+        updatedPrices += counters.updatedPrices();
+        unchangedPrices += counters.unchangedPrices();
+
+        progressService.markCompleted(jobId, new ImportStatistics(
                 processedRows,
                 createdBooks,
-                updatedBooks,
+                createdPrices,
+                updatedPrices,
+                unchangedPrices,
                 validation.errors().size()
-        );
+        ));
+    }
+
+    private PriceImportCounters flushImportBatch(
+            List<Book> newBooksToSave,
+            List<PriceListRow> newBookRows,
+            List<Book> priceBooks,
+            List<PriceListRow> priceRows,
+            LocalDate validFrom
+    ) {
+        if (!newBooksToSave.isEmpty()) {
+            List<Book> savedBooks = bookRepository.saveAll(newBooksToSave);
+
+            priceBooks.addAll(savedBooks);
+            priceRows.addAll(newBookRows);
+
+            newBooksToSave.clear();
+            newBookRows.clear();
+        }
+
+        if (priceBooks.isEmpty()) {
+            return new PriceImportCounters(0, 0, 0);
+        }
+
+        PriceImportCounters counters =
+                editorialPriceService.registerOrUpdateBatchForImport(
+                        priceBooks,
+                        priceRows,
+                        validFrom
+                );
+
+        priceBooks.clear();
+        priceRows.clear();
+
+        return counters;
     }
 
     private PriceListParser resolveParser(PriceListSource priceListSource) {
@@ -162,5 +230,25 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                 .orElseThrow(() -> new BusinessException(
                         "No existe un parser configurado para la lista: " + priceListSource
                 ));
+    }
+
+    private PriceImportCounters saveNewBooksAndPrices(
+            List<Book> booksToSave,
+            List<PriceListRow> rowsToPrice,
+            LocalDate validFrom
+    ) {
+        List<Book> savedBooks = bookRepository.saveAll(booksToSave);
+
+        PriceImportCounters counters =
+                editorialPriceService.registerOrUpdateBatchForImport(
+                        savedBooks,
+                        rowsToPrice,
+                        validFrom
+                );
+
+        booksToSave.clear();
+        rowsToPrice.clear();
+
+        return counters;
     }
 }

@@ -1,18 +1,24 @@
 package com.rodrilang.librarymanager.service.impl;
 
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
+import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.service.BookService;
+import com.rodrilang.librarymanager.service.BookstoreService;
+import com.rodrilang.librarymanager.service.EditorialPriceService;
 import com.rodrilang.librarymanager.service.InventoryService;
 import com.rodrilang.librarymanager.util.PageableUtils;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +38,9 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
+    private final EditorialPriceService editorialPriceService;
+    private final BookstoreService bookstoreService;
+    private final BookstoreContext bookstoreContext;
 
     private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of("title", "book.titleSort");
 
@@ -41,16 +50,33 @@ public class InventoryServiceImpl implements InventoryService {
 
         Book book = bookService.getEntityById(bookId);
 
-        if (inventoryRepository.existsByBookId(bookId)) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        BookCondition condition = request.condition() != null
+                ? request.condition()
+                : BookCondition.NEW;
+
+        if (inventoryRepository.existsByBookIdAndBookstoreIdAndCondition(
+                bookId,
+                bookstoreId,
+                condition
+        )) {
             throw new DuplicateResourceException(String.format(
-                    "El libro ISBN: %s ya se encuentra registrado en el inventario", book.getIsbn())
-            );
+                    "El libro ISBN: %s ya se encuentra registrado en el inventario como %s",
+                    book.getIsbn(),
+                    condition
+            ));
         }
+
+        Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
 
         Inventory inventory = Inventory.builder()
                 .book(book)
+                .bookstore(bookstore)
+                .condition(condition)
                 .stock(request.initialStock())
                 .minimumStock(request.minimumStock() != null ? request.minimumStock() : 0)
+                .salePrice(request.salePrice())
                 .active(true)
                 .build();
 
@@ -111,7 +137,7 @@ public class InventoryServiceImpl implements InventoryService {
         pageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
 
         return inventoryRepository.findAllWithBookDetails(pageable)
-                .map(inventoryMapper::toSummaryResponse);
+                .map(this::toSummaryResponse);
     }
 
     @Transactional(readOnly = true)
@@ -122,11 +148,11 @@ public class InventoryServiceImpl implements InventoryService {
             Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
 
             return inventoryRepository.findAllWithBookDetails(normalizedPageable)
-                    .map(inventoryMapper::toSummaryResponse);
+                    .map(this::toSummaryResponse);
         }
 
         return inventoryRepository.search(query.trim(), pageable)
-                .map(inventoryMapper::toSummaryResponse);
+                .map(this::toSummaryResponse);
     }
 
     @Transactional
@@ -141,7 +167,19 @@ public class InventoryServiceImpl implements InventoryService {
 
     private Inventory getEntityByBookId(Long bookId) {
 
-        return inventoryRepository.findWithBookDetailsByBookId(bookId)
+        return getEntityByBookIdAndCondition(bookId, BookCondition.NEW);
+    }
+
+    private Inventory getEntityByBookIdAndCondition(Long bookId, BookCondition condition) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        return inventoryRepository
+                .findWithBookDetailsByBookIdAndBookstoreIdAndCondition(
+                        bookId,
+                        bookstoreId,
+                        condition
+                )
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
                 ));
@@ -150,5 +188,12 @@ public class InventoryServiceImpl implements InventoryService {
     private InventoryDetailResponse saveAndMapToDetailResponse(Inventory inventory) {
         Inventory saved = inventoryRepository.save(inventory);
         return inventoryMapper.toDetailResponse(saved);
+    }
+
+    private InventorySummaryResponse toSummaryResponse(Inventory inventory) {
+        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(inventory.getBook().getId())
+                .orElse(null);
+
+        return inventoryMapper.toSummaryResponse(inventory, editorialPrice);
     }
 }
