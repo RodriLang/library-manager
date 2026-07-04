@@ -90,6 +90,7 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
         List<Long> bookIds = books.stream()
                 .map(Book::getId)
+                .distinct()
                 .toList();
 
         Map<Long, EditorialPrice> existingByBookId = editorialPriceRepository
@@ -113,14 +114,17 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             EditorialPrice existing = existingByBookId.get(book.getId());
 
             if (existing == null) {
-                toSave.add(EditorialPrice.builder()
+                EditorialPrice newPrice = EditorialPrice.builder()
                         .book(book)
                         .price(row.retailPrice())
                         .currency("ARS")
                         .source(row.priceListSource())
                         .validFrom(validFrom)
                         .active(true)
-                        .build());
+                        .build();
+
+                toSave.add(newPrice);
+                existingByBookId.put(book.getId(), newPrice);
 
                 createdPrices++;
                 continue;
@@ -132,7 +136,11 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             }
 
             existing.setPrice(row.retailPrice());
-            toSave.add(existing);
+
+            if (!toSave.contains(existing)) {
+                toSave.add(existing);
+            }
+
             updatedPrices++;
         }
 
