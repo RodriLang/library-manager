@@ -14,12 +14,14 @@ import com.rodrilang.librarymanager.mapper.BookMapper;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.service.AuthorService;
 import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
+import com.rodrilang.librarymanager.service.EditorialPriceService;
 import com.rodrilang.librarymanager.service.PublisherService;
 import com.rodrilang.librarymanager.util.IsbnUtils;
 import com.rodrilang.librarymanager.util.PageableUtils;
@@ -31,6 +33,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,6 +47,7 @@ public class BookServiceImpl implements BookService {
     private final PublisherService publisherService;
     private final AuthorService authorService;
     private final BookCatalogService bookCatalogService;
+    private final EditorialPriceService editorialPriceService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
 
@@ -74,7 +78,7 @@ public class BookServiceImpl implements BookService {
 
         try {
             Book saved = bookRepository.save(book);
-            return bookMapper.toDetailResponse(saved);
+            return toDetailResponse(saved);
         } catch (DataIntegrityViolationException ex) {
             log.error("Error de integridad al crear libro. isbn={}", normalizedIsbn, ex);
             throw new BusinessException("No se pudo registrar el libro. Verifique los datos ingresados.");
@@ -84,13 +88,13 @@ public class BookServiceImpl implements BookService {
     @Override
     public BookDetailResponse getById(Long id) {
 
-        return bookMapper.toDetailResponse(getEntityById(id));
+        return toDetailResponse(getEntityById(id));
     }
 
     @Override
     public BookDetailResponse getByIsbn(String isbn) {
 
-        return bookMapper.toDetailResponse(getEntityByIsbn(isbn));
+        return toDetailResponse(getEntityByIsbn(isbn));
     }
 
     @Override
@@ -98,7 +102,7 @@ public class BookServiceImpl implements BookService {
     public BookDetailResponse lookupByIsbn(String isbn) {
         Book book = bookCatalogService.getOrCreateByIsbn(isbn);
 
-        return bookMapper.toDetailResponse(book);
+        return toDetailResponse(book);
     }
 
     @Transactional
@@ -122,7 +126,7 @@ public class BookServiceImpl implements BookService {
 
         Book saved = bookRepository.save(book);
 
-        return bookMapper.toDetailResponse(saved);
+        return toDetailResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -134,7 +138,7 @@ public class BookServiceImpl implements BookService {
         }
 
         return bookRepository.search(query, pageable)
-                .map(bookMapper::toSummaryResponse);
+                .map(this::toSummaryResponse);
     }
 
     @Transactional(readOnly = true)
@@ -142,7 +146,7 @@ public class BookServiceImpl implements BookService {
     public Page<BookSummaryResponse> getAll(Pageable pageable) {
 
         Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, BOOK_SORT_MAPPING);
-        return bookRepository.findAll(normalizedPageable).map(bookMapper::toSummaryResponse);
+        return bookRepository.findAll(normalizedPageable).map(this::toSummaryResponse);
     }
 
     @Override
@@ -166,5 +170,20 @@ public class BookServiceImpl implements BookService {
     @Override
     public boolean existsByIsbn(String isbn) {
         return bookRepository.existsByIsbn(isbn);
+    }
+
+    private BookSummaryResponse toSummaryResponse(Book book) {
+        BigDecimal editorialPrice = editorialPriceService.findCurrentByBookId(book.getId())
+                .map(EditorialPrice::getPrice)
+                .orElse(null);
+
+        return bookMapper.toSummaryResponse(book, editorialPrice);
+    }
+
+    private BookDetailResponse toDetailResponse(Book book) {
+        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId())
+                .orElse(null);
+
+        return bookMapper.toDetailResponse(book, editorialPrice);
     }
 }

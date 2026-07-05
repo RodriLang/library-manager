@@ -127,7 +127,7 @@ public class InventoryServiceImpl implements InventoryService {
         log.info("Buscando libro con ID: {} en el inventario", bookId);
         Inventory inventory = getEntityByBookId(bookId);
 
-        return inventoryMapper.toDetailResponse(inventory);
+        return toDetailResponse(inventory);
     }
 
     @Transactional(readOnly = true)
@@ -187,7 +187,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     private InventoryDetailResponse saveAndMapToDetailResponse(Inventory inventory) {
         Inventory saved = inventoryRepository.save(inventory);
-        return inventoryMapper.toDetailResponse(saved);
+        return toDetailResponse(saved);
     }
 
     private InventorySummaryResponse toSummaryResponse(Inventory inventory) {
@@ -195,5 +195,12 @@ public class InventoryServiceImpl implements InventoryService {
                 .orElse(null);
 
         return inventoryMapper.toSummaryResponse(inventory, editorialPrice);
+    }
+
+    private InventoryDetailResponse toDetailResponse(Inventory inventory) {
+        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(inventory.getBook().getId())
+                .orElse(null);
+
+        return inventoryMapper.toDetailResponse(inventory, editorialPrice);
     }
 }

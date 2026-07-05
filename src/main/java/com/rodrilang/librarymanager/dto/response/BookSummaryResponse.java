@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.dto.response;
 
+import java.math.BigDecimal;
 import java.util.Set;
 
 public record BookSummaryResponse(
@@ -13,6 +14,8 @@ public record BookSummaryResponse(
         String coverUrl,
 
         String publisherName,
+
+        BigDecimal editorialPrice,
 
         Set<AuthorResponse> authors
 ) {

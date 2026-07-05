@@ -40,8 +40,6 @@ public record BookDetailResponse(
 
         EditorialPriceResponse editorialPrice,
 
-        LocalDate editorialPriceValidFrom,
-
         Instant createdAt,
 
         Instant updatedAt
