@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @Service
@@ -58,14 +57,13 @@ public class AuthorServiceImpl implements AuthorService {
         return authorRepository.findAll(pageable).map(authorMapper::toResponse);
     }
 
-    @Transactional(readOnly = true)
     @Override
-    public List<AuthorResponse> search(String query) {
+    @Transactional(readOnly = true)
+    public Page<AuthorResponse> search(String query, Pageable pageable) {
 
-        return authorRepository.findByNameContainingIgnoreCase(query)
-                .stream()
-                .map(authorMapper::toResponse)
-                .toList();
+        return authorRepository
+                .findByNameContainingIgnoreCase(query, pageable)
+                .map(authorMapper::toResponse);
     }
 
     @Transactional(readOnly = true)

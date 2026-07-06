@@ -50,9 +50,10 @@ public class AuthorController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<AuthorResponse>> search(
-            @RequestParam String q) {
-
-        return ResponseEntity.ok(authorService.search(q));
+    public ResponseEntity<PageResponse<AuthorResponse>> search(
+            @RequestParam String q,
+            @PageableDefault(size = 4, sort = "name")
+            Pageable pageable) {
+        return ResponseEntity.ok(PageResponse.of(authorService.search(q, pageable)));
     }
 }

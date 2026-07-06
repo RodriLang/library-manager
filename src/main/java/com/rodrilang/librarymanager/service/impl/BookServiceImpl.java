@@ -145,8 +145,22 @@ public class BookServiceImpl implements BookService {
     @Override
     public Page<BookSummaryResponse> getAll(Pageable pageable) {
 
+        if (PageableUtils.hasSort(pageable, "editorialPrice")) {
+            boolean ascending = PageableUtils.isAscending(pageable, "editorialPrice");
+
+            Pageable unsortedPageable = PageableUtils.withoutSort(pageable);
+
+            Page<Book> books = ascending
+                    ? bookRepository.findAllOrderByCurrentEditorialPriceAsc(unsortedPageable)
+                    : bookRepository.findAllOrderByCurrentEditorialPriceDesc(unsortedPageable);
+
+            return books.map(this::toSummaryResponse);
+        }
+
         Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, BOOK_SORT_MAPPING);
-        return bookRepository.findAll(normalizedPageable).map(this::toSummaryResponse);
+
+        return bookRepository.findAll(normalizedPageable)
+                .map(this::toSummaryResponse);
     }
 
     @Override

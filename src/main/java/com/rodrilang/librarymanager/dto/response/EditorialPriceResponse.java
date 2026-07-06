@@ -10,4 +10,11 @@ public record EditorialPriceResponse(
         LocalDate validFrom
 
 ) {
+
+    public static EditorialPriceResponse empty() {
+        return new EditorialPriceResponse(
+                null,
+                null
+        );
+    }
 }

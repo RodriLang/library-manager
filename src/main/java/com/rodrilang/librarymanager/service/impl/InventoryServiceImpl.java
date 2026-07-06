@@ -42,7 +42,10 @@ public class InventoryServiceImpl implements InventoryService {
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
 
-    private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of("title", "book.titleSort");
+    private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of(
+            "title", "book.titleSort",
+            "salePrice", "salePrice"
+    );
 
     @Transactional
     @Override
