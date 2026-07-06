@@ -61,13 +61,11 @@ public class PublisherServiceImpl implements PublisherService {
 
     @Transactional(readOnly = true)
     @Override
-    public List<PublisherResponse> search(String query) {
+    public Page<PublisherResponse> search(String query, Pageable pageable) {
 
         return publisherRepository
-                .findByNameContainingIgnoreCase(query)
-                .stream()
-                .map(publisherMapper::toResponse)
-                .toList();
+                .findByNameContainingIgnoreCase(query, pageable)
+                .map(publisherMapper::toResponse);
     }
 
     @Override

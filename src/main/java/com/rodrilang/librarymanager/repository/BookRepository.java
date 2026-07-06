@@ -139,4 +139,50 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                   )
             """)
     List<Book> findBooksPendingMetadataEnrichment(Pageable pageable);
+
+    @Query(
+            value = """
+                SELECT b.*
+                FROM books b
+                LEFT JOIN editorial_prices ep ON ep.book_id = b.id
+                  AND ep.active = true
+                  AND ep.valid_from = (
+                      SELECT MAX(ep2.valid_from)
+                      FROM editorial_prices ep2
+                      WHERE ep2.book_id = b.id
+                        AND ep2.active = true
+                        AND ep2.valid_from <= CURRENT_DATE
+                  )
+                ORDER BY ep.price ASC NULLS LAST
+                """,
+            countQuery = """
+                SELECT COUNT(*)
+                FROM books b
+                """,
+            nativeQuery = true
+    )
+    Page<Book> findAllOrderByCurrentEditorialPriceAsc(Pageable pageable);
+
+    @Query(
+            value = """
+                SELECT b.*
+                FROM books b
+                LEFT JOIN editorial_prices ep ON ep.book_id = b.id
+                  AND ep.active = true
+                  AND ep.valid_from = (
+                      SELECT MAX(ep2.valid_from)
+                      FROM editorial_prices ep2
+                      WHERE ep2.book_id = b.id
+                        AND ep2.active = true
+                        AND ep2.valid_from <= CURRENT_DATE
+                  )
+                ORDER BY ep.price DESC NULLS LAST
+                """,
+            countQuery = """
+                SELECT COUNT(*)
+                FROM books b
+                """,
+            nativeQuery = true
+    )
+    Page<Book> findAllOrderByCurrentEditorialPriceDesc(Pageable pageable);
 }

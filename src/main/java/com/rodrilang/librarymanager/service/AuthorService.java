@@ -17,7 +17,7 @@ public interface AuthorService {
 
     Page<AuthorResponse> findAll(Pageable pageable);
 
-    List<AuthorResponse> search(String query);
+    Page<AuthorResponse> search(String query, Pageable pageable);
 
     Author getEntityById(Long id);
 

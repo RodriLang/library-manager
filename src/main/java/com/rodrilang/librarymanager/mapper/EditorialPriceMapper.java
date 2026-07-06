@@ -7,5 +7,14 @@ import org.mapstruct.Mapper;
 @Mapper(componentModel = "spring")
 public interface EditorialPriceMapper {
 
-    EditorialPriceResponse toResponse(EditorialPrice editorialPrice);
+    default EditorialPriceResponse toResponse(EditorialPrice editorialPrice) {
+        if (editorialPrice == null) {
+            return EditorialPriceResponse.empty();
+        }
+
+        return new EditorialPriceResponse(
+                editorialPrice.getPrice(),
+                editorialPrice.getValidFrom()
+        );
+    }
 }

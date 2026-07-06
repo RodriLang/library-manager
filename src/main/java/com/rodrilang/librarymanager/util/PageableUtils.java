@@ -37,4 +37,24 @@ public final class PageableUtils {
                 Sort.by(orders)
         );
     }
+
+    public static boolean hasSort(Pageable pageable, String property) {
+        return pageable.getSort().stream()
+                .anyMatch(order -> order.getProperty().equals(property));
+    }
+
+    public static boolean isAscending(Pageable pageable, String property) {
+        return pageable.getSort().stream()
+                .filter(order -> order.getProperty().equals(property))
+                .findFirst()
+                .map(Sort.Order::isAscending)
+                .orElse(true);
+    }
+
+    public static Pageable withoutSort(Pageable pageable) {
+        return PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize()
+        );
+    }
 }
