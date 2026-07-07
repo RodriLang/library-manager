@@ -24,6 +24,8 @@ public record InventorySummaryResponse(
 
         Integer stock,
 
+        Integer minimumStock,
+
         BookCondition condition,
 
         BigDecimal salePrice,
