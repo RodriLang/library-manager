@@ -187,8 +187,7 @@ public class BookServiceImpl implements BookService {
     }
 
     private BookSummaryResponse toSummaryResponse(Book book) {
-        BigDecimal editorialPrice = editorialPriceService.findCurrentByBookId(book.getId())
-                .map(EditorialPrice::getPrice)
+        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId())
                 .orElse(null);
 
         return bookMapper.toSummaryResponse(book, editorialPrice);

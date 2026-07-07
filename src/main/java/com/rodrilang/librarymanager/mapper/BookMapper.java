@@ -12,8 +12,6 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
-import java.math.BigDecimal;
-
 @Mapper(componentModel = "spring", uses = {AuthorMapper.class, PublisherMapper.class, EditorialPriceMapper.class})
 public interface BookMapper {
 
@@ -27,7 +25,8 @@ public interface BookMapper {
 
     @Mapping(target = "id", source = "book.id")
     @Mapping(target = "publisherName", source = "book.publisher.name")
-    BookSummaryResponse toSummaryResponse(Book book, BigDecimal editorialPrice);
+    @Mapping(target = "editorialPrice", source = "editorialPrice")
+    BookSummaryResponse toSummaryResponse(Book book, EditorialPrice editorialPrice);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "active", ignore = true)
