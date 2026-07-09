@@ -1,0 +1,5 @@
+ALTER TABLE books
+    ADD COLUMN IF NOT EXISTS cover_source VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS cover_search_status VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS cover_checked_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS cover_search_attempts INTEGER NOT NULL DEFAULT 0;
