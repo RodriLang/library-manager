@@ -23,4 +23,10 @@ public class RestClientConfig {
                 .defaultHeader(HttpHeaders.USER_AGENT, "library-manager/1.0")
                 .build();
     }
+
+    @Bean
+    public RestClient coverProviderRestClient() {
+        return RestClient.builder()
+                .build();
+    }
 }

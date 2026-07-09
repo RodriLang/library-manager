@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.model;
 
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
+import com.rodrilang.librarymanager.enums.CoverSearchStatus;
 import com.rodrilang.librarymanager.util.IsbnUtils;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.persistence.Column;
@@ -25,6 +26,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
@@ -64,6 +66,18 @@ public class Book extends AuditableEntity {
 
     @Column(length = 1000)
     private String coverUrl;
+
+    private String coverSource;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private CoverSearchStatus coverSearchStatus;
+
+    private Instant coverCheckedAt;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer coverSearchAttempts = 0;
 
     @Column(name = "category_name")
     private String categoryName;
