@@ -256,6 +256,6 @@ public class InventoryServiceImpl implements InventoryService {
                 inventory.getStock()
         );
 
-        return inventoryMapper.toDetailResponse(saved);
+        return toDetailResponse(saved);
     }
 }
