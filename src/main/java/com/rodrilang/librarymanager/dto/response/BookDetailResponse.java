@@ -2,7 +2,6 @@ package com.rodrilang.librarymanager.dto.response;
 
 import com.rodrilang.librarymanager.enums.BookSource;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Set;
@@ -29,9 +28,7 @@ public record BookDetailResponse(
 
         String categoryName,
 
-        BigDecimal retailPrice,
-
-        LocalDate retailPriceUpdatedAt,
+        String genreName,
 
         BookSource source,
 
@@ -40,6 +37,8 @@ public record BookDetailResponse(
         PublisherResponse publisher,
 
         Set<AuthorResponse> authors,
+
+        EditorialPriceResponse editorialPrice,
 
         Instant createdAt,
 

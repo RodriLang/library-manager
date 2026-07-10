@@ -8,7 +8,7 @@ import com.rodrilang.librarymanager.mapper.PublisherMapper;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.service.PublisherService;
-import com.rodrilang.librarymanager.utils.StringUtils;
+import com.rodrilang.librarymanager.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -61,13 +61,11 @@ public class PublisherServiceImpl implements PublisherService {
 
     @Transactional(readOnly = true)
     @Override
-    public List<PublisherResponse> search(String query) {
+    public Page<PublisherResponse> search(String query, Pageable pageable) {
 
         return publisherRepository
-                .findByNameContainingIgnoreCase(query)
-                .stream()
-                .map(publisherMapper::toResponse)
-                .toList();
+                .findByNameContainingIgnoreCase(query, pageable)
+                .map(publisherMapper::toResponse);
     }
 
     @Override

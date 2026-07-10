@@ -1,6 +1,5 @@
 package com.rodrilang.librarymanager.repository;
 
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import com.rodrilang.librarymanager.model.Book;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -38,7 +37,9 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
     List<Book> findByIsbnIn(Collection<String> isbns);
 
-    Optional<Book> findFirstByTitleIgnoreCaseAndPriceListSource(String title, PriceListSource priceListSource);
+    Optional<Book> findFirstByTitleIgnoreCase(String title);
+
+    Optional<Book> findFirstByTitleIgnoreCaseAndPublisher_NameIgnoreCase(String title, String publisherName);
 
     @Query(
             value = """
@@ -137,4 +138,88 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                   )
             """)
     List<Book> findBooksPendingMetadataEnrichment(Pageable pageable);
+
+    @Query(
+            value = """
+                    SELECT b.*
+                    FROM books b
+                    LEFT JOIN editorial_prices ep ON ep.book_id = b.id
+                      AND ep.active = true
+                      AND ep.valid_from = (
+                          SELECT MAX(ep2.valid_from)
+                          FROM editorial_prices ep2
+                          WHERE ep2.book_id = b.id
+                            AND ep2.active = true
+                            AND ep2.valid_from <= CURRENT_DATE
+                      )
+                    ORDER BY ep.price ASC NULLS LAST
+                    """,
+            countQuery = """
+                    SELECT COUNT(*)
+                    FROM books b
+                    """,
+            nativeQuery = true
+    )
+    Page<Book> findAllOrderByCurrentEditorialPriceAsc(Pageable pageable);
+
+    @Query(
+            value = """
+                    SELECT b.*
+                    FROM books b
+                    LEFT JOIN editorial_prices ep ON ep.book_id = b.id
+                      AND ep.active = true
+                      AND ep.valid_from = (
+                          SELECT MAX(ep2.valid_from)
+                          FROM editorial_prices ep2
+                          WHERE ep2.book_id = b.id
+                            AND ep2.active = true
+                            AND ep2.valid_from <= CURRENT_DATE
+                      )
+                    ORDER BY ep.price DESC NULLS LAST
+                    """,
+            countQuery = """
+                    SELECT COUNT(*)
+                    FROM books b
+                    """,
+            nativeQuery = true
+    )
+    Page<Book> findAllOrderByCurrentEditorialPriceDesc(Pageable pageable);
+
+    @Query("""
+        select b.id
+        from Book b
+        where b.active = true
+          and (b.coverUrl is null or b.coverUrl = '')
+          and coalesce(b.coverSearchAttempts, 0) < 3
+          and (
+                b.coverSearchStatus is null
+                or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.PENDING
+                or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.ERROR
+          )
+        order by b.id
+        """)
+    List<Long> findPendingCoverEnrichmentIds(Pageable pageable);
+
+    @Query("""
+        select distinct b
+        from Book b
+        left join fetch b.publisher
+        left join fetch b.authors
+        where b.id in :ids
+        """)
+    List<Book> findBooksWithCoverDataByIdIn(@Param("ids") Collection<Long> ids);
+
+    @Query("""
+            select count(b)
+            from Book b
+            where b.active = true
+              and (b.coverUrl is null or b.coverUrl = '')
+              and coalesce(b.coverSearchAttempts, 0) < 3
+              and (
+                    b.coverSearchStatus is null
+                    or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.PENDING
+                    or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.ERROR
+              )
+            """)
+    long countBooksPendingCoverEnrichment();
 }

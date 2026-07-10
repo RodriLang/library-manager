@@ -1,4 +1,4 @@
-package com.rodrilang.librarymanager.utils;
+package com.rodrilang.librarymanager.util;
 
 public class StringUtils {
 

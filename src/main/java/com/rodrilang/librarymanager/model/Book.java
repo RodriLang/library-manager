@@ -1,7 +1,10 @@
 package com.rodrilang.librarymanager.model;
 
+import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
+import com.rodrilang.librarymanager.enums.CoverSearchStatus;
+import com.rodrilang.librarymanager.util.IsbnUtils;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,19 +17,19 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.HashSet;
-import java.util.Set;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Builder.Default;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -47,6 +50,9 @@ public class Book extends AuditableEntity {
     @Column(nullable = false)
     private String title;
 
+    @Column(name = "title_sort", nullable = false)
+    private String titleSort;
+
     private String subtitle;
 
     @Column(columnDefinition = "TEXT")
@@ -61,20 +67,35 @@ public class Book extends AuditableEntity {
     @Column(length = 1000)
     private String coverUrl;
 
-    private BigDecimal retailPrice;
+    private String coverSource;
 
-    private LocalDate retailPriceUpdatedAt;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private CoverSearchStatus coverSearchStatus;
+
+    private Instant coverCheckedAt;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer coverSearchAttempts = 0;
+
+    @Column(name = "category_name")
+    private String categoryName;
+
+    @Column(name = "genre_name")
+    private String genreName;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "source", nullable = false)
     private BookSource source;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "price_list_source")
-    private PriceListSource priceListSource;
+    @Column(nullable = false)
+    private BookCatalogStatus catalogStatus;
 
-    @Column(name = "category_name")
-    private String categoryName;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_bookstore_id")
+    private Bookstore createdByBookstore;
 
     @Builder.Default
     @Column(nullable = false)
@@ -84,7 +105,7 @@ public class Book extends AuditableEntity {
     @JoinColumn(name = "publisher_id")
     private Publisher publisher;
 
-    @Default
+    @Builder.Default
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "book_authors",
@@ -92,4 +113,11 @@ public class Book extends AuditableEntity {
             inverseJoinColumns = @JoinColumn(name = "author_id")
     )
     private Set<Author> authors = new HashSet<>();
+
+    @PrePersist
+    @PreUpdate
+    private void normalizeFields() {
+        this.titleSort = TextNormalizer.normalizeForSort(title);
+        this.isbn = IsbnUtils.normalize(isbn);
+    }
 }

@@ -16,7 +16,7 @@ public interface PublisherService {
 
     Page<PublisherResponse> findAll(Pageable pageable);
 
-    List<PublisherResponse> search(String query);
+    Page<PublisherResponse> search(String query, Pageable pageable);
 
     Publisher getEntityById(Long id);
 

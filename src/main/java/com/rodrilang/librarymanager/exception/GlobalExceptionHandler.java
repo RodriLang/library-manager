@@ -2,6 +2,8 @@ package com.rodrilang.librarymanager.exception;
 
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.mapping.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +16,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -103,6 +106,22 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(
+            DataIntegrityViolationException ex,
+            HttpServletRequest request
+    ) {
+        log.error("Data integrity error on path={}", request.getRequestURI(), ex);
+
+        return buildError(
+                HttpStatus.CONFLICT,
+                "DATA_INTEGRITY_ERROR",
+                "No se pudo completar la operación porque los datos no cumplen una restricción del sistema.",
+                request.getRequestURI(),
+                null
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(
             Exception ex,
@@ -111,7 +130,7 @@ public class GlobalExceptionHandler {
         return buildError(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
-                ex.getMessage(),
+                "Ocurrió un error inesperado. Intente nuevamente.",
                 request.getRequestURI(),
                 null
         );

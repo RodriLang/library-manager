@@ -1,11 +1,12 @@
 package com.rodrilang.librarymanager.importer.price.validator;
 
+import com.rodrilang.librarymanager.enums.RowValidationSeverity;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportError;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils.hasText;
 import static com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils.normalizeIsbn;
@@ -13,47 +14,36 @@ import static com.rodrilang.librarymanager.importer.price.util.PriceListNormaliz
 @Component
 public class PriceListRowValidator {
 
-    public Optional<PriceListImportError> validateRow(
-            PriceListRow row,
-            Set<String> repeatedIsbns
-    ) {
-        Optional<PriceListImportError> validationError = validateRequiredFields(row);
-
-        if (validationError.isPresent()) {
-            return validationError;
-        }
-
-        String isbn = normalizeIsbn(row.isbn());
-
-        if (isbn != null && !repeatedIsbns.add(isbn)) {
-            return Optional.of(new PriceListImportError(
-                    row.rowNumber(),
-                    row.isbn(),
-                    "ISBN repetido dentro del archivo."
-            ));
-        }
-
-        return Optional.empty();
-    }
-
-    private Optional<PriceListImportError> validateRequiredFields(PriceListRow row) {
+    public List<PriceListImportError> validateRow(PriceListRow row) {
+        List<PriceListImportError> errors = new ArrayList<>();
 
         if (!hasText(row.title())) {
-            return Optional.of(new PriceListImportError(
+            errors.add(new PriceListImportError(
                     row.rowNumber(),
                     row.isbn(),
-                    "Fila inválida: título faltante."
+                    "Fila inválida: título faltante.",
+                    RowValidationSeverity.ERROR
             ));
         }
 
         if (row.retailPrice() == null) {
-            return Optional.of(new PriceListImportError(
+            errors.add(new PriceListImportError(
                     row.rowNumber(),
                     row.isbn(),
-                    "Fila inválida: precio faltante."
+                    "Fila inválida: precio faltante.",
+                    RowValidationSeverity.ERROR
             ));
         }
 
-        return Optional.empty();
+        if (hasText(row.isbn()) && normalizeIsbn(row.isbn()) == null) {
+            errors.add(new PriceListImportError(
+                    row.rowNumber(),
+                    row.isbn(),
+                    "ISBN inválido. Se importará el libro sin ISBN.",
+                    RowValidationSeverity.WARNING
+            ));
+        }
+
+        return errors;
     }
 }

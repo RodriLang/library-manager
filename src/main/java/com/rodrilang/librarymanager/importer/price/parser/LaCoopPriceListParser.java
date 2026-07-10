@@ -4,15 +4,19 @@ import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.util.PriceParserUtils;
-import org.apache.poi.ss.usermodel.*;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Component
 public class LaCoopPriceListParser implements PriceListParser {
 
@@ -33,10 +37,51 @@ public class LaCoopPriceListParser implements PriceListParser {
     }
 
     @Override
-    public List<PriceListRow> parse(MultipartFile file) {
-        try (InputStream inputStream = file.getInputStream();
-             Workbook workbook = WorkbookFactory.create(inputStream)) {
+    public void validateTemplate(Workbook workbook) {
+        Sheet sheet = workbook.getSheetAt(0);
+        Row headerRow = sheet.getRow(0);
 
+        if (headerRow == null) {
+            throw new BusinessException(
+                    "El archivo seleccionado no corresponde al formato esperado para La Coop."
+            );
+        }
+
+        String titleHeader = getNormalizedCellValue(headerRow, TITLE_COLUMN);
+        String authorHeader = getNormalizedCellValue(headerRow, AUTHOR_COLUMN);
+        String publisherHeader = getNormalizedCellValue(headerRow, PUBLISHER_COLUMN);
+        String categoryHeader = getNormalizedCellValue(headerRow, CATEGORY_COLUMN);
+        String isbnHeader = getNormalizedCellValue(headerRow, ISBN_COLUMN);
+        String priceHeader = getNormalizedCellValue(headerRow, PRICE_COLUMN);
+
+        log.info(
+                "LA_COOP headers: title='{}', author='{}', publisher='{}', category='{}', isbn='{}', price='{}'",
+                titleHeader,
+                authorHeader,
+                publisherHeader,
+                categoryHeader,
+                isbnHeader,
+                priceHeader
+        );
+
+        boolean valid =
+                titleHeader.contains("titulo")
+                        && authorHeader.contains("autor")
+                        && publisherHeader.contains("editor")
+                        && categoryHeader.contains("genero")
+                        && isbnHeader.contains("isbn")
+                        && priceHeader.contains("precio");
+
+        if (!valid) {
+            throw new BusinessException(
+                    "El archivo seleccionado no corresponde al formato esperado para La Coop."
+            );
+        }
+    }
+
+    @Override
+    public List<PriceListRow> parse(Workbook workbook) {
+        try {
             List<PriceListRow> rows = new ArrayList<>();
             Sheet sheet = workbook.getSheetAt(0);
 
@@ -85,5 +130,11 @@ public class LaCoopPriceListParser implements PriceListParser {
     private String getCellValue(Row row, int columnIndex) {
         Cell cell = row.getCell(columnIndex);
         return dataFormatter.formatCellValue(cell).trim();
+    }
+
+    private String getNormalizedCellValue(Row row, int columnIndex) {
+        return getCellValue(row, columnIndex)
+                .toLowerCase()
+                .trim();
     }
 }

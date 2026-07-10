@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.service.impl;
 
+import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.ManualBookRequiredException;
 import com.rodrilang.librarymanager.metadata.BookMetadata;
@@ -11,6 +12,7 @@ import com.rodrilang.librarymanager.repository.AuthorRepository;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.service.BookCatalogService;
+import com.rodrilang.librarymanager.util.IsbnUtils;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,23 +33,29 @@ public class BookCatalogServiceImpl implements BookCatalogService {
     @Transactional
     @Override
     public Book getOrCreateByIsbn(String isbn) {
-        return bookRepository.findByIsbn(isbn)
-                .orElseGet(() -> createBookFromMetadata(isbn));
+
+        String normalizedIsbn = IsbnUtils.normalize(isbn);
+
+        return bookRepository.findByIsbn(normalizedIsbn)
+                .orElseGet(() -> createBookFromMetadata(normalizedIsbn));
     }
 
     private Book createBookFromMetadata(String isbn) {
-        BookMetadata metadata = bookMetadataService.findByIsbn(isbn)
-                .orElseThrow(() -> new ManualBookRequiredException(isbn));
+
+        String normalizedIsbn = IsbnUtils.normalize(isbn);
+
+        BookMetadata metadata = bookMetadataService.findByIsbn(normalizedIsbn)
+                .orElseThrow(() -> new ManualBookRequiredException(normalizedIsbn));
 
         if (metadata.title() == null || metadata.title().isBlank()) {
-            throw new ManualBookRequiredException(isbn);
+            throw new ManualBookRequiredException(normalizedIsbn);
         }
 
         Publisher publisher = resolvePublisher(metadata.publisher());
         Set<Author> authors = resolveAuthors(metadata.authors());
 
         Book book = Book.builder()
-                .isbn(isbn)
+                .isbn(normalizedIsbn)
                 .title(metadata.title())
                 .subtitle(metadata.subtitle())
                 .description(metadata.description())
@@ -56,6 +64,7 @@ public class BookCatalogServiceImpl implements BookCatalogService {
                 .publicationDate(metadata.publicationDate())
                 .coverUrl(metadata.coverUrl())
                 .source(BookSource.EXTERNAL_METADATA)
+                .catalogStatus(BookCatalogStatus.PENDING_REVIEW)
                 .publisher(publisher)
                 .authors(authors)
                 .active(true)
