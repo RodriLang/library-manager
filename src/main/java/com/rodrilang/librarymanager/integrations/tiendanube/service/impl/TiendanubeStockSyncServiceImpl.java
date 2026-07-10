@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeStockSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -10,11 +11,12 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class TiendanubeStockSyncServiceImpl {
+public class TiendanubeStockSyncServiceImpl implements TiendanubeStockSyncService {
 
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeClient client;
 
+    @Override
     public void syncStockByBookId(Long bookId, Integer currentStock) {
         productLinkRepository.findByBookIdAndActiveTrue(bookId)
                 .ifPresentOrElse(

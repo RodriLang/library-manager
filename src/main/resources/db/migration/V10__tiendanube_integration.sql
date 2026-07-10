@@ -20,26 +20,11 @@ CREATE TABLE tiendanube_product_links
     active                BOOLEAN   NOT NULL DEFAULT TRUE,
     created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_tiendanube_link_book
-        FOREIGN KEY (book_id) REFERENCES books (id),
-
-    CONSTRAINT uk_tiendanube_variant
-        UNIQUE (tiendanube_store_id, tiendanube_variant_id)
-);
-
-CREATE TABLE tiendanube_product_links
-(
-    id                    BIGSERIAL PRIMARY KEY,
-    book_id               BIGINT    NOT NULL,
-    tiendanube_store_id   BIGINT    NOT NULL,
-    tiendanube_product_id BIGINT    NOT NULL,
-    tiendanube_variant_id BIGINT    NOT NULL,
-    sku                   VARCHAR(100),
-    active                BOOLEAN   NOT NULL DEFAULT TRUE,
-    created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT fk_tiendanube_product_links_books
         FOREIGN KEY (book_id) REFERENCES books (id),
+
+    CONSTRAINT fk_tiendanube_product_links_store
+        FOREIGN KEY (tiendanube_store_id) REFERENCES tiendanube_stores (id),
 
     CONSTRAINT uk_tiendanube_store_variant
         UNIQUE (tiendanube_store_id, tiendanube_variant_id)
