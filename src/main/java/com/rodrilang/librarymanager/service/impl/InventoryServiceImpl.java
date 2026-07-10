@@ -10,6 +10,7 @@ import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeStockSyncService;
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
@@ -38,6 +39,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
+    private final TiendanubeStockSyncService tiendanubeStockSyncService;
     private final EditorialPriceService editorialPriceService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
@@ -83,7 +85,7 @@ public class InventoryServiceImpl implements InventoryService {
                 .active(true)
                 .build();
 
-        return saveAndMapToDetailResponse(inventory);
+        return saveAndSyncStock(inventory, bookId);
     }
 
     @Transactional
@@ -93,7 +95,7 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inventory = getEntityByBookId(bookId);
         inventory.setStock(inventory.getStock() + request.quantity());
 
-        return saveAndMapToDetailResponse(inventory);
+        return saveAndSyncStock(inventory, bookId);
     }
 
     @Transactional
@@ -110,7 +112,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         inventory.setStock(inventory.getStock() - request.quantity());
 
-        return saveAndMapToDetailResponse(inventory);
+        return saveAndSyncStock(inventory, bookId);
     }
 
     @Transactional
@@ -168,6 +170,45 @@ public class InventoryServiceImpl implements InventoryService {
         inventoryRepository.save(inventory);
     }
 
+    @Transactional
+    @Override
+    public void decreaseStockByBookId(Long bookId, Integer quantity) {
+
+        validateQuantity(quantity);
+
+        Inventory inventory = getEntityByBookId(bookId);
+
+        int newStock = inventory.getStock() - quantity;
+
+        if (newStock < 0) {
+            throw new BusinessException("El stock no puede ser negativo");
+        }
+
+        inventory.setStock(newStock);
+
+        inventoryRepository.save(inventory);
+    }
+
+    @Transactional
+    @Override
+    public void increaseStockByBookId(Long bookId, Integer quantity) {
+
+        validateQuantity(quantity);
+
+        Inventory inventory = getEntityByBookId(bookId);
+        int newStock = inventory.getStock() + quantity;
+
+        inventory.setStock(newStock);
+
+        inventoryRepository.save(inventory);
+    }
+
+    private void validateQuantity(Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new BusinessException("La cantidad debe ser mayor a cero");
+        }
+    }
+
     private Inventory getEntityByBookId(Long bookId) {
 
         return getEntityByBookIdAndCondition(bookId, BookCondition.NEW);
@@ -205,5 +246,16 @@ public class InventoryServiceImpl implements InventoryService {
                 .orElse(null);
 
         return inventoryMapper.toDetailResponse(inventory, editorialPrice);
+    }
+
+    private InventoryDetailResponse saveAndSyncStock(Inventory inventory, Long bookId) {
+        Inventory saved = inventoryRepository.save(inventory);
+
+        tiendanubeStockSyncService.syncStockByBookId(
+                bookId,
+                inventory.getStock()
+        );
+
+        return inventoryMapper.toDetailResponse(saved);
     }
 }
