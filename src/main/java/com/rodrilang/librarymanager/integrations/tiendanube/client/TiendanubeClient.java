@@ -5,7 +5,6 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.Tiendanu
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeOrderResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductVariantResponse;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeTokenRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeTokenResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateStockRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeWebhookResponse;
@@ -13,7 +12,10 @@ import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeSto
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
 @Service
@@ -24,10 +26,10 @@ public class TiendanubeClient {
     private final TiendanubeProperties properties;
     private final RestClient tiendanubeRestClient;
 
-    private static final String AUTHENTICATION_HEADER = "Authentication";
+    private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String USER_AGENT_HEADER = "User-Agent";
-    private static final String LIBRARY_MANAGER_VALUE = "library-manager";
-    private static final String BEARER_PREFIX = "bearer ";
+    private static final String USER_AGENT_VALUE = "Library Manager (Rodrigolang90@gmail.com)";
+    private static final String BEARER_PREFIX = "Bearer ";
 
     public TiendanubeOrderResponse getOrder(Long storeId, Long orderId) {
 
@@ -35,8 +37,8 @@ public class TiendanubeClient {
 
         return tiendanubeRestClient.get()
                 .uri(properties.apiUrl() + "/{storeId}/orders/{orderId}", storeId, orderId)
-                .header(AUTHENTICATION_HEADER, BEARER_PREFIX + store.getAccessToken())
-                .header(USER_AGENT_HEADER, LIBRARY_MANAGER_VALUE)
+                .header(AUTHORIZATION_HEADER, BEARER_PREFIX + store.getAccessToken())
+                .header(USER_AGENT_HEADER, USER_AGENT_VALUE)
                 .retrieve()
                 .body(TiendanubeOrderResponse.class);
     }
@@ -46,8 +48,8 @@ public class TiendanubeClient {
 
         return tiendanubeRestClient.get()
                 .uri(properties.apiUrl() + "/{storeId}/products/{productId}", storeId, productId)
-                .header(AUTHENTICATION_HEADER, BEARER_PREFIX + store.getAccessToken())
-                .header(USER_AGENT_HEADER, LIBRARY_MANAGER_VALUE)
+                .header(AUTHORIZATION_HEADER, BEARER_PREFIX + store.getAccessToken())
+                .header(USER_AGENT_HEADER, USER_AGENT_VALUE)
                 .retrieve()
                 .body(TiendanubeProductResponse.class);
     }
@@ -71,8 +73,8 @@ public class TiendanubeClient {
                         productId,
                         variantId
                 )
-                .header(AUTHENTICATION_HEADER, BEARER_PREFIX + store.getAccessToken())
-                .header(USER_AGENT_HEADER, LIBRARY_MANAGER_VALUE)
+                .header(AUTHORIZATION_HEADER, BEARER_PREFIX + store.getAccessToken())
+                .header(USER_AGENT_HEADER, USER_AGENT_VALUE)
                 .body(request)
                 .retrieve()
                 .body(TiendanubeProductVariantResponse.class);
@@ -92,24 +94,25 @@ public class TiendanubeClient {
 
         return tiendanubeRestClient.post()
                 .uri(properties.apiUrl() + "/{storeId}/webhooks", storeId)
-                .header(AUTHENTICATION_HEADER, BEARER_PREFIX + store.getAccessToken())
-                .header(USER_AGENT_HEADER, LIBRARY_MANAGER_VALUE)
+                .header(AUTHORIZATION_HEADER, BEARER_PREFIX + store.getAccessToken())
+                .header(USER_AGENT_HEADER, USER_AGENT_VALUE)
                 .body(request)
                 .retrieve()
                 .body(TiendanubeWebhookResponse.class);
     }
 
     public TiendanubeTokenResponse exchangeCodeForToken(String code) {
-        TiendanubeTokenRequest request = new TiendanubeTokenRequest(
-                properties.clientId(),
-                properties.clientSecret(),
-                "authorization_code",
-                code
-        );
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_id", properties.clientId());
+        form.add("client_secret", properties.clientSecret());
+        form.add("code", code);
 
         return tiendanubeRestClient.post()
                 .uri(properties.tokenUrl())
-                .body(request)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(form)
                 .retrieve()
                 .body(TiendanubeTokenResponse.class);
     }
