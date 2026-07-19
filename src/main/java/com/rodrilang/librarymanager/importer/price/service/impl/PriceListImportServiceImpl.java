@@ -19,7 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 
@@ -69,7 +69,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 .priceListSource(priceListSource)
                 .validFrom(validFrom)
                 .status(PriceListImportJobStatus.PENDING)
-                .createdAt(LocalDateTime.now(ZoneId.systemDefault()))
+                .createdAt(Instant.now())
                 .build();
 
         PriceListImportJob savedJob = jobRepository.save(job);

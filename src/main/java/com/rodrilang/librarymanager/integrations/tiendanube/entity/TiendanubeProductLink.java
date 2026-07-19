@@ -4,7 +4,7 @@ import com.rodrilang.librarymanager.model.Book;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(
@@ -47,5 +47,5 @@ public class TiendanubeProductLink {
     private boolean active = true;
 
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

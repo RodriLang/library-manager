@@ -161,7 +161,7 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         return editorialPriceRepository
                 .findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
                         bookId,
-                        LocalDate.now(ZoneId.systemDefault())
+                        LocalDate.now()
                 );
     }
 }
