@@ -18,7 +18,7 @@ public class PriceListImportDateValidator {
             throw new BusinessException("Debe indicar la fecha de vigencia de la lista.");
         }
 
-        if (validFrom.isAfter(LocalDate.now(ZoneId.systemDefault()).plusMonths(1))) {
+        if (validFrom.isAfter(LocalDate.now().plusMonths(1))) {
             throw new BusinessException(
                     "La fecha de vigencia no puede ser mayor a un mes en el futuro."
             );

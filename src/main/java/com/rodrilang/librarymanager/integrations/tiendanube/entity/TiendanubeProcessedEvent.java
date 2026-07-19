@@ -3,7 +3,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(
@@ -36,5 +36,5 @@ public class TiendanubeProcessedEvent {
     private String event;
 
     @Column(name = "processed_at", nullable = false)
-    private LocalDateTime processedAt;
+    private Instant processedAt;
 }

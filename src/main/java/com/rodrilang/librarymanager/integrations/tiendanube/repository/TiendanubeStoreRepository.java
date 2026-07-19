@@ -7,5 +7,9 @@ import java.util.Optional;
 
 public interface TiendanubeStoreRepository extends JpaRepository<TiendanubeStore, Long> {
 
+    Optional<TiendanubeStore> findByBookstoreId(Long bookstoreId);
+
     Optional<TiendanubeStore> findByStoreIdAndActiveTrue(Long storeId);
+
+    boolean existsByBookstoreIdAndActiveTrue(Long bookstoreId);
 }

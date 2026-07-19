@@ -14,8 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -30,7 +29,7 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
     public void markProcessing(Long jobId) {
         PriceListImportJob job = getJob(jobId);
         job.setStatus(PriceListImportJobStatus.PROCESSING);
-        job.setStartedAt(LocalDateTime.now(ZoneId.systemDefault()));
+        job.setStartedAt(Instant.now());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -64,7 +63,7 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         job.setUpdatedPrices(importStatistics.updatedPrices());
         job.setErrorCount(importStatistics.errors());
         job.setUnchangedPrices(importStatistics.unchangedPrices());
-        job.setFinishedAt(LocalDateTime.now(ZoneId.systemDefault()));
+        job.setFinishedAt(Instant.now());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -73,7 +72,7 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         PriceListImportJob job = getJob(jobId);
         job.setStatus(PriceListImportJobStatus.FAILED);
         job.setErrorMessage(errorMessage);
-        job.setFinishedAt(LocalDateTime.now(ZoneId.systemDefault()));
+        job.setFinishedAt(Instant.now());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.util.function.BiConsumer;
 
@@ -49,10 +49,9 @@ public class TiendanubeOrderServiceImpl implements TiendanubeOrderService {
         );
     }
 
-    private void processOrder(
-            TiendanubeWebhookRequest request,
-            String event,
-            BiConsumer<Long, Integer> stockOperation
+    private void processOrder(TiendanubeWebhookRequest request,
+                              String event,
+                              BiConsumer<Long, Integer> stockOperation
     ) {
 
         if (wasProcessed(request)) {
@@ -141,7 +140,7 @@ public class TiendanubeOrderServiceImpl implements TiendanubeOrderService {
                 .storeId(request.storeId())
                 .resourceId(request.id())
                 .event(request.event())
-                .processedAt(LocalDateTime.now(ZoneId.systemDefault()))
+                .processedAt(Instant.now())
                 .build();
 
         processedEventRepository.save(event);
