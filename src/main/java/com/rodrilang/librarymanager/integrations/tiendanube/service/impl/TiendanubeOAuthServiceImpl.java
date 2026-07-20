@@ -56,41 +56,27 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
 
         Long bookstoreId = stateService.validateAndConsume(state);
 
-        String response = tiendanubeClient.exchangeCodeForToken(code);
+        TiendanubeTokenResponse response = tiendanubeClient.exchangeCodeForToken(code);
 
-        log.info("Tiendanube token response: {}", response);
+        if (response == null) {
+            throw new IllegalStateException("No se pudo obtener el token de Tiendanube.");
+        }
 
-        throw new RuntimeException("Ver logs");
+        Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
+
+        TiendanubeStore store = storeRepository.findByBookstoreId(bookstoreId).orElseGet(TiendanubeStore::new);
+
+        store.setBookstore(bookstore);
+        store.setStoreId(response.userId());
+        store.setAccessToken(response.accessToken());
+        store.setTokenType(response.tokenType());
+        store.setScope(response.scope());
+        store.setActive(true);
+        store.setConnectedAt(Instant.now());
+
+        storeRepository.save(store);
     }
 
-    /*   @Override
-       @Transactional
-       public void handleCallback(String code, String state) {
-           validateCode(code);
-
-           Long bookstoreId = stateService.validateAndConsume(state);
-
-           TiendanubeTokenResponse response = tiendanubeClient.exchangeCodeForToken(code);
-
-           if (response == null) {
-               throw new IllegalStateException("No se pudo obtener el token de Tiendanube.");
-           }
-
-           Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
-
-           TiendanubeStore store = storeRepository.findByBookstoreId(bookstoreId).orElseGet(TiendanubeStore::new);
-
-           store.setBookstore(bookstore);
-           store.setStoreId(response.userId());
-           store.setAccessToken(response.accessToken());
-           store.setTokenType(response.tokenType());
-           store.setScope(response.scope());
-           store.setActive(true);
-           store.setConnectedAt(Instant.now());
-
-           storeRepository.save(store);
-       }
-   */
 
     private void validateCode(String code) {
         if (code == null || code.isBlank()) {

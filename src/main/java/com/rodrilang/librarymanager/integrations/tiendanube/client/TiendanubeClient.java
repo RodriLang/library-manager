@@ -104,7 +104,7 @@ public class TiendanubeClient {
                 .body(TiendanubeWebhookResponse.class);
     }
 
-    public String exchangeCodeForToken(String code) {
+    public TiendanubeTokenResponse exchangeCodeForToken(String code) {
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("client_id", properties.clientId());
@@ -112,17 +112,12 @@ public class TiendanubeClient {
         form.add("code", code);
         form.add("grant_type", "authorization_code");
 
-        ResponseEntity<String> response = tiendanubeRestClient.post()
+        return tiendanubeRestClient.post()
                 .uri(properties.tokenUrl())
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(form)
                 .retrieve()
-                .toEntity(String.class);
-
-        log.info("Tiendanube status: {}", response.getStatusCode());
-        log.info("Tiendanube body: {}", response.getBody());
-
-        return response.getBody();
+                .body(TiendanubeTokenResponse.class);
     }
 
     private TiendanubeStore getActiveStore(Long storeId) {
