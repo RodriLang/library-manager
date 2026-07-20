@@ -17,9 +17,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     @EntityGraph(attributePaths = {
             "book",
-            "book.publisher",
-            "book.authors"
-
+            "book.publisher"
     })
 
     @Query("SELECT i FROM Inventory i")
