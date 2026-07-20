@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.client;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rodrilang.librarymanager.integrations.tiendanube.config.TiendanubeProperties;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateWebhookRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeOrderResponse;
@@ -28,6 +30,7 @@ public class TiendanubeClient {
     private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeProperties properties;
     private final RestClient tiendanubeRestClient;
+    private final ObjectMapper objectMapper;
 
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String USER_AGENT_HEADER = "User-Agent";
@@ -112,12 +115,28 @@ public class TiendanubeClient {
         form.add("code", code);
         form.add("grant_type", "authorization_code");
 
-        return tiendanubeRestClient.post()
+        ResponseEntity<String> response = tiendanubeRestClient.post()
                 .uri(properties.tokenUrl())
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .accept(MediaType.ALL)
                 .body(form)
                 .retrieve()
-                .body(TiendanubeTokenResponse.class);
+                .toEntity(String.class);
+
+        log.info("Content-Type: {}", response.getHeaders().getContentType());
+        log.info("Body: {}", response.getBody());
+
+        try {
+            return objectMapper.readValue(
+                    response.getBody(),
+                    TiendanubeTokenResponse.class
+            );
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(
+                    "No se pudo parsear la respuesta de Tiendanube: " + response.getBody(),
+                    e
+            );
+        }
     }
 
     private TiendanubeStore getActiveStore(Long storeId) {
