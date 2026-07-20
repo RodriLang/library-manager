@@ -10,6 +10,7 @@ public record TiendanubeTokenResponse(
         @JsonProperty("token_type")
         String tokenType,
 
+        @JsonProperty("scope")
         String scope,
 
         @JsonProperty("user_id")
