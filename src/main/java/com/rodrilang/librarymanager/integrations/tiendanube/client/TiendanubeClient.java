@@ -112,17 +112,12 @@ public class TiendanubeClient {
         form.add("code", code);
         form.add("grant_type", "authorization_code");
 
-        ResponseEntity<String> response = tiendanubeRestClient.post()
+        return tiendanubeRestClient.post()
                 .uri(properties.tokenUrl())
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(form)
                 .retrieve()
-                .toEntity(String.class);
-
-        log.info("STATUS: {}", response.getStatusCode());
-        log.info("BODY: {}", response.getBody());
-
-        throw new RuntimeException("Ver logs");
+                .body(TiendanubeTokenResponse.class);
     }
 
     private TiendanubeStore getActiveStore(Long storeId) {
