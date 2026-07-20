@@ -12,12 +12,14 @@ import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeOA
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Instant;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
@@ -54,26 +56,41 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
 
         Long bookstoreId = stateService.validateAndConsume(state);
 
-        TiendanubeTokenResponse response = tiendanubeClient.exchangeCodeForToken(code);
+        String response = tiendanubeClient.exchangeCodeForToken(code);
 
-        if (response == null) {
-            throw new IllegalStateException("No se pudo obtener el token de Tiendanube.");
-        }
+        log.info("Tiendanube token response: {}", response);
 
-        Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
-
-        TiendanubeStore store = storeRepository.findByBookstoreId(bookstoreId).orElseGet(TiendanubeStore::new);
-
-        store.setBookstore(bookstore);
-        store.setStoreId(response.userId());
-        store.setAccessToken(response.accessToken());
-        store.setTokenType(response.tokenType());
-        store.setScope(response.scope());
-        store.setActive(true);
-        store.setConnectedAt(Instant.now());
-
-        storeRepository.save(store);
+        throw new RuntimeException("Ver logs");
     }
+
+    /*   @Override
+       @Transactional
+       public void handleCallback(String code, String state) {
+           validateCode(code);
+
+           Long bookstoreId = stateService.validateAndConsume(state);
+
+           TiendanubeTokenResponse response = tiendanubeClient.exchangeCodeForToken(code);
+
+           if (response == null) {
+               throw new IllegalStateException("No se pudo obtener el token de Tiendanube.");
+           }
+
+           Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
+
+           TiendanubeStore store = storeRepository.findByBookstoreId(bookstoreId).orElseGet(TiendanubeStore::new);
+
+           store.setBookstore(bookstore);
+           store.setStoreId(response.userId());
+           store.setAccessToken(response.accessToken());
+           store.setTokenType(response.tokenType());
+           store.setScope(response.scope());
+           store.setActive(true);
+           store.setConnectedAt(Instant.now());
+
+           storeRepository.save(store);
+       }
+   */
 
     private void validateCode(String code) {
         if (code == null || code.isBlank()) {

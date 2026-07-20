@@ -12,12 +12,15 @@ import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeSto
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TiendanubeClient {
@@ -101,20 +104,25 @@ public class TiendanubeClient {
                 .body(TiendanubeWebhookResponse.class);
     }
 
-    public TiendanubeTokenResponse exchangeCodeForToken(String code) {
+    public String exchangeCodeForToken(String code) {
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("client_id", properties.clientId());
         form.add("client_secret", properties.clientSecret());
         form.add("code", code);
+        form.add("grant_type", "authorization_code");
 
-        return tiendanubeRestClient.post()
+        ResponseEntity<String> response = tiendanubeRestClient.post()
                 .uri(properties.tokenUrl())
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .accept(MediaType.APPLICATION_JSON)
                 .body(form)
                 .retrieve()
-                .body(TiendanubeTokenResponse.class);
+                .toEntity(String.class);
+
+        log.info("Tiendanube status: {}", response.getStatusCode());
+        log.info("Tiendanube body: {}", response.getBody());
+
+        return response.getBody();
     }
 
     private TiendanubeStore getActiveStore(Long storeId) {
