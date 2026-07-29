@@ -13,10 +13,26 @@ public final class TextNormalizer {
             return "";
         }
 
-        return Normalizer.normalize(value, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
+        return removeAccents(value)
                 .toLowerCase(Locale.ROOT)
                 .replaceAll("^[^a-z0-9]+", "")
                 .trim();
+    }
+
+    public static String normalizeForMatch(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        return removeAccents(value)
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private static String removeAccents(String value) {
+        return Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
     }
 }

@@ -17,6 +17,7 @@ import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -178,6 +179,7 @@ public class TiendanubeProductServiceImpl
                                 mapRemoteVariant(
                                         bookstoreId,
                                         storeId,
+                                        product,
                                         variant
                                 )
                         )
@@ -195,6 +197,7 @@ public class TiendanubeProductServiceImpl
     private TiendanubeRemoteVariantResponse mapRemoteVariant(
             Long bookstoreId,
             Long storeId,
+            TiendanubeProductResponse product,
             TiendanubeVariantResponse variant
     ) {
 
@@ -203,9 +206,6 @@ public class TiendanubeProductServiceImpl
                 variant.id()
         );
 
-        /*
-         * Primero comprobamos si ya está vinculada.
-         */
         if (existingLink.isPresent()) {
 
             Inventory inventory = existingLink.get().getInventory();
@@ -222,11 +222,7 @@ public class TiendanubeProductServiceImpl
             );
         }
 
-        /*
-         * Si no está vinculada, intentamos encontrar
-         * posibles coincidencias locales.
-         */
-        MatchResult match = findMatch(bookstoreId, variant);
+        MatchResult match = findMatch(bookstoreId, product, variant);
 
         return new TiendanubeRemoteVariantResponse(
                 variant.id(),
@@ -246,43 +242,47 @@ public class TiendanubeProductServiceImpl
 
     private MatchResult findMatch(
             Long bookstoreId,
+            TiendanubeProductResponse product,
             TiendanubeVariantResponse variant
     ) {
-
-        /*
-         * Primera prioridad:
-         *
-         * BARCODE -> ISBN
-         */
         String barcode = normalizeIdentifier(variant.barcode());
 
         if (barcode != null) {
-
-            List<Inventory> candidates = inventoryRepository.findAllByBookstoreIdAndBookIsbn(bookstoreId, barcode);
+            List<Inventory> candidates =
+                    inventoryRepository.findAllByBookstoreIdAndBookIsbn(bookstoreId, barcode);
 
             if (!candidates.isEmpty()) {
-                return createMatchResult(TiendanubeMatchType.EXACT_BARCODE, candidates);
+                return createMatchResult(
+                        TiendanubeMatchType.EXACT_BARCODE,
+                        candidates
+                );
             }
         }
 
-        /*
-         * Segunda prioridad:
-         *
-         * SKU -> ISBN
-         */
         String sku = normalizeIdentifier(variant.sku());
 
         if (sku != null) {
-
             List<Inventory> candidates =
                     inventoryRepository.findAllByBookstoreIdAndBookIsbn(bookstoreId, sku);
 
             if (!candidates.isEmpty()) {
-                return createMatchResult(TiendanubeMatchType.EXACT_SKU, candidates);
+                return createMatchResult(
+                        TiendanubeMatchType.EXACT_SKU,
+                        candidates
+                );
             }
         }
 
-        return new MatchResult(TiendanubeMatchType.NOT_FOUND, List.of());
+        MatchResult textualMatch = findTextualMatch(bookstoreId, product);
+
+        if (textualMatch != null) {
+            return textualMatch;
+        }
+
+        return new MatchResult(
+                TiendanubeMatchType.NOT_FOUND,
+                List.of()
+        );
     }
 
     private MatchResult createMatchResult(TiendanubeMatchType matchType, List<Inventory> inventories) {
@@ -324,6 +324,120 @@ public class TiendanubeProductServiceImpl
                 publisher,
                 inventory.getCondition(),
                 inventory.getStock()
+        );
+    }
+
+    private MatchResult findTextualMatch(
+            Long bookstoreId,
+            TiendanubeProductResponse product
+    ) {
+        String remoteName =
+                TextNormalizer.normalizeForMatch(getProductName(product));
+
+        if (remoteName.isBlank()) {
+            return new MatchResult(
+                    TiendanubeMatchType.NOT_FOUND,
+                    List.of()
+            );
+        }
+
+        List<Inventory> inventories =
+                inventoryRepository.findAllByBookstoreId(bookstoreId);
+
+        List<Inventory> titleCandidates = inventories.stream()
+                .filter(inventory ->
+                        matchesTitle(
+                                remoteName,
+                                inventory.getBook()
+                        )
+                )
+                .toList();
+
+        if (titleCandidates.isEmpty()) {
+            return new MatchResult(
+                    TiendanubeMatchType.NOT_FOUND,
+                    List.of()
+            );
+        }
+
+        List<Inventory> titleAndAuthorCandidates =
+                titleCandidates.stream()
+                        .filter(inventory ->
+                                matchesAuthor(
+                                        remoteName,
+                                        inventory.getBook()
+                                )
+                        )
+                        .toList();
+
+        if (!titleAndAuthorCandidates.isEmpty()) {
+            return createPossibleMatchResult(
+                    titleAndAuthorCandidates
+            );
+        }
+
+        return createPossibleMatchResult(
+                titleCandidates
+        );
+    }
+
+    private boolean matchesTitle(String remoteName, Book book) {
+        String title = TextNormalizer.normalizeForMatch(book.getTitle());
+
+        if (title.isBlank()) {
+            return false;
+        }
+
+        return remoteName.equals(title)
+                || remoteName.startsWith(title + " ");
+    }
+
+    private boolean matchesAuthor(String remoteName, Book book) {
+        if (book.getAuthors() == null || book.getAuthors().isEmpty()) {
+            return false;
+        }
+
+        return book.getAuthors().stream()
+                .anyMatch(author ->
+                        containsAllTokens(
+                                remoteName,
+                                TextNormalizer.normalizeForMatch(author.getName())
+                        )
+                );
+    }
+
+    private boolean containsAllTokens(String text, String candidate) {
+        if (candidate.isBlank()) {
+            return false;
+        }
+
+        List<String> tokens = List.of(candidate.split(" "));
+
+        return tokens.stream()
+                .filter(token -> token.length() > 1)
+                .allMatch(token ->
+                        List.of(text.split(" ")).contains(token)
+                );
+    }
+
+    private MatchResult createPossibleMatchResult(
+            List<Inventory> inventories
+    ) {
+        List<InventoryMatchCandidateResponse> candidates =
+                inventories.stream()
+                        .map(this::toCandidate)
+                        .toList();
+
+        if (candidates.size() > 1) {
+            return new MatchResult(
+                    TiendanubeMatchType.MULTIPLE_MATCHES,
+                    candidates
+            );
+        }
+
+        return new MatchResult(
+                TiendanubeMatchType.POSSIBLE_MATCH,
+                candidates
         );
     }
 
@@ -394,7 +508,7 @@ public class TiendanubeProductServiceImpl
     private TiendanubeStore getActiveStore(Long bookstoreId) {
 
         return storeRepository
-                .findByStoreIdAndActiveTrue(bookstoreId)
+                .findByBookstoreIdAndActiveTrue(bookstoreId)
                 .orElseThrow(() -> new BusinessException("La librería no tiene una cuenta Tiendanube vinculada"));
     }
 
