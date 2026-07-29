@@ -16,6 +16,18 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     boolean existsByBookIdAndBookstoreIdAndCondition(Long bookId, Long bookStoreId, BookCondition condition);
 
+    List<Inventory> findAllByBookstoreIdAndBookTitleSort(
+            Long bookstoreId,
+            String titleSort
+    );
+
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.authors",
+            "book.publisher"
+    })
+    List<Inventory> findAllByBookstoreId(Long bookstoreId);
+
     @EntityGraph(attributePaths = {
             "book",
             "book.publisher"
