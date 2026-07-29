@@ -19,7 +19,9 @@ public record AddBookToInventoryRequest(
         @Min(0)
         Integer minimumStock,
 
-        BookCondition condition
+        BookCondition condition,
+
+        Boolean publishOnTiendanube
 
 ) {
 }

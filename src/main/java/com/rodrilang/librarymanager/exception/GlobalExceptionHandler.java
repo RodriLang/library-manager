@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.exception;
 
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -90,6 +91,36 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(response);
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ErrorResponse> handleBusinessException(
+            BusinessException ex,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "BUSINESS_ERROR",
+                ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(TiendanubeApiException.class)
+    public ResponseEntity<ErrorResponse> handleTiendanubeApiException(
+            TiendanubeApiException ex,
+            HttpServletRequest request
+    ) {
+        log.error("Tiendanube API error on path={}", request.getRequestURI(), ex);
+
+        return buildError(
+                HttpStatus.BAD_GATEWAY,
+                "TIENDANUBE_API_ERROR",
+                ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
     }
 
     @ExceptionHandler(PropertyReferenceException.class)

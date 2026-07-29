@@ -10,6 +10,7 @@ import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeStockSyncService;
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
@@ -75,6 +76,11 @@ public class InventoryServiceImpl implements InventoryService {
 
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
 
+        TiendanubeInventoryStatus tiendanubeStatus =
+                Boolean.TRUE.equals(request.publishOnTiendanube())
+                        ? TiendanubeInventoryStatus.PENDING_PUBLICATION
+                        : TiendanubeInventoryStatus.DISABLED;
+
         Inventory inventory = Inventory.builder()
                 .book(book)
                 .bookstore(bookstore)
@@ -82,6 +88,7 @@ public class InventoryServiceImpl implements InventoryService {
                 .stock(request.initialStock())
                 .minimumStock(request.minimumStock() != null ? request.minimumStock() : 0)
                 .salePrice(request.salePrice())
+                .tiendanubeStatus(tiendanubeStatus)
                 .active(true)
                 .build();
 
@@ -203,6 +210,38 @@ public class InventoryServiceImpl implements InventoryService {
         inventoryRepository.save(inventory);
     }
 
+    @Override
+    @Transactional
+    public void decreaseStockFromTiendanube(Long inventoryId, Integer quantity) {
+        validateQuantity(quantity);
+
+        Inventory inventory = inventoryRepository
+                .findById(inventoryId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el inventario con id: " + inventoryId));
+
+        if (inventory.getStock() < quantity) {
+            throw new BusinessException("Stock insuficiente para el inventario: " + inventoryId);
+        }
+
+        inventory.setStock(inventory.getStock() - quantity);
+
+        inventoryRepository.save(inventory);
+    }
+
+    @Override
+    @Transactional
+    public void increaseStockFromTiendanube(Long inventoryId, Integer quantity) {
+        validateQuantity(quantity);
+
+        Inventory inventory = inventoryRepository
+                .findById(inventoryId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el inventario con id: " + inventoryId));
+
+        inventory.setStock(inventory.getStock() + quantity);
+
+        inventoryRepository.save(inventory);
+    }
+
     private void validateQuantity(Integer quantity) {
         if (quantity == null || quantity <= 0) {
             throw new BusinessException("La cantidad debe ser mayor a cero");
@@ -251,7 +290,7 @@ public class InventoryServiceImpl implements InventoryService {
     private InventoryDetailResponse saveAndSyncStock(Inventory inventory, Long bookId) {
         Inventory saved = inventoryRepository.save(inventory);
 
-        tiendanubeStockSyncService.syncStockByBookId(
+        tiendanubeStockSyncService.syncStockByInventoryId(
                 bookId,
                 inventory.getStock()
         );

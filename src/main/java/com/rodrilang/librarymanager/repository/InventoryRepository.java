@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface InventoryRepository extends JpaRepository<Inventory, Long> {
@@ -19,6 +20,10 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             "book",
             "book.publisher"
     })
+    List<Inventory> findAllByBookstoreIdAndBookIsbn(
+            Long bookstoreId,
+            String isbn
+    );
 
     @Query("SELECT i FROM Inventory i")
     Page<Inventory> findAllWithBookDetails(Pageable pageable);

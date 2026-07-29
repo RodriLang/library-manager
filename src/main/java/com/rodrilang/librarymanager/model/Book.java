@@ -26,6 +26,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
@@ -113,6 +114,18 @@ public class Book extends AuditableEntity {
             inverseJoinColumns = @JoinColumn(name = "author_id")
     )
     private Set<Author> authors = new HashSet<>();
+
+    @Column(name = "weight_grams", precision = 10, scale = 2)
+    private BigDecimal weightGrams;
+
+    @Column(name = "width_cm", precision = 10, scale = 2)
+    private BigDecimal widthCm;
+
+    @Column(name = "height_cm", precision = 10, scale = 2)
+    private BigDecimal heightCm;
+
+    @Column(name = "depth_cm", precision = 10, scale = 2)
+    private BigDecimal depthCm;
 
     @PrePersist
     @PreUpdate
