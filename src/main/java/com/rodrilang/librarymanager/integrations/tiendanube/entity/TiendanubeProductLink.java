@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.entity;
 
-import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.model.Inventory;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -13,6 +13,10 @@ import java.time.Instant;
                 @UniqueConstraint(
                         name = "uk_tiendanube_store_variant",
                         columnNames = {"tiendanube_store_id", "tiendanube_variant_id"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_tiendanube_store_inventory",
+                        columnNames = {"tiendanube_store_id", "inventory_id"}
                 )
         }
 )
@@ -27,9 +31,9 @@ public class TiendanubeProductLink {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "book_id", nullable = false)
-    private Book book;
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "inventory_id", nullable = false)
+    private Inventory inventory;
 
     @Column(name = "tiendanube_store_id", nullable = false)
     private Long tiendanubeStoreId;
@@ -44,8 +48,22 @@ public class TiendanubeProductLink {
     private String sku;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean active = true;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Column(name = "last_synced_at")
+    private Instant lastSyncedAt;
+
+    @Column(name = "last_error", columnDefinition = "TEXT")
+    private String lastError;
+
+    @PrePersist
+    private void prePersist() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }

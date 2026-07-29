@@ -7,7 +7,12 @@ import java.util.Optional;
 
 public interface TiendanubeProductLinkRepository extends JpaRepository<TiendanubeProductLink, Long> {
 
-    Optional<TiendanubeProductLink> findByBookIdAndActiveTrue(Long bookId);
+    Optional<TiendanubeProductLink> findByInventoryIdAndActiveTrue(Long inventoryId);
+
+    Optional<TiendanubeProductLink> findByInventoryIdAndTiendanubeStoreIdAndActiveTrue(
+            Long inventoryId,
+            Long tiendanubeStoreId
+    );
 
     Optional<TiendanubeProductLink> findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
             Long tiendanubeStoreId,
