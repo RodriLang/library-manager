@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.config.TiendanubePro
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateWebhookRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateStockRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeOrderResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductVariantResponse;
@@ -183,6 +184,36 @@ public class TiendanubeClient {
 
         } catch (RestClientException exception) {
             throw buildApiException("actualizar stock", exception);
+        }
+    }
+
+    public TiendanubeProductVariantResponse updateVariant(
+            Long storeId,
+            Long productId,
+            Long variantId,
+            TiendanubeUpdateVariantRequest request
+    ) {
+        TiendanubeStore store = getActiveStore(storeId);
+
+        try {
+            return tiendanubeRestClient.put()
+                    .uri(
+                            properties.apiUrl()
+                                    + "/{storeId}/products/{productId}/variants/{variantId}",
+                            storeId,
+                            productId,
+                            variantId
+                    )
+                    .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TiendanubeProductVariantResponse.class);
+
+        } catch (RestClientException exception) {
+            throw buildApiException("actualizar variante", exception);
         }
     }
 

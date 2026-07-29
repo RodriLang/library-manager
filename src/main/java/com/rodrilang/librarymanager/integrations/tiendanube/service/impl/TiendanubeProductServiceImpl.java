@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeCli
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateImageRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateVariantRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.*;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
@@ -109,7 +110,6 @@ public class TiendanubeProductServiceImpl
             Long productId,
             Long variantId
     ) {
-
         Inventory inventory = getInventory(inventoryId);
 
         TiendanubeStore store = getActiveStore(inventory.getBookstore().getId());
@@ -120,42 +120,40 @@ public class TiendanubeProductServiceImpl
 
         TiendanubeVariantResponse remoteVariant = findVariant(remoteProduct, variantId);
 
+        String finalSku = updateRemoteVariantOnLink(
+                store.getStoreId(),
+                productId,
+                remoteVariant,
+                inventory
+        );
+
         TiendanubeProductLink link = TiendanubeProductLink.builder()
                 .inventory(inventory)
                 .tiendanubeStoreId(store.getStoreId())
                 .tiendanubeProductId(productId)
                 .tiendanubeVariantId(variantId)
-                .sku(remoteVariant.sku())
+                .sku(finalSku)
                 .active(true)
+                .lastSyncedAt(Instant.now())
+                .lastError(null)
                 .build();
 
         productLinkRepository.save(link);
 
-        /*
-         * Library Manager es la fuente de verdad.
-         * Al vincular una publicación existente,
-         * sobrescribimos el stock remoto con el local.
-         */
-        client.updateStock(
-                store.getStoreId(),
-                productId,
-                variantId,
-                inventory.getStock()
-        );
-
-        link.setLastSyncedAt(Instant.now());
-        link.setLastError(null);
-
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.LINKED);
 
-        log.info("Publicación Tiendanube vinculada. inventoryId={}, productId={}, variantId={}",
-                inventoryId, productId, variantId);
+        log.info(
+                "Publicación Tiendanube vinculada. inventoryId={}, productId={}, variantId={}",
+                inventoryId,
+                productId,
+                variantId
+        );
 
         return new TiendanubeProductLinkResponse(
                 inventoryId,
                 productId,
                 variantId,
-                remoteVariant.sku(),
+                finalSku,
                 TiendanubeInventoryStatus.LINKED
         );
     }
@@ -163,6 +161,50 @@ public class TiendanubeProductServiceImpl
     // =========================================================
     // REMOTE PRODUCTS
     // =========================================================
+
+    private String updateRemoteVariantOnLink(
+            Long storeId,
+            Long productId,
+            TiendanubeVariantResponse remoteVariant,
+            Inventory inventory
+    ) {
+        String isbn = normalizeIdentifier(inventory.getBook().getIsbn());
+
+        boolean missingSku = remoteVariant.sku() == null || remoteVariant.sku().isBlank();
+
+        boolean missingBarcode = remoteVariant.barcode() == null || remoteVariant.barcode().isBlank();
+
+        if (isbn != null && (missingSku || missingBarcode)) {
+            String sku = missingSku ? isbn : remoteVariant.sku();
+            String barcode = missingBarcode ? isbn : remoteVariant.barcode();
+
+            TiendanubeUpdateVariantRequest request =
+                    new TiendanubeUpdateVariantRequest(
+                            sku,
+                            barcode,
+                            inventory.getStock(),
+                            true
+                    );
+
+            client.updateVariant(
+                    storeId,
+                    productId,
+                    remoteVariant.id(),
+                    request
+            );
+
+            return sku;
+        }
+
+        client.updateStock(
+                storeId,
+                productId,
+                remoteVariant.id(),
+                inventory.getStock()
+        );
+
+        return remoteVariant.sku();
+    }
 
     private TiendanubeRemoteProductResponse mapRemoteProduct(
             Long bookstoreId,
