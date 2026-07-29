@@ -394,7 +394,7 @@ public class TiendanubeProductServiceImpl
     private TiendanubeStore getActiveStore(Long bookstoreId) {
 
         return storeRepository
-                .findByStoreIdAndActiveTrue(bookstoreId)
+                .findByBookstoreIdAndActiveTrue(bookstoreId)
                 .orElseThrow(() -> new BusinessException("La librería no tiene una cuenta Tiendanube vinculada"));
     }
 
