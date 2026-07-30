@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service;
 
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.TiendanubeImportCommand;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeImportResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
@@ -7,9 +8,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 public interface TiendanubeImportPersistenceService {
 
     TiendanubeImportResultResponse importExistingBook(
-            Long bookstoreId,
-            Long bookId,
-            Long storeId,
+            TiendanubeImportCommand command,
             TiendanubeProductResponse product,
             TiendanubeVariantResponse variant
     );

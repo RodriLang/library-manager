@@ -1,41 +1,32 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
-import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.MatchResult;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.RemoteInventoryMatch;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateImageRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateVariantRequest;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.InventoryMatchCandidateResponse;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeImportResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeInventoryStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubePublishResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRemoteProductResponse;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRemoteVariantResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRetryResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
-import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeMatchType;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
-import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeImportPersistenceService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeInventoryStateService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductLinkPersistenceService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductLinkService;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductMatchingService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
-import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
-import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
-import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -51,14 +42,13 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
 
     private final InventoryRepository inventoryRepository;
     private final TiendanubeStoreRepository storeRepository;
-    private final BookRepository bookRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeClient client;
     private final TiendanubeVariantSyncService variantSyncService;
     private final TiendanubeInventoryStateService inventoryStateService;
     private final TiendanubeProductLinkPersistenceService linkPersistenceService;
     private final TiendanubeProductLinkService productLinkService;
-    private final TiendanubeImportPersistenceService importPersistenceService;
+    private final TiendanubeProductMatchingService matchingService;
 
     @Override
     public TiendanubePublishResultResponse publishInventory(Long inventoryId) {
@@ -67,7 +57,8 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
 
         validateCanPublish(inventory, store.getStoreId());
 
-        RemoteInventoryMatch remoteMatch = findRemoteMatch(store.getStoreId(), inventory);
+        List<TiendanubeProductResponse> remoteProducts = client.getProducts(store.getStoreId());
+        RemoteInventoryMatch remoteMatch = matchingService.findRemoteMatch(inventory, remoteProducts);
 
         if (remoteMatch != null) {
             if (remoteMatch.autoLink()) {
@@ -129,19 +120,10 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     @Override
     @Transactional(readOnly = true)
     public List<TiendanubeRemoteProductResponse> getRemoteProducts(Long bookstoreId) {
-
         TiendanubeStore store = getActiveStore(bookstoreId);
 
-        List<TiendanubeProductResponse> products = client.getProducts(store.getStoreId());
-
-        return products.stream()
-                .map(product ->
-                        mapRemoteProduct(
-                                bookstoreId,
-                                store.getStoreId(),
-                                product
-                        )
-                )
+        return client.getProducts(store.getStoreId()).stream()
+                .map(product -> matchingService.analyze(bookstoreId, store.getStoreId(), product))
                 .toList();
     }
 
@@ -207,415 +189,6 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
                 ));
     }
 
-    @Override
-    public TiendanubeImportResultResponse importRemoteProduct(Long bookstoreId, Long productId, Long variantId) {
-        TiendanubeStore store = getActiveStore(bookstoreId);
-
-        if (productLinkRepository.findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(store.getStoreId(), variantId).isPresent()) {
-            throw new BusinessException("La variante ya está vinculada con un inventario");
-        }
-
-        TiendanubeProductResponse product = client.getProduct(store.getStoreId(), productId);
-        TiendanubeVariantResponse variant = TiendanubeProductUtils.findVariant(product, variantId);
-
-        String isbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
-
-        if (isbn == null) {
-            throw new BusinessException(
-                    "La publicación no tiene ISBN. Debe asociarse manualmente a un libro existente."
-            );
-        }
-
-        Book book = bookRepository.findByIsbn(isbn)
-                .orElseThrow(() -> new BusinessException(
-                        "No existe un libro en el catálogo con ISBN " + isbn
-                ));
-
-        if (inventoryRepository.existsByBookIdAndBookstoreIdAndCondition(book.getId(), bookstoreId, BookCondition.NEW)) {
-            throw new BusinessException(
-                    "El libro ya existe en el inventario. Debe vincularse la publicación existente."
-            );
-        }
-
-        return importPersistenceService.importExistingBook(
-                bookstoreId,
-                book.getId(),
-                store.getStoreId(),
-                product,
-                variant
-        );
-    }
-
-    // =========================================================
-    // REMOTE PRODUCTS
-    // =========================================================
-
-    private TiendanubeRemoteProductResponse mapRemoteProduct(
-            Long bookstoreId,
-            Long storeId,
-            TiendanubeProductResponse product
-    ) {
-
-        List<TiendanubeRemoteVariantResponse> variants =
-                product.variants() == null
-                        ? List.of()
-                        : product.variants()
-                        .stream()
-                        .map(variant ->
-                                mapRemoteVariant(
-                                        bookstoreId,
-                                        storeId,
-                                        product,
-                                        variant
-                                )
-                        )
-                        .toList();
-
-        return new TiendanubeRemoteProductResponse(
-                product.id(),
-                getProductName(product),
-                getMainImageUrl(product),
-                product.published(),
-                variants
-        );
-    }
-
-    private TiendanubeRemoteVariantResponse mapRemoteVariant(
-            Long bookstoreId,
-            Long storeId,
-            TiendanubeProductResponse product,
-            TiendanubeVariantResponse variant
-    ) {
-
-        var existingLink = productLinkRepository.findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
-                storeId,
-                variant.id()
-        );
-
-        if (existingLink.isPresent()) {
-
-            Inventory inventory = existingLink.get().getInventory();
-
-            return new TiendanubeRemoteVariantResponse(
-                    variant.id(),
-                    variant.sku(),
-                    variant.barcode(),
-                    variant.price(),
-                    variant.stock(),
-                    TiendanubeMatchType.ALREADY_LINKED,
-                    inventory.getId(),
-                    List.of(toCandidate(inventory))
-            );
-        }
-
-        MatchResult match = findMatch(bookstoreId, product, variant);
-
-        return new TiendanubeRemoteVariantResponse(
-                variant.id(),
-                variant.sku(),
-                variant.barcode(),
-                variant.price(),
-                variant.stock(),
-                match.type(),
-                null,
-                match.candidates()
-        );
-    }
-
-    // =========================================================
-    // MATCHING
-    // =========================================================
-
-    private MatchResult findMatch(
-            Long bookstoreId,
-            TiendanubeProductResponse product,
-            TiendanubeVariantResponse variant
-    ) {
-        String barcode = TiendanubeProductUtils.normalizeIdentifier(variant.barcode());
-
-        if (barcode != null) {
-            List<Inventory> candidates =
-                    inventoryRepository.findAllByBookstoreIdAndBookIsbn(bookstoreId, barcode);
-
-            if (!candidates.isEmpty()) {
-                return createMatchResult(
-                        TiendanubeMatchType.EXACT_BARCODE,
-                        candidates
-                );
-            }
-        }
-
-        String sku = TiendanubeProductUtils.normalizeIdentifier(variant.sku());
-
-        if (sku != null) {
-            List<Inventory> candidates =
-                    inventoryRepository.findAllByBookstoreIdAndBookIsbn(bookstoreId, sku);
-
-            if (!candidates.isEmpty()) {
-                return createMatchResult(
-                        TiendanubeMatchType.EXACT_SKU,
-                        candidates
-                );
-            }
-        }
-
-        return findTextualMatch(bookstoreId, product);
-    }
-
-    private MatchResult createMatchResult(TiendanubeMatchType matchType, List<Inventory> inventories) {
-
-        List<InventoryMatchCandidateResponse> candidates = inventories.stream()
-                .map(this::toCandidate)
-                .toList();
-
-        if (candidates.size() > 1) {
-            return new MatchResult(TiendanubeMatchType.MULTIPLE_MATCHES, candidates);
-        }
-
-        return new MatchResult(matchType, candidates);
-    }
-
-    private InventoryMatchCandidateResponse toCandidate(Inventory inventory) {
-
-        Book book = inventory.getBook();
-
-        String authors = book.getAuthors() == null
-                ? null
-                : book.getAuthors()
-                .stream()
-                .map(Author::getName)
-                .sorted()
-                .reduce((a, b) -> a + ", " + b)
-                .orElse(null);
-
-        String publisher = book.getPublisher() == null
-                ? null
-                : book.getPublisher().getName();
-
-        return new InventoryMatchCandidateResponse(
-                inventory.getId(),
-                book.getId(),
-                book.getIsbn(),
-                book.getTitle(),
-                authors,
-                publisher,
-                inventory.getCondition(),
-                inventory.getStock()
-        );
-    }
-
-    private MatchResult findTextualMatch(
-            Long bookstoreId,
-            TiendanubeProductResponse product
-    ) {
-        String remoteName =
-                TextNormalizer.normalizeForMatch(getProductName(product));
-
-        if (remoteName.isBlank()) {
-            return new MatchResult(
-                    TiendanubeMatchType.NOT_FOUND,
-                    List.of()
-            );
-        }
-
-        List<Inventory> inventories =
-                inventoryRepository.findAllByBookstoreId(bookstoreId);
-
-        List<Inventory> titleCandidates = inventories.stream()
-                .filter(inventory ->
-                        matchesTitle(
-                                remoteName,
-                                inventory.getBook()
-                        )
-                )
-                .toList();
-
-        if (titleCandidates.isEmpty()) {
-            return new MatchResult(
-                    TiendanubeMatchType.NOT_FOUND,
-                    List.of()
-            );
-        }
-
-        List<Inventory> titleAndAuthorCandidates =
-                titleCandidates.stream()
-                        .filter(inventory ->
-                                matchesAuthor(
-                                        remoteName,
-                                        inventory.getBook()
-                                )
-                        )
-                        .toList();
-
-        if (!titleAndAuthorCandidates.isEmpty()) {
-            return createPossibleMatchResult(
-                    titleAndAuthorCandidates
-            );
-        }
-
-        return createPossibleMatchResult(
-                titleCandidates
-        );
-    }
-
-    private boolean matchesTitle(String remoteName, Book book) {
-        String title = TextNormalizer.normalizeForMatch(book.getTitle());
-
-        if (title.isBlank()) {
-            return false;
-        }
-
-        return remoteName.equals(title)
-                || remoteName.startsWith(title + " ");
-    }
-
-    private boolean matchesAuthor(String remoteName, Book book) {
-        if (book.getAuthors() == null || book.getAuthors().isEmpty()) {
-            return false;
-        }
-
-        return book.getAuthors().stream()
-                .anyMatch(author ->
-                        containsAllTokens(
-                                remoteName,
-                                TextNormalizer.normalizeForMatch(author.getName())
-                        )
-                );
-    }
-
-    private boolean containsAllTokens(String text, String candidate) {
-        if (candidate.isBlank()) {
-            return false;
-        }
-
-        List<String> tokens = List.of(candidate.split(" "));
-
-        return tokens.stream()
-                .filter(token -> token.length() > 1)
-                .allMatch(token ->
-                        List.of(text.split(" ")).contains(token)
-                );
-    }
-
-    private MatchResult createPossibleMatchResult(
-            List<Inventory> inventories
-    ) {
-        List<InventoryMatchCandidateResponse> candidates =
-                inventories.stream()
-                        .map(this::toCandidate)
-                        .toList();
-
-        if (candidates.size() > 1) {
-            return new MatchResult(
-                    TiendanubeMatchType.MULTIPLE_MATCHES,
-                    candidates
-            );
-        }
-
-        return new MatchResult(
-                TiendanubeMatchType.POSSIBLE_MATCH,
-                candidates
-        );
-    }
-
-    private RemoteInventoryMatch findRemoteMatch(Long storeId, Inventory inventory) {
-        List<TiendanubeProductResponse> products = client.getProducts(storeId);
-
-        List<RemoteInventoryMatch> exactMatches = findExactRemoteMatches(products, inventory);
-
-        if (exactMatches.size() == 1) {
-            return exactMatches.getFirst();
-        }
-
-        if (exactMatches.size() > 1) {
-            return new RemoteInventoryMatch(null, null, false);
-        }
-
-        List<RemoteInventoryMatch> textualMatches = findTextualRemoteMatches(products, inventory);
-
-        if (!textualMatches.isEmpty()) {
-            return new RemoteInventoryMatch(null, null, false);
-        }
-
-        return null;
-    }
-
-    private List<RemoteInventoryMatch> findExactRemoteMatches(
-            List<TiendanubeProductResponse> products,
-            Inventory inventory
-    ) {
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
-
-        if (isbn == null) {
-            return List.of();
-        }
-
-        return products.stream()
-                .flatMap(product -> product.variants() == null
-                        ? java.util.stream.Stream.empty()
-                        : product.variants().stream()
-                        .filter(variant -> matchesIsbn(variant, isbn))
-                        .map(variant -> new RemoteInventoryMatch(
-                                product.id(),
-                                variant.id(),
-                                true
-                        ))
-                )
-                .toList();
-    }
-
-    private boolean matchesIsbn(TiendanubeVariantResponse variant, String isbn) {
-        String barcode = TiendanubeProductUtils.normalizeIdentifier(variant.barcode());
-        String sku = TiendanubeProductUtils.normalizeIdentifier(variant.sku());
-
-        return isbn.equals(barcode) || isbn.equals(sku);
-    }
-
-    private List<RemoteInventoryMatch> findTextualRemoteMatches(
-            List<TiendanubeProductResponse> products,
-            Inventory inventory
-    ) {
-        Book book = inventory.getBook();
-
-        return products.stream()
-                .filter(product -> matchesRemoteProductText(product, book))
-                .flatMap(product -> product.variants() == null
-                        ? java.util.stream.Stream.empty()
-                        : product.variants().stream()
-                        .map(variant -> new RemoteInventoryMatch(
-                                product.id(),
-                                variant.id(),
-                                false
-                        ))
-                )
-                .toList();
-    }
-
-    private boolean matchesRemoteProductText(TiendanubeProductResponse product, Book book) {
-        String remoteName = TextNormalizer.normalizeForMatch(getProductName(product));
-        String localTitle = TextNormalizer.normalizeForMatch(book.getTitle());
-
-        if (remoteName.isBlank() || localTitle.isBlank()) {
-            return false;
-        }
-
-        boolean titleMatches = remoteName.equals(localTitle) || remoteName.startsWith(localTitle + " ");
-
-        if (!titleMatches) {
-            return false;
-        }
-
-        if (remoteName.equals(localTitle)) {
-            return true;
-        }
-
-        return matchesAuthor(remoteName, book);
-    }
-
-    // =========================================================
-    // VALIDACIONES
-    // =========================================================
-
     private void validateCanPublish(Inventory inventory, Long storeId) {
         if (productLinkRepository.findByInventoryIdAndTiendanubeStoreIdAndActiveTrue(inventory.getId(), storeId).isPresent()) {
             throw new BusinessException("El inventario ya tiene una publicación vinculada en Tiendanube");
@@ -640,10 +213,6 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         }
     }
 
-    // =========================================================
-    // ENTITY LOOKUPS
-    // =========================================================
-
     private Inventory getInventory(Long inventoryId) {
 
         return inventoryRepository
@@ -657,10 +226,6 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
                 .findByBookstoreIdAndActiveTrue(bookstoreId)
                 .orElseThrow(() -> new BusinessException("La librería no tiene una cuenta Tiendanube vinculada"));
     }
-
-    // =========================================================
-    // PUBLICACIÓN
-    // =========================================================
 
     private TiendanubeCreateProductRequest buildCreateProductRequest(Inventory inventory) {
         Book book = inventory.getBook();
@@ -718,10 +283,6 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         );
     }
 
-    // =========================================================
-    // PRODUCT HELPERS
-    // =========================================================
-
     private TiendanubeVariantResponse getMainVariant(TiendanubeProductResponse product) {
 
         if (product.variants() == null || product.variants().isEmpty()) {
@@ -730,29 +291,5 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         }
 
         return product.variants().getFirst();
-    }
-
-    // =========================================================
-    // REMOTE DISPLAY
-    // =========================================================
-
-    private String getProductName(TiendanubeProductResponse product) {
-
-        if (product.name() == null) {
-            return null;
-        }
-
-        return product.name().get("es");
-    }
-
-    private String getMainImageUrl(TiendanubeProductResponse product) {
-
-        if (product.images() == null || product.images().isEmpty()) {
-            return null;
-        }
-
-        return product.images()
-                .getFirst()
-                .src();
     }
 }

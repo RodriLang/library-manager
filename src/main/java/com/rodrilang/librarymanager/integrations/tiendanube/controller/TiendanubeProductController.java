@@ -65,17 +65,4 @@ public class TiendanubeProductController {
                 request.variantId()
         );
     }
-
-    @PostMapping("/products/import")
-    @ResponseStatus(HttpStatus.CREATED)
-    public TiendanubeImportResultResponse importRemoteProduct(
-            @RequestParam Long bookstoreId,
-            @Valid @RequestBody ImportTiendanubeProductRequest request
-    ) {
-        return productService.importRemoteProduct(
-                bookstoreId,
-                request.productId(),
-                request.variantId()
-        );
-    }
 }
