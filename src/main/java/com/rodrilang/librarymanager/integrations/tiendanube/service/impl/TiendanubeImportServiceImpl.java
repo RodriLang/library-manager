@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.PreviewContext;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.PreviewMatch;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.TiendanubeImportCommand;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeBulkImportRequest;
@@ -16,6 +17,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeImportAction;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeImportMatchType;
@@ -37,7 +39,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -56,9 +61,12 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     @Override
     public TiendanubeImportPreviewResponse preview(Long bookstoreId) {
         TiendanubeStore store = getActiveStore(bookstoreId);
+        List<TiendanubeProductResponse> products = client.getProducts(store.getStoreId());
 
-        List<TiendanubeImportPreviewItemResponse> items = client.getProducts(store.getStoreId()).stream()
-                .flatMap(product -> buildPreviewItems(bookstoreId, store.getStoreId(), product).stream())
+        PreviewContext context = buildPreviewContext(bookstoreId, store.getStoreId());
+
+        List<TiendanubeImportPreviewItemResponse> items = products.stream()
+                .flatMap(product -> buildPreviewItems(product, context).stream())
                 .toList();
 
         return buildPreviewResponse(items);
@@ -139,6 +147,41 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         );
     }
 
+    private PreviewContext buildPreviewContext(Long bookstoreId, Long storeId) {
+        Map<Long, TiendanubeProductLink> linksByVariantId = productLinkRepository
+                .findAllByTiendanubeStoreIdAndActiveTrue(storeId)
+                .stream()
+                .collect(Collectors.toMap(
+                        TiendanubeProductLink::getTiendanubeVariantId,
+                        Function.identity()
+                ));
+
+        // TODO: Reemplazar Map<bookId, Inventory> cuando Tiendanube soporte importación por condición (NEW/USED).
+        Map<Long, Inventory> inventoriesByBookId = inventoryRepository.findAllByBookstoreId(bookstoreId).stream()
+                .filter(inventory -> inventory.getCondition() == BookCondition.NEW)
+                .collect(Collectors.toMap(
+                        inventory -> inventory.getBook().getId(),
+                        Function.identity()
+                ));
+
+        List<Book> books = bookRepository.findAllByActiveTrue();
+
+        Map<String, Book> booksByIsbn = books.stream()
+                .filter(book -> TiendanubeProductUtils.normalizeIdentifier(book.getIsbn()) != null)
+                .collect(Collectors.toMap(
+                        book -> TiendanubeProductUtils.normalizeIdentifier(book.getIsbn()),
+                        Function.identity(),
+                        (first, second) -> first
+                ));
+
+        return new PreviewContext(
+                linksByVariantId,
+                inventoriesByBookId,
+                booksByIsbn,
+                books
+        );
+    }
+
     private TiendanubeImportItemResultResponse importItem(
             Long bookstoreId,
             TiendanubeStore store,
@@ -216,32 +259,27 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     private List<TiendanubeImportPreviewItemResponse> buildPreviewItems(
-            Long bookstoreId,
-            Long storeId,
-            TiendanubeProductResponse product
+            TiendanubeProductResponse product,
+            PreviewContext context
     ) {
         if (product.variants() == null || product.variants().isEmpty()) {
             return List.of();
         }
 
         return product.variants().stream()
-                .map(variant -> buildPreviewItem(bookstoreId, storeId, product, variant))
+                .map(variant -> buildPreviewItem(product, variant, context))
                 .toList();
     }
 
     private TiendanubeImportPreviewItemResponse buildPreviewItem(
-            Long bookstoreId,
-            Long storeId,
             TiendanubeProductResponse product,
-            TiendanubeVariantResponse variant
+            TiendanubeVariantResponse variant,
+            PreviewContext context
     ) {
-        var existingLink = productLinkRepository.findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
-                storeId,
-                variant.id()
-        );
+        TiendanubeProductLink existingLink = context.linksByVariantId().get(variant.id());
 
-        if (existingLink.isPresent()) {
-            Inventory inventory = existingLink.get().getInventory();
+        if (existingLink != null) {
+            Inventory inventory = existingLink.getInventory();
 
             PreviewMatch match = new PreviewMatch(
                     TiendanubeImportMatchType.ALREADY_LINKED,
@@ -258,17 +296,19 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         String isbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
 
         if (isbn != null) {
-            Optional<Book> book = bookRepository.findByIsbn(isbn);
+            Book book = context.booksByIsbn().get(isbn);
 
-            if (book.isPresent()) {
-                return buildBookMatchItem(bookstoreId, product, variant, book.get(), isbn);
+            if (book != null) {
+                return buildBookMatchItem(product, variant, book, isbn, context);
             }
         }
 
-        List<Book> textualCandidates = matchingService.findBookCandidates(product);
+        List<Book> textualCandidates = matchingService.findBookCandidates(
+                product,
+                context.books()
+        );
 
         if (textualCandidates.isEmpty()) {
-
             PreviewMatch match = new PreviewMatch(
                     TiendanubeImportMatchType.BOOK_NOT_FOUND,
                     null,
@@ -282,7 +322,6 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
 
         if (textualCandidates.size() > 1) {
-
             PreviewMatch match = new PreviewMatch(
                     TiendanubeImportMatchType.MULTIPLE_MATCHES,
                     null,
@@ -296,11 +335,12 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
 
         Book book = textualCandidates.getFirst();
+        Inventory inventory = context.inventoriesByBookId().get(book.getId());
 
         PreviewMatch match = new PreviewMatch(
                 TiendanubeImportMatchType.POSSIBLE_MATCH,
                 book.getId(),
-                findInventoryId(bookstoreId, book.getId()),
+                inventory != null ? inventory.getId() : null,
                 false,
                 true,
                 List.of(toCandidate(book))
@@ -310,20 +350,19 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     private TiendanubeImportPreviewItemResponse buildBookMatchItem(
-            Long bookstoreId,
             TiendanubeProductResponse product,
             TiendanubeVariantResponse variant,
             Book book,
-            String isbn
+            String isbn,
+            PreviewContext context
     ) {
-        Long inventoryId = findInventoryId(bookstoreId, book.getId());
+        Inventory inventory = context.inventoriesByBookId().get(book.getId());
 
-        if (inventoryId != null) {
-
+        if (inventory != null) {
             PreviewMatch match = new PreviewMatch(
                     TiendanubeImportMatchType.INVENTORY_EXISTS,
                     book.getId(),
-                    inventoryId,
+                    inventory.getId(),
                     true,
                     false,
                     List.of(toCandidate(book))
@@ -389,14 +428,6 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 authors,
                 publisher
         );
-    }
-
-    private Long findInventoryId(Long bookstoreId, Long bookId) {
-        return inventoryRepository.findWithBookDetailsByBookIdAndBookstoreIdAndCondition(
-                bookId,
-                bookstoreId,
-                BookCondition.NEW
-        ).map(Inventory::getId).orElse(null);
     }
 
     private void validateVariantNotLinked(Long storeId, Long variantId) {
