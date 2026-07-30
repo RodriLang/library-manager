@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.importer.price.dto.PriceListImportJobStatusR
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportStartResponse;
 import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 
+@Tag(name = "Listas de precios", description = "Importación y procesamiento de listas de precios de proveedores")
 @RestController
 @RequestMapping("/api/price-lists")
 @RequiredArgsConstructor

@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.controller;
 
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.ImportTiendanubeProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.LinkTiendanubeProductRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeImportResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeInventoryStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubePublishResultResponse;
@@ -59,6 +61,19 @@ public class TiendanubeProductController {
     ) {
         return productService.linkExistingProduct(
                 request.inventoryId(),
+                request.productId(),
+                request.variantId()
+        );
+    }
+
+    @PostMapping("/products/import")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TiendanubeImportResultResponse importRemoteProduct(
+            @RequestParam Long bookstoreId,
+            @Valid @RequestBody ImportTiendanubeProductRequest request
+    ) {
+        return productService.importRemoteProduct(
+                bookstoreId,
                 request.productId(),
                 request.variantId()
         );
