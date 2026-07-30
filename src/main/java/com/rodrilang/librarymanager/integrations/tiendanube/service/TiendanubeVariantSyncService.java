@@ -7,4 +7,6 @@ public interface TiendanubeVariantSyncService {
     void syncPrice(Long inventoryId);
 
     void syncVariant(Long inventoryId);
+
+    void retrySync(Long inventoryId);
 }

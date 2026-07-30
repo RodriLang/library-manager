@@ -18,24 +18,25 @@ public class TiendanubeInventoryStateServiceImpl implements TiendanubeInventoryS
     private final InventoryRepository inventoryRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
 
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateStatus(Long inventoryId, TiendanubeInventoryStatus status) {
+        Inventory inventory = inventoryRepository.findById(inventoryId).orElseThrow();
+        inventory.setTiendanubeStatus(status);
+    }
+
+    @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markSyncError(Long inventoryId) {
-
-        Inventory inventory = inventoryRepository
-                .findById(inventoryId)
-                .orElseThrow();
-
+        Inventory inventory = inventoryRepository.findById(inventoryId).orElseThrow();
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.SYNC_ERROR);
     }
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markSyncError(Long inventoryId, Long linkId, String error) {
-        Inventory inventory = inventoryRepository.findById(inventoryId)
-                .orElseThrow();
-
-        TiendanubeProductLink link = productLinkRepository.findById(linkId)
-                .orElseThrow();
+        Inventory inventory = inventoryRepository.findById(inventoryId).orElseThrow();
+        TiendanubeProductLink link = productLinkRepository.findById(linkId).orElseThrow();
 
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.SYNC_ERROR);
         link.setLastError(error);

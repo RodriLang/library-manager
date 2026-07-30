@@ -11,6 +11,7 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
@@ -25,6 +26,7 @@ import com.rodrilang.librarymanager.service.InventoryService;
 import com.rodrilang.librarymanager.util.PageableUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -46,6 +48,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final EditorialPriceService editorialPriceService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of(
             "title", "book.titleSort",
@@ -86,6 +89,10 @@ public class InventoryServiceImpl implements InventoryService {
                 .build();
 
         Inventory saved = inventoryRepository.save(inventory);
+
+        if (saved.getTiendanubeStatus() == TiendanubeInventoryStatus.PENDING_PUBLICATION) {
+            eventPublisher.publishEvent(new TiendanubePublicationRequestedEvent(saved.getId()));
+        }
 
         return toDetailResponse(saved);
     }

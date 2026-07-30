@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeCli
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeRemoteResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeInventoryStateService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
@@ -20,7 +21,8 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncService {
 
-    private static final String NO_LINK_INVENTORY_MESSAGE = "Inventario sin vínculo activo con Tiendanube. inventoryId={}";
+    private static final String NO_LINK_INVENTORY_MESSAGE =
+            "Inventario sin vínculo activo con Tiendanube. inventoryId={}";
 
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeClient client;
@@ -56,6 +58,25 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
                 );
     }
 
+    @Override
+    @Transactional
+    public void retrySync(Long inventoryId) {
+        TiendanubeProductLink link = productLinkRepository.findByInventoryIdAndActiveTrue(inventoryId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "El inventario no tiene un vínculo activo con Tiendanube"
+                ));
+
+        Inventory inventory = link.getInventory();
+
+        if (inventory.getTiendanubeStatus() != TiendanubeInventoryStatus.SYNC_ERROR) {
+            throw new IllegalStateException(
+                    "El inventario no se encuentra en estado SYNC_ERROR"
+            );
+        }
+
+        syncVariantInternal(link, true);
+    }
+
     private void syncStock(TiendanubeProductLink link, Integer currentStock) {
         Inventory inventory = link.getInventory();
 
@@ -73,10 +94,11 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
 
             registerSuccess(link);
 
-            log.info("Stock sincronizado con Tiendanube. inventoryId={}, stock={}", inventory.getId(), currentStock);
+            log.info("Stock sincronizado con Tiendanube. inventoryId={}, stock={}",
+                    inventory.getId(), currentStock);
 
         } catch (RuntimeException exception) {
-            registerFailure(link, exception);
+            handleFailure(link, exception);
             throw exception;
         }
     }
@@ -110,15 +132,19 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
                     inventory.getId(), inventory.getSalePrice());
 
         } catch (RuntimeException exception) {
-            registerFailure(link, exception);
+            handleFailure(link, exception);
             throw exception;
         }
     }
 
     private void syncVariant(TiendanubeProductLink link) {
+        syncVariantInternal(link, false);
+    }
+
+    private void syncVariantInternal(TiendanubeProductLink link, boolean allowSyncError) {
         Inventory inventory = link.getInventory();
 
-        if (!canSync(inventory)) {
+        if (!canSync(inventory, allowSyncError)) {
             return;
         }
 
@@ -150,23 +176,34 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
             }
 
             registerSuccess(link);
+            inventory.setTiendanubeStatus(TiendanubeInventoryStatus.LINKED);
 
             log.info("Variante sincronizada con Tiendanube. inventoryId={}, price={}, stock={}",
                     inventory.getId(), inventory.getSalePrice(), inventory.getStock());
 
         } catch (RuntimeException exception) {
-            registerFailure(link, exception);
+            handleFailure(link, exception);
             throw exception;
         }
     }
 
     private boolean canSync(Inventory inventory) {
-        if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
+        return canSync(inventory, false);
+    }
+
+    private boolean canSync(Inventory inventory, boolean allowSyncError) {
+        TiendanubeInventoryStatus status = inventory.getTiendanubeStatus();
+
+        if (status == TiendanubeInventoryStatus.LINKED) {
+            return true;
+        }
+
+        if (allowSyncError && status == TiendanubeInventoryStatus.SYNC_ERROR) {
             return true;
         }
 
         log.info("Sincronización omitida por estado. inventoryId={}, status={}",
-                inventory.getId(), inventory.getTiendanubeStatus());
+                inventory.getId(), status);
 
         return false;
     }
@@ -174,6 +211,24 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
     private void registerSuccess(TiendanubeProductLink link) {
         link.setLastSyncedAt(Instant.now());
         link.setLastError(null);
+    }
+
+    private void handleFailure(TiendanubeProductLink link, RuntimeException exception) {
+        if (exception instanceof TiendanubeRemoteResourceNotFoundException) {
+            inventoryStateService.updateStatus(
+                    link.getInventory().getId(),
+                    TiendanubeInventoryStatus.REMOTE_PRODUCT_NOT_FOUND
+            );
+
+            log.warn("Producto remoto no encontrado en Tiendanube. inventoryId={}, productId={}, variantId={}",
+                    link.getInventory().getId(),
+                    link.getTiendanubeProductId(),
+                    link.getTiendanubeVariantId());
+
+            return;
+        }
+
+        registerFailure(link, exception);
     }
 
     private void registerFailure(TiendanubeProductLink link, RuntimeException exception) {
