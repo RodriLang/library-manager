@@ -186,27 +186,27 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     Page<Book> findAllOrderByCurrentEditorialPriceDesc(Pageable pageable);
 
     @Query("""
-        select b.id
-        from Book b
-        where b.active = true
-          and (b.coverUrl is null or b.coverUrl = '')
-          and coalesce(b.coverSearchAttempts, 0) < 3
-          and (
-                b.coverSearchStatus is null
-                or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.PENDING
-                or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.ERROR
-          )
-        order by b.id
-        """)
+            select b.id
+            from Book b
+            where b.active = true
+              and (b.coverUrl is null or b.coverUrl = '')
+              and coalesce(b.coverSearchAttempts, 0) < 3
+              and (
+                    b.coverSearchStatus is null
+                    or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.PENDING
+                    or b.coverSearchStatus = com.rodrilang.librarymanager.enums.CoverSearchStatus.ERROR
+              )
+            order by b.id
+            """)
     List<Long> findPendingCoverEnrichmentIds(Pageable pageable);
 
     @Query("""
-        select distinct b
-        from Book b
-        left join fetch b.publisher
-        left join fetch b.authors
-        where b.id in :ids
-        """)
+            select distinct b
+            from Book b
+            left join fetch b.publisher
+            left join fetch b.authors
+            where b.id in :ids
+            """)
     List<Book> findBooksWithCoverDataByIdIn(@Param("ids") Collection<Long> ids);
 
     @Query("""
@@ -222,4 +222,14 @@ public interface BookRepository extends JpaRepository<Book, Long> {
               )
             """)
     long countBooksPendingCoverEnrichment();
+
+    @Query("""
+            SELECT DISTINCT b
+            FROM Book b
+            LEFT JOIN FETCH b.authors
+            LEFT JOIN FETCH b.publisher
+            WHERE lower(function('unaccent', :remoteName))
+                  LIKE concat(lower(function('unaccent', b.title)), '%')
+            """)
+    List<Book> findCandidatesForTiendanubeImport(@Param("remoteName") String remoteName);
 }

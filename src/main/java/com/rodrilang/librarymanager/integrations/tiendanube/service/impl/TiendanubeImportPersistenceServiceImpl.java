@@ -1,7 +1,8 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
-import com.rodrilang.librarymanager.enums.BookCondition;
+import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.TiendanubeImportCommand;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeImportResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
@@ -9,6 +10,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubePro
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeImportPersistenceService;
+import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -33,37 +35,43 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
     @Override
     @Transactional
     public TiendanubeImportResultResponse importExistingBook(
-            Long bookstoreId,
-            Long bookId,
-            Long storeId,
+            TiendanubeImportCommand command,
             TiendanubeProductResponse product,
             TiendanubeVariantResponse variant
     ) {
-        Book book = bookRepository.findById(bookId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe el libro con id: " + bookId));
+        Book book = bookRepository.findById(command.bookId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el libro con id: " + command.bookId()));
 
-        Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe la librería con id: " + bookstoreId));
+        Bookstore bookstore = bookstoreRepository.findById(command.bookstoreId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la librería con id: " + command.bookstoreId()));
+
+        validateImportData(command);
 
         Inventory inventory = Inventory.builder()
                 .book(book)
                 .bookstore(bookstore)
-                .condition(BookCondition.NEW)
-                .stock(variant.stock() != null ? variant.stock() : 0)
+                .condition(command.condition())
+                .stock(command.stock())
                 .minimumStock(0)
-                .salePrice(variant.price())
+                .salePrice(command.salePrice())
                 .tiendanubeStatus(TiendanubeInventoryStatus.LINKED)
                 .active(true)
                 .build();
 
         inventoryRepository.save(inventory);
 
+        String sku = variant.sku();
+
+        if (sku == null || sku.isBlank()) {
+            sku = TiendanubeProductUtils.resolveRemoteIsbn(variant);
+        }
+
         TiendanubeProductLink link = TiendanubeProductLink.builder()
                 .inventory(inventory)
-                .tiendanubeStoreId(storeId)
+                .tiendanubeStoreId(command.storeId())
                 .tiendanubeProductId(product.id())
                 .tiendanubeVariantId(variant.id())
-                .sku(variant.sku())
+                .sku(sku)
                 .active(true)
                 .lastSyncedAt(Instant.now())
                 .lastError(null)
@@ -79,5 +87,19 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
                 TiendanubeInventoryStatus.LINKED,
                 false
         );
+    }
+
+    private void validateImportData(TiendanubeImportCommand command) {
+        if (command.condition() == null) {
+            throw new BusinessException("La condición es obligatoria");
+        }
+
+        if (command.stock() == null || command.stock() < 0) {
+            throw new BusinessException("El stock no puede ser nulo ni negativo");
+        }
+
+        if (command.salePrice() == null || command.salePrice().signum() <= 0) {
+            throw new BusinessException("El precio de venta debe ser mayor que cero");
+        }
     }
 }
