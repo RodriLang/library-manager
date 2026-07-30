@@ -12,6 +12,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInve
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductLinkService;
+import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +46,7 @@ public class TiendanubeProductLinkServiceImpl implements TiendanubeProductLinkSe
         validateCanLink(inventoryId, store.getStoreId(), variantId);
 
         TiendanubeProductResponse remoteProduct = client.getProduct(store.getStoreId(), productId);
-        TiendanubeVariantResponse remoteVariant = findVariant(remoteProduct, variantId);
+        TiendanubeVariantResponse remoteVariant = TiendanubeProductUtils.findVariant(remoteProduct, variantId);
 
         String finalSku = updateRemoteVariantOnLink(
                 store.getStoreId(),
@@ -88,26 +89,13 @@ public class TiendanubeProductLinkServiceImpl implements TiendanubeProductLinkSe
         }
     }
 
-    private TiendanubeVariantResponse findVariant(TiendanubeProductResponse product, Long variantId) {
-        if (product.variants() == null) {
-            throw new BusinessException("El producto de Tiendanube no posee variantes");
-        }
-
-        return product.variants().stream()
-                .filter(variant -> variant.id().equals(variantId))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(
-                        "La variante " + variantId + " no pertenece al producto " + product.id()
-                ));
-    }
-
     private String updateRemoteVariantOnLink(
             Long storeId,
             Long productId,
             TiendanubeVariantResponse remoteVariant,
             Inventory inventory
     ) {
-        String isbn = normalizeIdentifier(inventory.getBook().getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
 
         boolean missingSku = remoteVariant.sku() == null || remoteVariant.sku().isBlank();
         boolean missingBarcode = remoteVariant.barcode() == null || remoteVariant.barcode().isBlank();
@@ -126,13 +114,5 @@ public class TiendanubeProductLinkServiceImpl implements TiendanubeProductLinkSe
         client.updateVariant(storeId, productId, remoteVariant.id(), request);
 
         return sku;
-    }
-
-    private String normalizeIdentifier(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-
-        return value.replace("-", "").replace(" ", "").trim();
     }
 }

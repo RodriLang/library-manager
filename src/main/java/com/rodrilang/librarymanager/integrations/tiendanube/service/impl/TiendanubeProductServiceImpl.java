@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
+import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.MatchResult;
@@ -8,6 +9,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.Tiendanu
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.InventoryMatchCandidateResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeImportResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeInventoryStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
@@ -21,14 +23,17 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInve
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeMatchType;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeImportPersistenceService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeInventoryStateService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductLinkPersistenceService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductLinkService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
+import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
@@ -46,12 +51,14 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
 
     private final InventoryRepository inventoryRepository;
     private final TiendanubeStoreRepository storeRepository;
+    private final BookRepository bookRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeClient client;
     private final TiendanubeVariantSyncService variantSyncService;
     private final TiendanubeInventoryStateService inventoryStateService;
     private final TiendanubeProductLinkPersistenceService linkPersistenceService;
     private final TiendanubeProductLinkService productLinkService;
+    private final TiendanubeImportPersistenceService importPersistenceService;
 
     @Override
     public TiendanubePublishResultResponse publishInventory(Long inventoryId) {
@@ -200,6 +207,45 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
                 ));
     }
 
+    @Override
+    public TiendanubeImportResultResponse importRemoteProduct(Long bookstoreId, Long productId, Long variantId) {
+        TiendanubeStore store = getActiveStore(bookstoreId);
+
+        if (productLinkRepository.findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(store.getStoreId(), variantId).isPresent()) {
+            throw new BusinessException("La variante ya está vinculada con un inventario");
+        }
+
+        TiendanubeProductResponse product = client.getProduct(store.getStoreId(), productId);
+        TiendanubeVariantResponse variant = TiendanubeProductUtils.findVariant(product, variantId);
+
+        String isbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
+
+        if (isbn == null) {
+            throw new BusinessException(
+                    "La publicación no tiene ISBN. Debe asociarse manualmente a un libro existente."
+            );
+        }
+
+        Book book = bookRepository.findByIsbn(isbn)
+                .orElseThrow(() -> new BusinessException(
+                        "No existe un libro en el catálogo con ISBN " + isbn
+                ));
+
+        if (inventoryRepository.existsByBookIdAndBookstoreIdAndCondition(book.getId(), bookstoreId, BookCondition.NEW)) {
+            throw new BusinessException(
+                    "El libro ya existe en el inventario. Debe vincularse la publicación existente."
+            );
+        }
+
+        return importPersistenceService.importExistingBook(
+                bookstoreId,
+                book.getId(),
+                store.getStoreId(),
+                product,
+                variant
+        );
+    }
+
     // =========================================================
     // REMOTE PRODUCTS
     // =========================================================
@@ -285,7 +331,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
             TiendanubeProductResponse product,
             TiendanubeVariantResponse variant
     ) {
-        String barcode = normalizeIdentifier(variant.barcode());
+        String barcode = TiendanubeProductUtils.normalizeIdentifier(variant.barcode());
 
         if (barcode != null) {
             List<Inventory> candidates =
@@ -299,7 +345,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
             }
         }
 
-        String sku = normalizeIdentifier(variant.sku());
+        String sku = TiendanubeProductUtils.normalizeIdentifier(variant.sku());
 
         if (sku != null) {
             List<Inventory> candidates =
@@ -498,7 +544,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
             List<TiendanubeProductResponse> products,
             Inventory inventory
     ) {
-        String isbn = normalizeIdentifier(inventory.getBook().getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
 
         if (isbn == null) {
             return List.of();
@@ -519,8 +565,8 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     }
 
     private boolean matchesIsbn(TiendanubeVariantResponse variant, String isbn) {
-        String barcode = normalizeIdentifier(variant.barcode());
-        String sku = normalizeIdentifier(variant.sku());
+        String barcode = TiendanubeProductUtils.normalizeIdentifier(variant.barcode());
+        String sku = TiendanubeProductUtils.normalizeIdentifier(variant.sku());
 
         return isbn.equals(barcode) || isbn.equals(sku);
     }
@@ -620,7 +666,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         Book book = inventory.getBook();
 
         String sku = buildSku(inventory);
-        String isbn = normalizeIdentifier(book.getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(book.getIsbn());
 
         TiendanubeCreateVariantRequest variant = new TiendanubeCreateVariantRequest(
                 inventory.getSalePrice(),
@@ -649,7 +695,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
 
     private String buildSku(Inventory inventory) {
 
-        String isbn = normalizeIdentifier(inventory.getBook().getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
 
         if (isbn != null) {
             return isbn;
@@ -684,18 +730,6 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         }
 
         return product.variants().getFirst();
-    }
-
-    private String normalizeIdentifier(String value) {
-
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-
-        return value
-                .replace("-", "")
-                .replace(" ", "")
-                .trim();
     }
 
     // =========================================================

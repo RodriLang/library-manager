@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.exception.Tiendanube
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeInventoryStateService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
+import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Inventory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -149,7 +150,7 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
         }
 
         try {
-            String isbn = normalizeIdentifier(inventory.getBook().getIsbn());
+            String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
             String sku = link.getSku();
 
             if ((sku == null || sku.isBlank()) && isbn != null) {
@@ -247,13 +248,5 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
                 link.getTiendanubeProductId(),
                 link.getTiendanubeVariantId(),
                 exception);
-    }
-
-    private String normalizeIdentifier(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-
-        return value.replace("-", "").replace(" ", "").trim();
     }
 }
