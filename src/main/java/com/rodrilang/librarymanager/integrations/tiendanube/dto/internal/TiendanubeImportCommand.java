@@ -10,6 +10,7 @@ public record TiendanubeImportCommand(
         Long storeId,
         BookCondition condition,
         Integer stock,
-        BigDecimal salePrice
+        BigDecimal salePrice,
+        Boolean syncPrice
 ) {
 }

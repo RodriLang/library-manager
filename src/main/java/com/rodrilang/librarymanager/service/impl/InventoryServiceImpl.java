@@ -126,12 +126,17 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryDetailResponse update(Long bookId, UpdateInventoryRequest request) {
         Inventory inventory = getEntityByBookId(bookId);
         BigDecimal previousSalePrice = inventory.getSalePrice();
+        Boolean previousPriceSyncEnabled = inventory.getTiendanubePriceSyncEnabled();
 
         inventoryMapper.updateEntity(request, inventory);
 
         Inventory saved = inventoryRepository.save(inventory);
 
-        if (!Objects.equals(previousSalePrice, saved.getSalePrice())) {
+        boolean priceChanged = !Objects.equals(previousSalePrice, saved.getSalePrice());
+        boolean priceSyncEnabled = Boolean.TRUE.equals(saved.getTiendanubePriceSyncEnabled());
+        boolean priceSyncJustEnabled = !Boolean.TRUE.equals(previousPriceSyncEnabled) && priceSyncEnabled;
+
+        if (priceSyncEnabled && (priceChanged || priceSyncJustEnabled)) {
             tiendanubeVariantSyncService.syncPrice(saved.getId());
         }
 

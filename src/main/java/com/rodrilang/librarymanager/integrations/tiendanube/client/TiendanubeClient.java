@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.config.TiendanubeProperties;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateImageRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateWebhookRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateStockRequest;
@@ -128,6 +129,29 @@ public class TiendanubeClient {
         }
 
         return products;
+    }
+
+    public void createProductImage(
+            Long storeId,
+            Long productId,
+            TiendanubeCreateImageRequest request
+    ) {
+        TiendanubeStore store = getActiveStore(storeId);
+
+        try {
+            tiendanubeRestClient.post()
+                    .uri(properties.apiUrl() + "/{storeId}/products/{productId}/images", storeId, productId)
+                    .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .toBodilessEntity();
+
+        } catch (RestClientException exception) {
+            throw buildApiException("crear imagen de producto", exception);
+        }
     }
 
     private TiendanubeProductResponse[] getProductsPage(
