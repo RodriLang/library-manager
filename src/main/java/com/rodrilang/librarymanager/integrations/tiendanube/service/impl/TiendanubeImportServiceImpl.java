@@ -27,6 +27,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeIm
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeImportService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductLinkService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductMatchingService;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductSyncService;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
@@ -57,6 +58,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     private final TiendanubeImportPersistenceService importPersistenceService;
     private final TiendanubeProductLinkService productLinkService;
     private final TiendanubeProductMatchingService matchingService;
+    private final TiendanubeProductSyncService productSyncService;
 
     @Override
     public TiendanubeImportPreviewResponse preview(Long bookstoreId) {
@@ -111,10 +113,19 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 store.getStoreId(),
                 BookCondition.NEW,
                 stock,
-                variant.price()
+                variant.price(),
+                true
         );
 
-        return importPersistenceService.importExistingBook(command, product, variant);
+        TiendanubeImportResultResponse result = importPersistenceService.importExistingBook(
+                command,
+                product,
+                variant
+        );
+
+        productSyncService.syncAfterImport(result.inventoryId());
+
+        return result;
     }
 
     @Override
@@ -206,6 +217,11 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         item.variantId()
                 );
 
+                existingInventory.setTiendanubePriceSyncEnabled(Boolean.TRUE.equals(item.syncPrice()));
+                inventoryRepository.save(existingInventory);
+
+                productSyncService.syncMissingImage(existingInventory.getId());
+
                 return new TiendanubeImportItemResultResponse(
                         item.productId(),
                         item.variantId(),
@@ -223,7 +239,8 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                     store.getStoreId(),
                     item.condition(),
                     item.stock(),
-                    item.salePrice()
+                    item.salePrice(),
+                    item.syncPrice()
             );
 
             TiendanubeImportResultResponse result = importPersistenceService.importExistingBook(
@@ -231,6 +248,8 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                     product,
                     variant
             );
+
+            productSyncService.syncAfterImport(result.inventoryId());
 
             return new TiendanubeImportItemResultResponse(
                     item.productId(),

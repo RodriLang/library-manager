@@ -73,6 +73,10 @@ public class Inventory extends AuditableEntity {
     private TiendanubeInventoryStatus tiendanubeStatus = TiendanubeInventoryStatus.DISABLED;
 
     @Builder.Default
+    @Column(name = "tiendanube_price_sync_enabled", nullable = false)
+    private Boolean tiendanubePriceSyncEnabled = false;
+
+    @Builder.Default
     @Column(nullable = false)
     private Boolean active = true;
 }
