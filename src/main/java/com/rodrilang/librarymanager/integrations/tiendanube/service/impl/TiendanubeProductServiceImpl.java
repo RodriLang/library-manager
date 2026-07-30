@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.Tiendanu
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.InventoryMatchCandidateResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeInventoryStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubePublishResultResponse;
@@ -171,6 +172,32 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
                 result.status(),
                 "PUBLISH"
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TiendanubeInventoryStatusResponse getInventoryStatus(Long inventoryId) {
+        Inventory inventory = getInventory(inventoryId);
+
+        return productLinkRepository.findByInventoryIdAndActiveTrue(inventoryId)
+                .map(link -> new TiendanubeInventoryStatusResponse(
+                        inventoryId,
+                        inventory.getTiendanubeStatus(),
+                        link.getTiendanubeProductId(),
+                        link.getTiendanubeVariantId(),
+                        link.getSku(),
+                        link.getLastSyncedAt(),
+                        link.getLastError()
+                ))
+                .orElseGet(() -> new TiendanubeInventoryStatusResponse(
+                        inventoryId,
+                        inventory.getTiendanubeStatus(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ));
     }
 
     // =========================================================

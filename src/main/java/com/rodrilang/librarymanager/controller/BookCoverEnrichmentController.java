@@ -3,11 +3,13 @@ package com.rodrilang.librarymanager.controller;
 import com.rodrilang.librarymanager.metadata.cover.BookCoverEnrichmentService;
 import com.rodrilang.librarymanager.metadata.cover.job.CoverEnrichmentJobService;
 import com.rodrilang.librarymanager.metadata.cover.job.dto.CoverEnrichmentJobStatusResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+@Tag(name = "Portadas de libros", description = "Administración y enriquecimiento automático de portadas del catálogo")
 @RestController
 @RequestMapping("/api/admin/books/covers")
 @RequiredArgsConstructor
