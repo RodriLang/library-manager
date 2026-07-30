@@ -77,15 +77,17 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
     }
 
     @Override
-    public List<Book> findBookCandidates(TiendanubeProductResponse product) {
-        String productName = getProductName(product);
-        String remoteName = TextNormalizer.normalizeForMatch(productName);
+    public List<Book> findBookCandidates(
+            TiendanubeProductResponse product,
+            List<Book> books
+    ) {
+        String remoteName = TextNormalizer.normalizeForMatch(getProductName(product));
 
         if (remoteName.isBlank()) {
             return List.of();
         }
 
-        List<Book> titleCandidates = bookRepository.findCandidatesForTiendanubeImport(productName).stream()
+        List<Book> titleCandidates = books.stream()
                 .filter(book -> matchesTitle(remoteName, book))
                 .toList();
 
