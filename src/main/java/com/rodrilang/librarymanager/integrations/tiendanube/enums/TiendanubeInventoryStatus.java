@@ -8,6 +8,8 @@ public enum TiendanubeInventoryStatus {
 
     PUBLISHING,
 
+    LINK_REQUIRED,
+
     LINKED,
 
     SYNC_ERROR,

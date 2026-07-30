@@ -1,12 +1,14 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.controller;
 
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.LinkTiendanubeProductRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeInventoryStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubePublishResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRemoteProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRetryResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Tag(name = "Tiendanube - Productos", description = "Publicación, vinculación y sincronización de productos con Tiendanube")
 @RestController
 @RequestMapping("/api/integrations/tiendanube")
 @RequiredArgsConstructor
@@ -37,6 +40,11 @@ public class TiendanubeProductController {
     @PostMapping("/inventories/{inventoryId}/retry")
     public TiendanubeRetryResponse retryInventory(@PathVariable Long inventoryId) {
         return productService.retry(inventoryId);
+    }
+
+    @GetMapping("/inventories/{inventoryId}/status")
+    public TiendanubeInventoryStatusResponse getInventoryStatus(@PathVariable Long inventoryId) {
+        return productService.getInventoryStatus(inventoryId);
     }
 
     @GetMapping("/products")

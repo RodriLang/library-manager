@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service;
 
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeInventoryStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubePublishResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRemoteProductResponse;
@@ -16,4 +17,6 @@ public interface TiendanubeProductService {
     TiendanubeProductLinkResponse linkExistingProduct(Long inventoryId, Long productId, Long variantId);
 
     TiendanubeRetryResponse retry(Long inventoryId);
+
+    TiendanubeInventoryStatusResponse getInventoryStatus(Long inventoryId);
 }

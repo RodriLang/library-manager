@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.controller;
 
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeAuthorizationResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeOAuthService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 
+@Tag(name = "Tiendanube - Autenticación", description = "Vinculación y autenticación de cuentas de Tiendanube")
 @RestController
 @RequestMapping("/api/integrations/tiendanube")
 @RequiredArgsConstructor
