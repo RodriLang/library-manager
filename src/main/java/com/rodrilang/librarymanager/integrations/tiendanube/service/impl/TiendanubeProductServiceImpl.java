@@ -171,39 +171,22 @@ public class TiendanubeProductServiceImpl
         String isbn = normalizeIdentifier(inventory.getBook().getIsbn());
 
         boolean missingSku = remoteVariant.sku() == null || remoteVariant.sku().isBlank();
-
         boolean missingBarcode = remoteVariant.barcode() == null || remoteVariant.barcode().isBlank();
 
-        if (isbn != null && (missingSku || missingBarcode)) {
-            String sku = missingSku ? isbn : remoteVariant.sku();
-            String barcode = missingBarcode ? isbn : remoteVariant.barcode();
+        String sku = missingSku && isbn != null ? isbn : remoteVariant.sku();
+        String barcode = missingBarcode && isbn != null ? isbn : remoteVariant.barcode();
 
-            TiendanubeUpdateVariantRequest request =
-                    new TiendanubeUpdateVariantRequest(
-                            sku,
-                            barcode,
-                            inventory.getStock(),
-                            true
-                    );
-
-            client.updateVariant(
-                    storeId,
-                    productId,
-                    remoteVariant.id(),
-                    request
-            );
-
-            return sku;
-        }
-
-        client.updateStock(
-                storeId,
-                productId,
-                remoteVariant.id(),
-                inventory.getStock()
+        TiendanubeUpdateVariantRequest request = new TiendanubeUpdateVariantRequest(
+                sku,
+                barcode,
+                inventory.getSalePrice(),
+                inventory.getStock(),
+                true
         );
 
-        return remoteVariant.sku();
+        client.updateVariant(storeId, productId, remoteVariant.id(), request);
+
+        return sku;
     }
 
     private TiendanubeRemoteProductResponse mapRemoteProduct(
