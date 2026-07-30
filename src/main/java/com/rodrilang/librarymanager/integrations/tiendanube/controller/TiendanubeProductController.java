@@ -4,7 +4,9 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.LinkTien
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubePublishResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRemoteProductResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRetryResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,11 +20,23 @@ import java.util.List;
 public class TiendanubeProductController {
 
     private final TiendanubeProductService productService;
+    private final TiendanubeVariantSyncService variantSyncService;
 
     @PostMapping("/inventories/{inventoryId}/publish")
     @ResponseStatus(HttpStatus.CREATED)
     public TiendanubePublishResultResponse publishInventory(@PathVariable Long inventoryId) {
         return productService.publishInventory(inventoryId);
+    }
+
+    @PostMapping("/inventories/{inventoryId}/sync")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void syncInventory(@PathVariable Long inventoryId) {
+        variantSyncService.syncVariant(inventoryId);
+    }
+
+    @PostMapping("/inventories/{inventoryId}/retry")
+    public TiendanubeRetryResponse retryInventory(@PathVariable Long inventoryId) {
+        return productService.retry(inventoryId);
     }
 
     @GetMapping("/products")

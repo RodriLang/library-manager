@@ -26,10 +26,6 @@ public interface InventoryService {
 
     void removeBook(Long bookId);
 
-    void decreaseStockByBookId(Long bookId, Integer quantity);
-
-    void increaseStockByBookId(Long bookId, Integer quantity);
-
     void decreaseStockFromTiendanube(Long inventoryId, Integer quantity);
 
     void increaseStockFromTiendanube(Long inventoryId, Integer quantity);

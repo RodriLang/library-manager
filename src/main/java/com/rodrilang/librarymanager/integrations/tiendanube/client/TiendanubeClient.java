@@ -15,6 +15,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeWebhookResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
+import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeRemoteResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -342,14 +343,23 @@ public class TiendanubeClient {
     }
 
     private TiendanubeApiException buildApiException(String operation, RestClientException exception) {
-
         if (exception instanceof RestClientResponseException responseException) {
             log.error("Error Tiendanube. operation={}, status={}, response={}",
                     operation, responseException.getStatusCode(), responseException.getResponseBodyAsString());
+
+            if (responseException.getStatusCode().value() == 404) {
+                return new TiendanubeRemoteResourceNotFoundException(
+                        "El recurso ya no existe en Tiendanube",
+                        responseException
+                );
+            }
         } else {
             log.error("Error de comunicación con Tiendanube. operation={}", operation, exception);
         }
 
-        return new TiendanubeApiException("No se pudo completar la operación en Tiendanube: " + operation, exception);
+        return new TiendanubeApiException(
+                "No se pudo completar la operación en Tiendanube: " + operation,
+                exception
+        );
     }
 }
