@@ -182,26 +182,41 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     private PreviewContext buildPreviewContext(Long bookstoreId, Long storeId) {
-        Map<Long, TiendanubeProductLink> linksByVariantId = productLinkRepository
-                .findAllByTiendanubeStoreIdAndActiveTrue(storeId)
-                .stream()
+
+        List<TiendanubeProductLink> activeLinks =
+                productLinkRepository.findAllByTiendanubeStoreIdAndActiveTrue(storeId);
+
+        Map<Long, TiendanubeProductLink> linksByVariantId = activeLinks.stream()
                 .collect(Collectors.toMap(
                         TiendanubeProductLink::getTiendanubeVariantId,
                         Function.identity()
                 ));
 
-        // TODO: Reemplazar Map<bookId, Inventory> cuando Tiendanube soporte importación por condición (NEW/USED).
-        Map<Long, Inventory> inventoriesByBookId = inventoryRepository.findAllByBookstoreId(bookstoreId).stream()
-                .filter(inventory -> inventory.getCondition() == BookCondition.NEW)
+        Map<Long, TiendanubeProductLink> linksByInventoryId = activeLinks.stream()
                 .collect(Collectors.toMap(
-                        inventory -> inventory.getBook().getId(),
-                        Function.identity()
+                        link -> link.getInventory().getId(),
+                        Function.identity(),
+                        (first, second) -> first
                 ));
+
+        // TODO: Reemplazar Map<bookId, Inventory> cuando Tiendanube soporte importación por condición (NEW/USED).
+        Map<Long, Inventory> inventoriesByBookId =
+                inventoryRepository.findAllByBookstoreId(bookstoreId)
+                        .stream()
+                        .filter(inventory ->
+                                inventory.getCondition() == BookCondition.NEW
+                        )
+                        .collect(Collectors.toMap(
+                                inventory -> inventory.getBook().getId(),
+                                Function.identity()
+                        ));
 
         List<Book> books = bookRepository.findAllByActiveTrue();
 
         Map<String, Book> booksByIsbn = books.stream()
-                .filter(book -> TiendanubeProductUtils.normalizeIdentifier(book.getIsbn()) != null)
+                .filter(book ->
+                        TiendanubeProductUtils.normalizeIdentifier(book.getIsbn()) != null
+                )
                 .collect(Collectors.toMap(
                         book -> TiendanubeProductUtils.normalizeIdentifier(book.getIsbn()),
                         Function.identity(),
@@ -210,6 +225,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
 
         return new PreviewContext(
                 linksByVariantId,
+                linksByInventoryId,
                 inventoriesByBookId,
                 booksByIsbn,
                 books
@@ -402,6 +418,23 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         Inventory inventory = context.inventoriesByBookId().get(book.getId());
 
         if (inventory != null) {
+
+            TiendanubeProductLink inventoryLink =
+                    context.linksByInventoryId().get(inventory.getId());
+
+            if (inventoryLink != null) {
+                PreviewMatch match = new PreviewMatch(
+                        TiendanubeImportMatchType.INVENTORY_ALREADY_LINKED,
+                        book.getId(),
+                        inventory.getId(),
+                        false,
+                        true,
+                        List.of(toCandidate(book))
+                );
+
+                return buildItem(product, variant, match);
+            }
+
             PreviewMatch match = new PreviewMatch(
                     TiendanubeImportMatchType.INVENTORY_EXISTS,
                     book.getId(),
