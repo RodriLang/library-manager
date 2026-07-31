@@ -3,7 +3,9 @@ package com.rodrilang.librarymanager.importer.price.configuration.service.impl;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListPreviewRowResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListSheetAnalysisResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListSuggestedMappingResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListWorkbookAnalysisResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListMappingSuggester;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListWorkbookAnalyzer;
 import com.rodrilang.librarymanager.importer.price.util.ExcelCellValueReader;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -48,6 +51,7 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
     );
 
     private final ExcelCellValueReader cellValueReader;
+    private final PriceListMappingSuggester mappingSuggester;
 
     @Override
     public PriceListWorkbookAnalysisResponse analyze(MultipartFile file) {
@@ -72,13 +76,23 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
         }
     }
 
-    private PriceListSheetAnalysisResponse analyzeSheet(Sheet sheet, int sheetIndex) {
-
+    private PriceListSheetAnalysisResponse analyzeSheet(
+            Sheet sheet,
+            int sheetIndex
+    ) {
         int columnCount = findMaximumColumnCount(sheet);
 
-        List<PriceListPreviewRowResponse> preview = readPreviewRows(sheet, columnCount);
+        List<PriceListPreviewRowResponse> preview =
+                readPreviewRows(sheet, columnCount);
 
-        Integer suggestedHeaderRowIndex = detectHeaderRow(preview);
+        Integer suggestedHeaderRowIndex =
+                detectHeaderRow(preview);
+
+        List<PriceListSuggestedMappingResponse> suggestedMappings =
+                resolveSuggestedMappings(
+                        preview,
+                        suggestedHeaderRowIndex
+                );
 
         return new PriceListSheetAnalysisResponse(
                 sheetIndex,
@@ -86,8 +100,26 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
                 calculatePhysicalRowCount(sheet),
                 columnCount,
                 suggestedHeaderRowIndex,
+                suggestedMappings,
                 preview
         );
+    }
+
+    private List<PriceListSuggestedMappingResponse> resolveSuggestedMappings(
+            List<PriceListPreviewRowResponse> preview,
+            Integer headerRowIndex
+    ) {
+        if (headerRowIndex == null) {
+            return List.of();
+        }
+
+        return preview.stream()
+                .filter(row ->
+                        row.rowIndex().equals(headerRowIndex)
+                )
+                .findFirst()
+                .map(mappingSuggester::suggest)
+                .orElseGet(List::of);
     }
 
     private List<PriceListPreviewRowResponse> readPreviewRows(Sheet sheet, int columnCount) {
@@ -223,7 +255,17 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
             return "";
         }
 
-        return value.trim().toLowerCase(Locale.ROOT);
+        String normalized = Normalizer.normalize(
+                value,
+                Normalizer.Form.NFD
+        );
+
+        return normalized
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim()
+                .replaceAll("\\s+", " ");
     }
 
     private void validateFile(MultipartFile file) {
