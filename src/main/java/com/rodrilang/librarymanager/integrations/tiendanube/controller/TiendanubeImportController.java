@@ -23,8 +23,12 @@ public class TiendanubeImportController {
     private final TiendanubeImportService importService;
 
     @GetMapping("/preview")
-    public TiendanubeImportPreviewResponse preview(@RequestParam Long bookstoreId) {
-        return importService.preview(bookstoreId);
+    public TiendanubeImportPreviewResponse preview(
+            @RequestParam Long bookstoreId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return importService.preview(bookstoreId, page, size);
     }
 
     @PostMapping("/products/{productId}/variants/{variantId}")

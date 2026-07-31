@@ -12,6 +12,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.Tiendanu
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeOrderResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductVariantResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductsPage;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeTokenResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeWebhookResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
@@ -110,7 +111,7 @@ public class TiendanubeClient {
         int page = 1;
 
         while (true) {
-            TiendanubeProductResponse[] currentPage = getProductsPage(
+            TiendanubeProductResponse[] currentPage = fetchProductsPage(
                     store,
                     storeId,
                     page,
@@ -131,6 +132,79 @@ public class TiendanubeClient {
         }
 
         return products;
+    }
+
+    public TiendanubeProductsPage fetchProductsPage(
+            Long storeId,
+            int page,
+            int size
+    ) {
+        TiendanubeStore store = getActiveStore(storeId);
+
+        int remotePage = page + 1;
+
+        try {
+            ResponseEntity<TiendanubeProductResponse[]> response =
+                    tiendanubeRestClient.get()
+                            .uri(
+                                    properties.apiUrl()
+                                            + "/{storeId}/products?page={page}&per_page={perPage}",
+                                    storeId,
+                                    remotePage,
+                                    size
+                            )
+                            .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                            .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                            .accept(MediaType.APPLICATION_JSON)
+                            .retrieve()
+                            .toEntity(TiendanubeProductResponse[].class);
+
+            TiendanubeProductResponse[] body = response.getBody();
+
+            List<TiendanubeProductResponse> products =
+                    body == null
+                            ? List.of()
+                            : Arrays.asList(body);
+
+            long total = parseTotalCount(response);
+
+            int totalPages =
+                    size > 0
+                            ? (int) Math.ceil((double) total / size)
+                            : 0;
+
+            return new TiendanubeProductsPage(
+                    products,
+                    total,
+                    page,
+                    size,
+                    totalPages
+            );
+
+        } catch (RestClientException exception) {
+            throw buildApiException(
+                    "obtener lista de productos",
+                    exception,
+                    store
+            );
+        }
+    }
+
+
+    private long parseTotalCount(ResponseEntity<?> response) {
+        String value = response.getHeaders().getFirst("x-total-count");
+
+        if (value == null || value.isBlank()) {
+            return 0;
+        }
+
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException exception) {
+            log.warn("No se pudo interpretar x-total-count de Tiendanube: {}", value);
+
+            return 0;
+        }
     }
 
     public void createProductImage(
@@ -156,7 +230,7 @@ public class TiendanubeClient {
         }
     }
 
-    private TiendanubeProductResponse[] getProductsPage(
+    private TiendanubeProductResponse[] fetchProductsPage(
             TiendanubeStore store,
             Long storeId,
             int page,
