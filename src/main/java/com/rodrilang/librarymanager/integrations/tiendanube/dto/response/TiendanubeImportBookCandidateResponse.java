@@ -5,6 +5,8 @@ public record TiendanubeImportBookCandidateResponse(
         String isbn,
         String title,
         String authors,
-        String publisher
+        String publisher,
+        Long inventoryId,
+        boolean inventoryLinked
 ) {
 }

@@ -361,7 +361,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                     inventory.getId(),
                     false,
                     false,
-                    List.of(toCandidate(inventory.getBook()))
+                    List.of(toCandidate(inventory.getBook(), context))
             );
 
             return buildItem(product, variant, match);
@@ -402,7 +402,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                     null,
                     false,
                     true,
-                    textualCandidates.stream().map(this::toCandidate).toList()
+                    textualCandidates.stream().map((Book book) -> toCandidate(book, context)).toList()
             );
 
             return buildItem(product, variant, match);
@@ -411,13 +411,31 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         Book book = textualCandidates.getFirst();
         Inventory inventory = context.inventoriesByBookId().get(book.getId());
 
+        if (inventory != null) {
+            TiendanubeProductLink inventoryLink =
+                    context.linksByInventoryId().get(inventory.getId());
+
+            if (inventoryLink != null) {
+                PreviewMatch match = new PreviewMatch(
+                        TiendanubeImportMatchType.INVENTORY_ALREADY_LINKED,
+                        book.getId(),
+                        inventory.getId(),
+                        false,
+                        true,
+                        List.of(toCandidate(book, context))
+                );
+
+                return buildItem(product, variant, match);
+            }
+        }
+
         PreviewMatch match = new PreviewMatch(
                 TiendanubeImportMatchType.POSSIBLE_MATCH,
                 book.getId(),
                 inventory != null ? inventory.getId() : null,
                 false,
                 true,
-                List.of(toCandidate(book))
+                List.of(toCandidate(book, context))
         );
 
         return buildItem(product, variant, match);
@@ -444,7 +462,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         inventory.getId(),
                         false,
                         true,
-                        List.of(toCandidate(book))
+                        List.of(toCandidate(book, context))
                 );
 
                 return buildItem(product, variant, match);
@@ -456,7 +474,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                     inventory.getId(),
                     true,
                     false,
-                    List.of(toCandidate(book))
+                    List.of(toCandidate(book, context))
             );
 
             return buildItem(product, variant, match);
@@ -472,7 +490,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 null,
                 true,
                 false,
-                List.of(toCandidate(book))
+                List.of(toCandidate(book, context))
         );
 
         return buildItem(product, variant, match);
@@ -501,7 +519,10 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         );
     }
 
-    private TiendanubeImportBookCandidateResponse toCandidate(Book book) {
+    private TiendanubeImportBookCandidateResponse toCandidate(
+            Book book,
+            PreviewContext context
+    ) {
         String authors = book.getAuthors() == null
                 ? null
                 : book.getAuthors().stream()
@@ -510,14 +531,29 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 .reduce((a, b) -> a + ", " + b)
                 .orElse(null);
 
-        String publisher = book.getPublisher() == null ? null : book.getPublisher().getName();
+        String publisher = book.getPublisher() == null
+                ? null
+                : book.getPublisher().getName();
+
+        Inventory inventory = context.inventoriesByBookId()
+                .get(book.getId());
+
+        Long inventoryId = inventory != null
+                ? inventory.getId()
+                : null;
+
+        boolean inventoryLinked = inventory != null
+                && context.linksByInventoryId()
+                .containsKey(inventory.getId());
 
         return new TiendanubeImportBookCandidateResponse(
                 book.getId(),
                 book.getIsbn(),
                 book.getTitle(),
                 authors,
-                publisher
+                publisher,
+                inventoryId,
+                inventoryLinked
         );
     }
 
