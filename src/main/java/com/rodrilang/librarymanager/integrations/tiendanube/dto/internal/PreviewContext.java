@@ -9,6 +9,7 @@ import java.util.Map;
 
 public record PreviewContext(
         Map<Long, TiendanubeProductLink> linksByVariantId,
+        Map<Long, TiendanubeProductLink> linksByInventoryId,
         Map<Long, Inventory> inventoriesByBookId,
         Map<String, Book> booksByIsbn,
         List<Book> books
