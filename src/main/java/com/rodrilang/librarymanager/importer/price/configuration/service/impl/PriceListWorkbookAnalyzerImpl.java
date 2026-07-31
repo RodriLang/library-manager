@@ -5,6 +5,8 @@ import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.Pr
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListSheetAnalysisResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListWorkbookAnalysisResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListWorkbookAnalyzer;
+import com.rodrilang.librarymanager.importer.price.util.ExcelCellValueReader;
+import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,6 +18,7 @@ import java.util.Locale;
 import java.util.Set;
 
 @Service
+@RequiredArgsConstructor
 public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer {
 
     private static final int MAX_PREVIEW_ROWS = 30;
@@ -44,7 +47,7 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
             "stock"
     );
 
-    private final DataFormatter dataFormatter = new DataFormatter();
+    private final ExcelCellValueReader cellValueReader;
 
     @Override
     public PriceListWorkbookAnalysisResponse analyze(MultipartFile file) {
@@ -70,7 +73,6 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
     }
 
     private PriceListSheetAnalysisResponse analyzeSheet(Sheet sheet, int sheetIndex) {
-        int lastRowIndex = sheet.getLastRowNum();
 
         int columnCount = findMaximumColumnCount(sheet);
 
@@ -110,19 +112,49 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
     }
 
     private int findMaximumColumnCount(Sheet sheet) {
-        int max = 0;
+        int maxColumnCount = 0;
 
-        int lastRowIndex = Math.min(sheet.getLastRowNum(), MAX_PREVIEW_ROWS - 1);
+        int lastRowIndex = Math.min(
+                sheet.getLastRowNum(),
+                MAX_PREVIEW_ROWS - 1
+        );
 
-        for (int i = 0; i <= lastRowIndex; i++) {
-            Row row = sheet.getRow(i);
+        for (int rowIndex = 0;
+             rowIndex <= lastRowIndex;
+             rowIndex++) {
 
-            if (row != null) {
-                max = Math.max(max, row.getLastCellNum());
+            Row row = sheet.getRow(rowIndex);
+
+            if (row == null) {
+                continue;
+            }
+
+            int lastNonBlankColumn = findLastNonBlankColumn(row);
+
+            maxColumnCount = Math.max(
+                    maxColumnCount,
+                    lastNonBlankColumn + 1
+            );
+        }
+
+        return maxColumnCount;
+    }
+
+    private int findLastNonBlankColumn(Row row) {
+        int lastNonBlankColumn = -1;
+
+        for (Cell cell : row) {
+            String value = cellValueReader.read(cell);
+
+            if (!value.isBlank()) {
+                lastNonBlankColumn = Math.max(
+                        lastNonBlankColumn,
+                        cell.getColumnIndex()
+                );
             }
         }
 
-        return Math.max(max, 0);
+        return lastNonBlankColumn;
     }
 
     private Integer detectHeaderRow(List<PriceListPreviewRowResponse> rows) {
@@ -183,7 +215,7 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
             return "";
         }
 
-        return dataFormatter.formatCellValue(cell).trim();
+        return cellValueReader.read(cell);
     }
 
     private String normalize(String value) {
