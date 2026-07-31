@@ -7,7 +7,11 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 
 public interface TiendanubeImportService {
 
-    TiendanubeImportPreviewResponse preview(Long bookstoreId);
+    TiendanubeImportPreviewResponse preview(
+            Long bookstoreId,
+            int page,
+            int size
+    );
 
     TiendanubeImportResultResponse importProduct(Long bookstoreId, Long productId, Long variantId);
 

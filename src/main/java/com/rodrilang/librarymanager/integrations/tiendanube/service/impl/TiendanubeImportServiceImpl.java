@@ -16,6 +16,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeImportResultResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductsPage;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
@@ -61,17 +62,38 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     private final TiendanubeProductSyncService productSyncService;
 
     @Override
-    public TiendanubeImportPreviewResponse preview(Long bookstoreId) {
+    public TiendanubeImportPreviewResponse preview(
+            Long bookstoreId,
+            int page,
+            int size
+    ) {
         TiendanubeStore store = getActiveStore(bookstoreId);
-        List<TiendanubeProductResponse> products = client.getProducts(store.getStoreId());
 
-        PreviewContext context = buildPreviewContext(bookstoreId, store.getStoreId());
+        TiendanubeProductsPage productsPage =
+                client.fetchProductsPage(
+                        store.getStoreId(),
+                        page,
+                        size
+                );
 
-        List<TiendanubeImportPreviewItemResponse> items = products.stream()
-                .flatMap(product -> buildPreviewItems(product, context).stream())
-                .toList();
+        PreviewContext context =
+                buildPreviewContext(
+                        bookstoreId,
+                        store.getStoreId()
+                );
 
-        return buildPreviewResponse(items);
+        List<TiendanubeImportPreviewItemResponse> items =
+                productsPage.products()
+                        .stream()
+                        .flatMap(product ->
+                                buildPreviewItems(product, context).stream()
+                        )
+                        .toList();
+
+        return buildPreviewResponse(
+                items,
+                productsPage
+        );
     }
 
     @Override
@@ -457,30 +479,40 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
     }
 
-    private TiendanubeImportPreviewResponse buildPreviewResponse(List<TiendanubeImportPreviewItemResponse> items) {
-        int readyToImport = (int) items.stream()
+    private TiendanubeImportPreviewResponse buildPreviewResponse(
+            List<TiendanubeImportPreviewItemResponse> items,
+            TiendanubeProductsPage page
+    ) {
+        long readyToImport = items.stream()
                 .filter(item -> item.matchType() == TiendanubeImportMatchType.EXACT_BARCODE
                         || item.matchType() == TiendanubeImportMatchType.EXACT_SKU)
                 .count();
 
-        int readyToLink = (int) items.stream()
-                .filter(item -> item.matchType() == TiendanubeImportMatchType.INVENTORY_EXISTS)
+        long readyToLink = items.stream()
+                .filter(item ->
+                        item.matchType() == TiendanubeImportMatchType.INVENTORY_EXISTS
+                )
                 .count();
 
-        int requiresReview = (int) items.stream()
+        long requiresReview = items.stream()
                 .filter(TiendanubeImportPreviewItemResponse::requiresReview)
                 .count();
 
-        int alreadyLinked = (int) items.stream()
-                .filter(item -> item.matchType() == TiendanubeImportMatchType.ALREADY_LINKED)
+        long alreadyLinked = items.stream()
+                .filter(item ->
+                        item.matchType() == TiendanubeImportMatchType.ALREADY_LINKED
+                )
                 .count();
 
         return new TiendanubeImportPreviewResponse(
-                items.size(),
+                page.total(),
                 readyToImport,
                 readyToLink,
                 requiresReview,
                 alreadyLinked,
+                page.page(),
+                page.size(),
+                page.totalPages(),
                 items
         );
     }
