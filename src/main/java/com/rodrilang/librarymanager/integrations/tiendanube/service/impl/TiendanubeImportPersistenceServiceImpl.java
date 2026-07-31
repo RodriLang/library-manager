@@ -56,6 +56,7 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
                 .salePrice(command.salePrice())
                 .tiendanubeStatus(TiendanubeInventoryStatus.LINKED)
                 .tiendanubePriceSyncEnabled(Boolean.TRUE.equals(command.syncPrice()))
+                .editorialPriceSyncEnabled(Boolean.TRUE.equals(command.editorialPriceSyncEnabled()))
                 .active(true)
                 .build();
 

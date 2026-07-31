@@ -4,8 +4,10 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.config.TiendanubeProperties;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeAuthorizationResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeConnectionStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeTokenResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
+import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeConnectionStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeOAuthService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeOAuthStateService;
@@ -72,11 +74,46 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
         store.setTokenType(response.tokenType());
         store.setScope(response.scope());
         store.setActive(true);
+        store.setTokenValid(true);
+        store.setLastValidatedAt(Instant.now());
+        store.setConnectionError(null);
         store.setConnectedAt(Instant.now());
 
         storeRepository.save(store);
     }
 
+    @Override
+    public TiendanubeConnectionStatusResponse getStatus() {
+        return storeRepository.findByBookstoreIdAndActiveTrue(1L)
+                .map(store -> {
+                    if (!store.isTokenValid()) {
+                        return new TiendanubeConnectionStatusResponse(
+                                false,
+                                true,
+                                store.getStoreId(),
+                                TiendanubeConnectionStatus.INVALID_TOKEN,
+                                "La conexión con Tiendanube necesita volver a autorizarse."
+                        );
+                    }
+
+                    return new TiendanubeConnectionStatusResponse(
+                            true,
+                            false,
+                            store.getStoreId(),
+                            TiendanubeConnectionStatus.CONNECTED,
+                            null
+                    );
+                })
+                .orElseGet(() ->
+                        new TiendanubeConnectionStatusResponse(
+                                false,
+                                false,
+                                null,
+                                TiendanubeConnectionStatus.DISCONNECTED,
+                                null
+                        )
+                );
+    }
 
     private void validateCode(String code) {
         if (code == null || code.isBlank()) {

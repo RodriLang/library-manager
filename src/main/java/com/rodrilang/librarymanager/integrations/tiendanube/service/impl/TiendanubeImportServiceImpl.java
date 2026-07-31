@@ -114,7 +114,8 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 BookCondition.NEW,
                 stock,
                 variant.price(),
-                true
+                true,
+                false
         );
 
         TiendanubeImportResultResponse result = importPersistenceService.importExistingBook(
@@ -240,7 +241,8 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                     item.condition(),
                     item.stock(),
                     item.salePrice(),
-                    item.syncPrice()
+                    item.syncPrice(),
+                    item.editorialPriceSyncEnabled()
             );
 
             TiendanubeImportResultResponse result = importPersistenceService.importExistingBook(

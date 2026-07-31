@@ -77,6 +77,10 @@ public class Inventory extends AuditableEntity {
     private Boolean tiendanubePriceSyncEnabled = false;
 
     @Builder.Default
+    @Column(name = "editorial_price_sync_enabled", nullable = false)
+    private Boolean editorialPriceSyncEnabled = false;
+
+    @Builder.Default
     @Column(nullable = false)
     private Boolean active = true;
 }

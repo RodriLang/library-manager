@@ -60,4 +60,14 @@ public class TiendanubeStore {
 
     @Column(name = "last_error", length = 1000)
     private String lastError;
+
+    @Column(name = "token_valid", nullable = false)
+    @Builder.Default
+    private boolean tokenValid = true;
+
+    @Column(name = "last_validated_at")
+    private Instant lastValidatedAt;
+
+    @Column(name = "connection_error")
+    private String connectionError;
 }

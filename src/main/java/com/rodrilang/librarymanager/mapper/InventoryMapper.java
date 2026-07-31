@@ -72,5 +72,6 @@ public abstract class InventoryMapper {
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "bookstore", ignore = true)
+    @Mapping(target = "tiendanubeStatus", ignore = true)
     public abstract void updateEntity(UpdateInventoryRequest request, @MappingTarget Inventory inventory);
 }
