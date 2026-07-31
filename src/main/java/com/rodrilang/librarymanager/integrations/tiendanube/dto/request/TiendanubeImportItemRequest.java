@@ -13,6 +13,7 @@ public record TiendanubeImportItemRequest(
         @NotNull BookCondition condition,
         @NotNull @PositiveOrZero Integer stock,
         @NotNull @PositiveOrZero BigDecimal salePrice,
-        Boolean syncPrice
+        Boolean syncPrice,
+        Boolean editorialPriceSyncEnabled
 ) {
 }

@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.controller;
 
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeAuthorizationResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeConnectionStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeOAuthService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -20,25 +21,26 @@ import java.net.URI;
 @RequiredArgsConstructor
 public class TiendanubeAuthController {
 
-    private final TiendanubeOAuthService oAuthService;
+    private final TiendanubeOAuthService tiendanubeOAuthService;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
-    @GetMapping("/authorization-url")
-    public ResponseEntity<TiendanubeAuthorizationResponse>
-    getAuthorizationUrl() {
+    @GetMapping("/status")
+    public TiendanubeConnectionStatusResponse getStatus() {
+        return tiendanubeOAuthService.getStatus();
+    }
 
-        return ResponseEntity.ok(
-                oAuthService.createAuthorizationUrl()
-        );
+    @GetMapping("/authorization-url")
+    public ResponseEntity<TiendanubeAuthorizationResponse> getAuthorizationUrl() {
+        return ResponseEntity.ok(tiendanubeOAuthService.createAuthorizationUrl());
     }
 
     @GetMapping("/oauth/callback")
     public ResponseEntity<Void> callback(@RequestParam String code,
                                          @RequestParam String state
     ) {
-        oAuthService.handleCallback(code, state);
+        tiendanubeOAuthService.handleCallback(code, state);
 
         URI redirectUri = URI.create(frontendUrl + "/settings/integrations/tiendanube" + "?connected=true");
 

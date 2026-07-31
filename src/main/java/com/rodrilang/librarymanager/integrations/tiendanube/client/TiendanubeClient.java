@@ -18,6 +18,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeSto
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeRemoteResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeConnectionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -48,6 +49,7 @@ public class TiendanubeClient {
     private final TiendanubeProperties properties;
     private final RestClient tiendanubeRestClient;
     private final ObjectMapper objectMapper;
+    private final TiendanubeConnectionService connectionService;
 
     public TiendanubeProductResponse createProduct(Long storeId, TiendanubeCreateProductRequest request) {
         TiendanubeStore store = getActiveStore(storeId);
@@ -64,7 +66,7 @@ public class TiendanubeClient {
                     .body(TiendanubeProductResponse.class);
 
         } catch (RestClientException exception) {
-            throw buildApiException("crear producto", exception);
+            throw buildApiException("crear producto", exception, store);
         }
     }
 
@@ -80,7 +82,7 @@ public class TiendanubeClient {
                     .body(TiendanubeOrderResponse.class);
 
         } catch (RestClientException exception) {
-            throw buildApiException("obtener pedido", exception);
+            throw buildApiException("obtener pedido", exception, store);
         }
 
     }
@@ -97,7 +99,7 @@ public class TiendanubeClient {
                     .retrieve()
                     .body(TiendanubeProductResponse.class);
         } catch (RestClientException exception) {
-            throw buildApiException("obtener producto", exception);
+            throw buildApiException("obtener producto", exception, store);
         }
     }
 
@@ -150,7 +152,7 @@ public class TiendanubeClient {
                     .toBodilessEntity();
 
         } catch (RestClientException exception) {
-            throw buildApiException("crear imagen de producto", exception);
+            throw buildApiException("crear imagen de producto", exception, store);
         }
     }
 
@@ -176,10 +178,7 @@ public class TiendanubeClient {
                     .body(TiendanubeProductResponse[].class);
 
         } catch (RestClientException exception) {
-            throw buildApiException(
-                    "obtener lista de productos",
-                    exception
-            );
+            throw buildApiException("obtener producto", exception, store);
         }
     }
 
@@ -208,7 +207,7 @@ public class TiendanubeClient {
                     .body(TiendanubeProductVariantResponse.class);
 
         } catch (RestClientException exception) {
-            throw buildApiException("actualizar stock", exception);
+            throw buildApiException("actualizar stock", exception, store);
         }
     }
 
@@ -238,7 +237,7 @@ public class TiendanubeClient {
                     .body(TiendanubeProductVariantResponse.class);
 
         } catch (RestClientException exception) {
-            throw buildApiException("actualizar variante", exception);
+            throw buildApiException("actualizar variante", exception, store);
         }
     }
 
@@ -261,7 +260,7 @@ public class TiendanubeClient {
                     .retrieve()
                     .body(TiendanubeWebhookResponse.class);
         } catch (RestClientException exception) {
-            throw buildApiException("crear webhook", exception);
+            throw buildApiException("crear webhook", exception, store);
         }
     }
 
@@ -362,23 +361,82 @@ public class TiendanubeClient {
     }
 
     private TiendanubeStore getActiveStore(Long storeId) {
-        return storeRepository.findByStoreIdAndActiveTrue(storeId)
+        TiendanubeStore store = storeRepository.findByStoreIdAndActiveTrue(storeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tienda Tiendanube no conectada"));
+
+        if (!store.isTokenValid()) {
+            throw new TiendanubeApiException("La conexión con Tiendanube necesita volver a autorizarse.");
+        }
+
+        return store;
     }
 
-    private TiendanubeApiException buildApiException(String operation, RestClientException exception) {
+    private TiendanubeApiException buildApiException(
+            String operation,
+            RestClientException exception
+    ) {
         if (exception instanceof RestClientResponseException responseException) {
-            log.error("Error Tiendanube. operation={}, status={}, response={}",
-                    operation, responseException.getStatusCode(), responseException.getResponseBodyAsString());
+            log.error(
+                    "Error Tiendanube. operation={}, status={}, response={}",
+                    operation,
+                    responseException.getStatusCode(),
+                    responseException.getResponseBodyAsString()
+            );
+        } else {
+            log.error(
+                    "Error de comunicación con Tiendanube. operation={}",
+                    operation,
+                    exception
+            );
+        }
 
-            if (responseException.getStatusCode().value() == 404) {
+        return new TiendanubeApiException(
+                "No se pudo completar la operación en Tiendanube: " + operation,
+                exception
+        );
+    }
+
+    private TiendanubeApiException buildApiException(
+            String operation,
+            RestClientException exception,
+            TiendanubeStore store
+    ) {
+        if (exception instanceof RestClientResponseException responseException) {
+            int status = responseException.getStatusCode().value();
+
+            log.error(
+                    "Error Tiendanube. operation={}, storeId={}, status={}, response={}",
+                    operation,
+                    store.getStoreId(),
+                    status,
+                    responseException.getResponseBodyAsString()
+            );
+
+            if (status == 401) {
+                connectionService.markTokenInvalid(
+                        store.getStoreId(),
+                        "INVALID_ACCESS_TOKEN"
+                );
+
+                return new TiendanubeApiException(
+                        "La conexión con Tiendanube dejó de ser válida. Es necesario volver a conectar la cuenta.",
+                        responseException
+                );
+            }
+
+            if (status == 404) {
                 return new TiendanubeRemoteResourceNotFoundException(
                         "El recurso ya no existe en Tiendanube",
                         responseException
                 );
             }
         } else {
-            log.error("Error de comunicación con Tiendanube. operation={}", operation, exception);
+            log.error(
+                    "Error de comunicación con Tiendanube. operation={}, storeId={}",
+                    operation,
+                    store.getStoreId(),
+                    exception
+            );
         }
 
         return new TiendanubeApiException(

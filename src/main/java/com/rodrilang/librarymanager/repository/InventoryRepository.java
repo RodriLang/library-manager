@@ -16,7 +16,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     boolean existsByBookIdAndBookstoreIdAndCondition(Long bookId, Long bookStoreId, BookCondition condition);
 
-    List<Inventory> findAllByBookstoreIdAndBookTitleSort(
+    List<Inventory> findAllByBookstoreIdAndBookTitleSortAndActiveTrue(
             Long bookstoreId,
             String titleSort
     );
@@ -32,12 +32,17 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             "book",
             "book.publisher"
     })
-    List<Inventory> findAllByBookstoreIdAndBookIsbn(
+    List<Inventory> findAllByBookstoreIdAndBookIsbnAndActiveTrue(
             Long bookstoreId,
             String isbn
     );
 
-    @Query("SELECT i FROM Inventory i")
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.publisher",
+            "book.authors"
+    })
+    @Query("SELECT i FROM Inventory i WHERE i.active = true")
     Page<Inventory> findAllWithBookDetails(Pageable pageable);
 
 
@@ -59,27 +64,29 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                     FROM inventory i
                     JOIN books b ON b.id = i.book_id
                     LEFT JOIN publishers p ON p.id = b.publisher_id
-                    WHERE
-                        lower(b.isbn) LIKE lower(concat('%', :query, '%'))
-                        OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        )
-                        OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
+                    WHERE i.active = true
+                        AND (
+                            lower(b.isbn) LIKE lower(concat('%', :query, '%'))
+                            OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
+                            OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
+                            OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
+                            OR EXISTS (
+                                SELECT 1
+                                FROM book_authors ba
+                                JOIN authors a ON a.id = ba.author_id
+                                WHERE ba.book_id = b.id
+                                AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
+                            )
+                            OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
+                            OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
+                            OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
+                            OR EXISTS (
+                                SELECT 1
+                                FROM book_authors ba
+                                JOIN authors a ON a.id = ba.author_id
+                                WHERE ba.book_id = b.id
+                                AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
+                            )
                         )
                     ORDER BY
                         CASE
@@ -108,27 +115,29 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                     FROM inventory i
                     JOIN books b ON b.id = i.book_id
                     LEFT JOIN publishers p ON p.id = b.publisher_id
-                    WHERE
-                        lower(b.isbn) LIKE lower(concat('%', :query, '%'))
-                        OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        )
-                        OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
+                    WHERE i.active = true
+                      AND (
+                            lower(b.isbn) LIKE lower(concat('%', :query, '%'))
+                            OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
+                            OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
+                            OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
+                            OR EXISTS (
+                                SELECT 1
+                                FROM book_authors ba
+                                JOIN authors a ON a.id = ba.author_id
+                                WHERE ba.book_id = b.id
+                                  AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
+                            )
+                            OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
+                            OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
+                            OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
+                            OR EXISTS (
+                                SELECT 1
+                                FROM book_authors ba
+                                JOIN authors a ON a.id = ba.author_id
+                                WHERE ba.book_id = b.id
+                                  AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
+                            )
                         )
                     """,
             nativeQuery = true

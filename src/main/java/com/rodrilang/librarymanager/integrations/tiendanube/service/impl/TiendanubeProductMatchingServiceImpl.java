@@ -150,7 +150,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
         String barcode = TiendanubeProductUtils.normalizeIdentifier(variant.barcode());
 
         if (barcode != null) {
-            List<Inventory> candidates = inventoryRepository.findAllByBookstoreIdAndBookIsbn(bookstoreId, barcode);
+            List<Inventory> candidates = inventoryRepository.findAllByBookstoreIdAndBookIsbnAndActiveTrue(bookstoreId, barcode);
 
             if (!candidates.isEmpty()) {
                 return createMatchResult(TiendanubeMatchType.EXACT_BARCODE, candidates);
@@ -160,7 +160,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
         String sku = TiendanubeProductUtils.normalizeIdentifier(variant.sku());
 
         if (sku != null) {
-            List<Inventory> candidates = inventoryRepository.findAllByBookstoreIdAndBookIsbn(bookstoreId, sku);
+            List<Inventory> candidates = inventoryRepository.findAllByBookstoreIdAndBookIsbnAndActiveTrue(bookstoreId, sku);
 
             if (!candidates.isEmpty()) {
                 return createMatchResult(TiendanubeMatchType.EXACT_SKU, candidates);

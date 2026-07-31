@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.service.impl;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
+import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
@@ -77,6 +78,10 @@ public class InventoryServiceImpl implements InventoryService {
                 ? TiendanubeInventoryStatus.PENDING_PUBLICATION
                 : TiendanubeInventoryStatus.DISABLED;
 
+        boolean editorialPriceSyncEnabled =
+                condition == BookCondition.NEW
+                        && Boolean.TRUE.equals(request.editorialPriceSyncEnabled());
+
         Inventory inventory = Inventory.builder()
                 .book(book)
                 .bookstore(bookstore)
@@ -84,6 +89,8 @@ public class InventoryServiceImpl implements InventoryService {
                 .stock(request.initialStock())
                 .minimumStock(request.minimumStock() != null ? request.minimumStock() : 0)
                 .salePrice(request.salePrice())
+                .editorialPriceSyncEnabled(editorialPriceSyncEnabled)
+                .tiendanubePriceSyncEnabled(Boolean.TRUE.equals(request.tiendanubePriceSyncEnabled()))
                 .tiendanubeStatus(tiendanubeStatus)
                 .active(true)
                 .build();
@@ -102,6 +109,11 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryDetailResponse addStock(Long bookId, InventoryQuantityRequest request) {
 
         Inventory inventory = getEntityByBookId(bookId);
+
+        if (!Boolean.TRUE.equals(inventory.getActive())) {
+            throw new BusinessException("El inventario se encuentra inactivo. Debe reactivarse antes de agregar stock.");
+        }
+
         inventory.setStock(inventory.getStock() + request.quantity());
 
         return saveAndSyncStock(inventory);
@@ -112,6 +124,10 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryDetailResponse recordSale(Long bookId, InventoryQuantityRequest request) {
         Inventory inventory = getEntityByBookId(bookId);
 
+        if (!Boolean.TRUE.equals(inventory.getActive())) {
+            throw new BusinessException("El libro se encuentra inactivo en el inventario.");
+        }
+
         if (inventory.getStock() < request.quantity()) {
             throw new BusinessException("No hay stock suficiente para registrar la venta.");
         }
@@ -119,6 +135,44 @@ public class InventoryServiceImpl implements InventoryService {
         inventory.setStock(inventory.getStock() - request.quantity());
 
         return saveAndSyncStock(inventory);
+    }
+
+    @Override
+    @Transactional
+    public InventoryDetailResponse reactivate(Long bookId, ReactivateInventoryRequest request) {
+        Inventory inventory = getEntityByBookId(bookId);
+
+        if (Boolean.TRUE.equals(inventory.getActive())) {
+            throw new BusinessException("El inventario ya se encuentra activo.");
+        }
+
+        inventory.setActive(true);
+        inventory.setStock(request.stock());
+        inventory.setSalePrice(request.salePrice());
+        inventory.setMinimumStock(request.minimumStock() != null ? request.minimumStock() : 0);
+        inventory.setCondition(request.condition() != null ? request.condition() : BookCondition.NEW);
+        inventory.setEditorialPriceSyncEnabled(
+                inventory.getCondition() == BookCondition.NEW
+                        && Boolean.TRUE.equals(request.editorialPriceSyncEnabled())
+        );
+        inventory.setTiendanubePriceSyncEnabled(Boolean.TRUE.equals(request.tiendanubePriceSyncEnabled()));
+
+        if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.DISABLED
+                && Boolean.TRUE.equals(request.publishOnTiendanube())) {
+            inventory.setTiendanubeStatus(TiendanubeInventoryStatus.PENDING_PUBLICATION);
+        }
+
+        Inventory saved = inventoryRepository.save(inventory);
+
+        if (saved.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
+            tiendanubeVariantSyncService.syncStock(saved.getId(), saved.getStock());
+
+            if (Boolean.TRUE.equals(saved.getTiendanubePriceSyncEnabled())) {
+                tiendanubeVariantSyncService.syncPrice(saved.getId());
+            }
+        }
+
+        return toDetailResponse(saved);
     }
 
     @Transactional
@@ -184,7 +238,11 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inventory = getEntityByBookId(bookId);
         inventory.setActive(false);
 
-        inventoryRepository.save(inventory);
+        Inventory saved = inventoryRepository.save(inventory);
+
+        if (saved.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
+            tiendanubeVariantSyncService.syncStock(saved.getId(), 0);
+        }
     }
 
     @Override
