@@ -250,13 +250,28 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             ).orElse(null);
 
             if (existingInventory != null) {
-                TiendanubeProductLinkResponse link = productLinkService.linkExistingProduct(
-                        existingInventory.getId(),
-                        item.productId(),
-                        item.variantId()
+
+                Optional<TiendanubeProductLink> existingInventoryLink =
+                        productLinkRepository
+                                .findByInventoryIdAndActiveTrue(existingInventory.getId());
+
+                if (existingInventoryLink.isPresent()) {
+                    throw new BusinessException(
+                            "El inventario ya está vinculado con otra publicación de Tiendanube"
+                    );
+                }
+
+                TiendanubeProductLinkResponse link =
+                        productLinkService.linkExistingProduct(
+                                existingInventory.getId(),
+                                item.productId(),
+                                item.variantId()
+                        );
+
+                existingInventory.setTiendanubePriceSyncEnabled(
+                        Boolean.TRUE.equals(item.syncPrice())
                 );
 
-                existingInventory.setTiendanubePriceSyncEnabled(Boolean.TRUE.equals(item.syncPrice()));
                 inventoryRepository.save(existingInventory);
 
                 productSyncService.syncMissingImage(existingInventory.getId());
