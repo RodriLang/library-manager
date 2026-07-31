@@ -4,14 +4,18 @@ import com.rodrilang.librarymanager.importer.price.configuration.dto.CreatePrice
 import com.rodrilang.librarymanager.importer.price.configuration.dto.CreatePriceListProviderRequest;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListImportConfigResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListProviderResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListWorkbookAnalysisResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListImportConfigService;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListProviderService;
+import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListWorkbookAnalyzer;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -26,6 +30,7 @@ public class PriceListProviderController {
 
     private final PriceListProviderService providerService;
     private final PriceListImportConfigService configService;
+    private final PriceListWorkbookAnalyzer workbookAnalyzer;
 
     @PostMapping
     public ResponseEntity<PriceListProviderResponse> create(@Valid @RequestBody CreatePriceListProviderRequest request) {
@@ -40,10 +45,13 @@ public class PriceListProviderController {
         return ResponseEntity.status(HttpStatus.CREATED).body(configService.create(providerId, request));
     }
 
+    @PostMapping(value = "/analyze-template", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<PriceListWorkbookAnalysisResponse> analyzeTemplate(@RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(workbookAnalyzer.analyze(file));
+    }
+
     @GetMapping("/{providerId}/config")
-    public ResponseEntity<PriceListImportConfigResponse> getActiveConfig(
-            @PathVariable Long providerId
-    ) {
+    public ResponseEntity<PriceListImportConfigResponse> getActiveConfig(@PathVariable Long providerId) {
         return ResponseEntity.ok(configService.findActiveByProvider(providerId));
     }
 
