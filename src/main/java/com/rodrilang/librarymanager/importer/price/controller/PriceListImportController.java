@@ -42,6 +42,21 @@ public class PriceListImportController {
         );
     }
 
+    @PostMapping(
+            value = "/providers/{providerId}/import",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<PriceListImportStartResponse> importProviderPriceList(
+            @PathVariable Long providerId,
+            @RequestParam MultipartFile file,
+            @RequestParam LocalDate validFrom,
+            @RequestHeader("Idempotency-Key") String idempotencyKey
+    ) {
+        return ResponseEntity.accepted().body(
+                priceListImportService.startProviderImport(providerId, file, validFrom, idempotencyKey)
+        );
+    }
+
     @GetMapping("/imports/{jobId}/status")
     public ResponseEntity<PriceListImportJobStatusResponse> getImportStatus(
             @PathVariable Long jobId

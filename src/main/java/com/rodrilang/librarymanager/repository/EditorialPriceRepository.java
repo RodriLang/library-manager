@@ -26,4 +26,10 @@ public interface EditorialPriceRepository extends JpaRepository<EditorialPrice, 
             PriceListSource source,
             LocalDate validFrom
     );
+
+    List<EditorialPrice> findByBookIdInAndProviderIdAndValidFrom(
+            List<Long> bookIds,
+            Long providerId,
+            LocalDate validFrom
+    );
 }

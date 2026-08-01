@@ -2,8 +2,10 @@ package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.dto.internal.EditorialPriceImportResult;
 import com.rodrilang.librarymanager.enums.EditorialPriceChangeType;
+import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.EditorialPrice;
@@ -80,22 +82,20 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     public PriceImportCounters registerOrUpdateBatchForImport(
             List<Book> books,
             List<PriceListRow> rows,
-            LocalDate validFrom
+            PriceListImportJob job
     ) {
         if (books.isEmpty()) {
             return new PriceImportCounters(0, 0, 0);
         }
 
-        PriceListSource source = rows.getFirst().priceListSource();
+        validateOrigin(job);
 
         List<Long> bookIds = books.stream()
                 .map(Book::getId)
                 .distinct()
                 .toList();
 
-        Map<Long, EditorialPrice> existingByBookId = editorialPriceRepository
-                .findByBookIdInAndSourceAndValidFrom(bookIds, source, validFrom)
-                .stream()
+        Map<Long, EditorialPrice> existingByBookId = loadExistingPrices(bookIds, job).stream()
                 .collect(Collectors.toMap(
                         price -> price.getBook().getId(),
                         Function.identity()
@@ -110,22 +110,13 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         for (int i = 0; i < books.size(); i++) {
             Book book = books.get(i);
             PriceListRow row = rows.get(i);
-
             EditorialPrice existing = existingByBookId.get(book.getId());
 
             if (existing == null) {
-                EditorialPrice newPrice = EditorialPrice.builder()
-                        .book(book)
-                        .price(row.retailPrice())
-                        .currency("ARS")
-                        .source(row.priceListSource())
-                        .validFrom(validFrom)
-                        .active(true)
-                        .build();
+                EditorialPrice newPrice = createPrice(book, row, job);
 
                 toSave.add(newPrice);
                 existingByBookId.put(book.getId(), newPrice);
-
                 createdPrices++;
                 continue;
             }
@@ -148,11 +139,7 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             editorialPriceRepository.saveAll(toSave);
         }
 
-        return new PriceImportCounters(
-                createdPrices,
-                updatedPrices,
-                unchangedPrices
-        );
+        return new PriceImportCounters(createdPrices, updatedPrices, unchangedPrices);
     }
 
     @Transactional(readOnly = true)
@@ -161,7 +148,51 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         return editorialPriceRepository
                 .findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
                         bookId,
-                        LocalDate.now()
+                        LocalDate.now(ZoneId.systemDefault())
                 );
     }
+
+    private List<EditorialPrice> loadExistingPrices(List<Long> bookIds, PriceListImportJob job) {
+        if (job.getImportConfig() != null) {
+            return editorialPriceRepository.findByBookIdInAndProviderIdAndValidFrom(
+                    bookIds,
+                    job.getProvider().getId(),
+                    job.getValidFrom()
+            );
+        }
+
+        return editorialPriceRepository.findByBookIdInAndSourceAndValidFrom(
+                bookIds,
+                job.getPriceListSource(),
+                job.getValidFrom()
+        );
+    }
+
+    private EditorialPrice createPrice(Book book, PriceListRow row, PriceListImportJob job) {
+        return EditorialPrice.builder()
+                .book(book)
+                .price(row.retailPrice())
+                .currency("ARS")
+                .source(job.getPriceListSource())
+                .provider(job.getProvider())
+                .validFrom(job.getValidFrom())
+                .active(true)
+                .build();
+    }
+
+    private void validateOrigin(PriceListImportJob job) {
+        boolean legacy = job.getPriceListSource() != null
+                && job.getProvider() == null
+                && job.getImportConfig() == null;
+
+        boolean configurable = job.getPriceListSource() == null
+                && job.getProvider() != null
+                && job.getImportConfig() != null;
+
+        if (!legacy && !configurable) {
+            throw new BusinessException("La importación no tiene un origen válido.");
+        }
+    }
+
+
 }

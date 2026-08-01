@@ -9,8 +9,10 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,6 +26,9 @@ import static com.rodrilang.librarymanager.importer.price.util.PriceListNormaliz
 @RequiredArgsConstructor
 public class ImportContextFactory {
 
+    @Value("${app.price-import.isbn-query-batch-size:1000}")
+    private int isbnQueryBatchSize;
+
     private final BookRepository bookRepository;
     private final AuthorResolver authorResolver;
     private final PublisherResolver publisherResolver;
@@ -34,21 +39,32 @@ public class ImportContextFactory {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        Map<String, Book> booksByIsbn = bookRepository.findByIsbnIn(isbns)
-                .stream()
+        Map<String, Book> booksByIsbn = loadBooksByIsbn(isbns).stream()
                 .collect(Collectors.toMap(
                         book -> normalizeIsbn(book.getIsbn()),
-                        Function.identity()
+                        Function.identity(),
+                        (existing, duplicate) -> existing
                 ));
 
         Map<String, Publisher> publishersByName = publisherResolver.loadPublishers(rows);
-
         Map<String, Author> authorsByName = authorResolver.loadAuthors(rows);
 
-        return new ImportContext(
-                booksByIsbn,
-                publishersByName,
-                authorsByName
-        );
+        return new ImportContext(booksByIsbn, publishersByName, authorsByName);
+    }
+
+    private List<Book> loadBooksByIsbn(Set<String> isbns) {
+        if (isbns.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> isbnList = new ArrayList<>(isbns);
+        List<Book> books = new ArrayList<>();
+
+        for (int fromIndex = 0; fromIndex < isbnList.size(); fromIndex += isbnQueryBatchSize) {
+            int toIndex = Math.min(fromIndex + isbnQueryBatchSize, isbnList.size());
+            books.addAll(bookRepository.findByIsbnIn(isbnList.subList(fromIndex, toIndex)));
+        }
+
+        return books;
     }
 }

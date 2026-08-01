@@ -11,5 +11,7 @@ public interface PriceListImportService {
 
     PriceListImportStartResponse startImport(PriceListSource priceListSource, MultipartFile file, LocalDate validFrom, String idempotencyKey);
 
+    PriceListImportStartResponse startProviderImport(Long providerId, MultipartFile file, LocalDate validFrom, String idempotencyKey);
+
     PriceListImportJobStatusResponse getStatus(Long jobId);
 }

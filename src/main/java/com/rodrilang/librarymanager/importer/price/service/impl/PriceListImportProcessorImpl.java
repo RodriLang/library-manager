@@ -1,7 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
-import com.rodrilang.librarymanager.dto.internal.EditorialPriceImportResult;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.ImportStatistics;
@@ -9,8 +8,9 @@ import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListValidationResult;
 import com.rodrilang.librarymanager.importer.price.factory.ImportContextFactory;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListParser;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
+import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
+import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
+import com.rodrilang.librarymanager.importer.price.resolver.PriceListImportParserResolver;
 import com.rodrilang.librarymanager.importer.price.service.PriceListBookUpsertService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportJobProgressService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportProcessor;
@@ -29,7 +29,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,7 +40,8 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
     @Value("${app.price-import.progress-update-every-rows:200}")
     private int progressUpdateEveryRows;
 
-    private final List<PriceListParser> parsers;
+    private final PriceListImportJobRepository jobRepository;
+    private final PriceListImportParserResolver importParserResolver;
     private final BookRepository bookRepository;
     private final PriceListImportSafetyValidator safetyValidator;
     private final PriceListImportErrorValidator importErrorValidator;
@@ -53,53 +53,34 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
     @Transactional
     @Override
-    public void process(
-            Long jobId,
-            PriceListSource priceListSource,
-            LocalDate validFrom,
-            byte[] fileBytes
-    ) {
+    public void process(Long jobId, byte[] fileBytes) {
         try {
             progressService.markProcessing(jobId);
 
-            PriceListParser parser = resolveParser(priceListSource);
+            PriceListImportJob job = jobRepository.findWithImportConfigById(jobId)
+                    .orElseThrow(() -> new BusinessException("No se encontró el trabajo de importación."));
 
             try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(fileBytes))) {
-                parser.validateTemplate(workbook);
-
-                List<PriceListRow> rows = parser.parse(workbook);
-
+                List<PriceListRow> rows = importParserResolver.parse(workbook, job);
                 PriceListValidationResult validation = validationService.validate(rows);
 
-                progressService.updateTotalRows(
-                        jobId,
-                        validation.validRows().size(),
-                        validation.errors().size()
-                );
-
+                progressService.updateTotalRows(jobId, validation.validRows().size(), validation.errors().size());
                 progressService.saveErrors(jobId, validation.errors());
-
                 safetyValidator.validate(rows, validation.validRows());
 
-                validation.errors().forEach(error ->
-                        log.warn(
-                                "Import error row={} isbn={} severity={} message={}",
-                                error.rowNumber(),
-                                error.isbn(),
-                                error.severity(),
-                                error.message()
-                        )
-                );
+                validation.errors().forEach(error -> log.warn(
+                        "Import error row={} isbn={} severity={} message={}",
+                        error.rowNumber(),
+                        error.isbn(),
+                        error.severity(),
+                        error.message()
+                ));
 
                 importErrorValidator.validate(validation.errors());
-
-                processValidRows(jobId, validation, validFrom);
-
+                processValidRows(jobId, validation, job);
             }
-
         } catch (Exception ex) {
             log.error("Price list import failed. jobId={}", jobId, ex);
-
             progressService.markFailed(jobId, ex.getMessage());
 
             if (ex instanceof BusinessException businessException) {
@@ -113,7 +94,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
     private void processValidRows(
             Long jobId,
             PriceListValidationResult validation,
-            LocalDate validFrom
+            PriceListImportJob job
     ) {
         ImportContext context = importContextFactory.create(validation.validRows());
 
@@ -149,7 +130,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                         newBookRows,
                         priceBooks,
                         priceRows,
-                        validFrom
+                        job
                 );
 
                 createdPrices += counters.createdPrices();
@@ -172,7 +153,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                 newBookRows,
                 priceBooks,
                 priceRows,
-                validFrom
+                job
         );
 
         createdPrices += counters.createdPrices();
@@ -194,7 +175,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
             List<PriceListRow> newBookRows,
             List<Book> priceBooks,
             List<PriceListRow> priceRows,
-            LocalDate validFrom
+            PriceListImportJob job
     ) {
         if (!newBooksToSave.isEmpty()) {
             List<Book> savedBooks = bookRepository.saveAll(newBooksToSave);
@@ -214,40 +195,11 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                 editorialPriceService.registerOrUpdateBatchForImport(
                         priceBooks,
                         priceRows,
-                        validFrom
+                        job
                 );
 
         priceBooks.clear();
         priceRows.clear();
-
-        return counters;
-    }
-
-    private PriceListParser resolveParser(PriceListSource priceListSource) {
-        return parsers.stream()
-                .filter(parser -> parser.supports(priceListSource))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(
-                        "No existe un parser configurado para la lista: " + priceListSource
-                ));
-    }
-
-    private PriceImportCounters saveNewBooksAndPrices(
-            List<Book> booksToSave,
-            List<PriceListRow> rowsToPrice,
-            LocalDate validFrom
-    ) {
-        List<Book> savedBooks = bookRepository.saveAll(booksToSave);
-
-        PriceImportCounters counters =
-                editorialPriceService.registerOrUpdateBatchForImport(
-                        savedBooks,
-                        rowsToPrice,
-                        validFrom
-                );
-
-        booksToSave.clear();
-        rowsToPrice.clear();
 
         return counters;
     }
