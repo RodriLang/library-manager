@@ -23,7 +23,37 @@ public record PriceListRow(
 
         String categoryName,
 
-        BookSource sourceName
+        BookSource sourceName,
+
+        PriceListMetadata metadata
 
 ) {
+
+    /*
+     * Mantiene compatibles los parsers actuales.
+     */
+    public PriceListRow(
+            int rowNumber,
+            String isbn,
+            String title,
+            String authorName,
+            String publisherName,
+            BigDecimal retailPrice,
+            PriceListSource source,
+            String categoryName,
+            BookSource bookSource
+    ) {
+        this(
+                rowNumber,
+                isbn,
+                title,
+                authorName,
+                publisherName,
+                retailPrice,
+                source,
+                categoryName,
+                bookSource,
+                null
+        );
+    }
 }
