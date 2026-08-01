@@ -26,12 +26,13 @@ public class LibrosRefCoverProvider implements CoverProvider {
 
     @Override
     public Optional<CoverCandidate> findCover(Book book) {
+        String isbn = book.getPreferredIsbn();
 
-        if (book.getIsbn() == null || book.getIsbn().isBlank()) {
+        if (isbn == null || isbn.isBlank()) {
             return Optional.empty();
         }
 
-        String url = COVER_URL.formatted(book.getIsbn());
+        String url = COVER_URL.formatted(isbn);
 
         if (!exists(url)) {
             return Optional.empty();

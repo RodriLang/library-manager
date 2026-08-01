@@ -10,6 +10,8 @@ import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.mapper.BookMapper;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
@@ -33,7 +35,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Set;
 
@@ -50,6 +51,7 @@ public class BookServiceImpl implements BookService {
     private final EditorialPriceService editorialPriceService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
+    private final IsbnService isbnService;
 
     private static final Map<String, String> BOOK_SORT_MAPPING = Map.of("title", "titleSort");
 
@@ -68,7 +70,10 @@ public class BookServiceImpl implements BookService {
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreContext.getCurrentBookstoreId());
 
         Book book = bookMapper.toEntity(request);
-        book.setIsbn(normalizedIsbn);
+        ParsedIsbn parsedIsbn = isbnService.parse(request.isbn());
+        book.setIsbn(parsedIsbn.preferredIsbn());
+        book.setIsbn10(parsedIsbn.isbn10());
+        book.setIsbn13(parsedIsbn.isbn13());
         book.setPublisher(publisher);
         book.setAuthors(authors);
         book.setSource(BookSource.MANUAL);

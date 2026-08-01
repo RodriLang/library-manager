@@ -12,6 +12,7 @@ import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
 import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,12 +20,14 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EditorialPriceServiceImpl implements EditorialPriceService {
@@ -107,10 +110,32 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         int updatedPrices = 0;
         int unchangedPrices = 0;
 
+        Map<Long, PriceListRow> processedRowsByBookId = new HashMap<>();
+
         for (int i = 0; i < books.size(); i++) {
             Book book = books.get(i);
             PriceListRow row = rows.get(i);
             EditorialPrice existing = existingByBookId.get(book.getId());
+
+            PriceListRow previousRow = processedRowsByBookId.putIfAbsent(book.getId(), row);
+
+            if (previousRow != null) {
+                if (previousRow.retailPrice().compareTo(row.retailPrice()) != 0) {
+                    log.warn(
+                            "Conflicting prices for same book. bookId={} title='{}' firstRow={} firstIsbn={} firstPrice={} secondRow={} secondIsbn={} secondPrice={}",
+                            book.getId(),
+                            book.getTitle(),
+                            previousRow.rowNumber(),
+                            previousRow.isbn(),
+                            previousRow.retailPrice(),
+                            row.rowNumber(),
+                            row.isbn(),
+                            row.retailPrice()
+                    );
+                }
+
+                continue;
+            }
 
             if (existing == null) {
                 EditorialPrice newPrice = createPrice(book, row, job);
@@ -125,6 +150,18 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 unchangedPrices++;
                 continue;
             }
+
+            log.warn(
+                    "Editorial price updated during import. bookId={} title='{}' row={} isbn={} previousPrice={} newPrice={} providerId={} validFrom={}",
+                    book.getId(),
+                    book.getTitle(),
+                    row.rowNumber(),
+                    row.isbn(),
+                    existing.getPrice(),
+                    row.retailPrice(),
+                    job.getProvider().getId(),
+                    job.getValidFrom()
+            );
 
             existing.setPrice(row.retailPrice());
 

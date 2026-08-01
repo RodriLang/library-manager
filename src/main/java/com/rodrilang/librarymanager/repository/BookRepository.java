@@ -14,6 +14,14 @@ import java.util.Optional;
 
 public interface BookRepository extends JpaRepository<Book, Long> {
 
+    Optional<Book> findByIsbn13(String isbn13);
+
+    Optional<Book> findByIsbn10(String isbn10);
+
+    List<Book> findByIsbn13In(Collection<String> isbn13Values);
+
+    List<Book> findByIsbn10In(Collection<String> isbn10Values);
+
     Optional<Book> findByIsbn(String isbn);
 
     @Query("""

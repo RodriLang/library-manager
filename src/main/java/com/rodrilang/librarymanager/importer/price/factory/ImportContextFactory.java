@@ -1,9 +1,12 @@
 package com.rodrilang.librarymanager.importer.price.factory;
 
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
+import com.rodrilang.librarymanager.importer.price.dto.IsbnBookConflict;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.resolver.AuthorResolver;
 import com.rodrilang.librarymanager.importer.price.resolver.PublisherResolver;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Publisher;
@@ -13,14 +16,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils.normalizeIsbn;
 
 @Component
 @RequiredArgsConstructor
@@ -32,37 +35,154 @@ public class ImportContextFactory {
     private final BookRepository bookRepository;
     private final AuthorResolver authorResolver;
     private final PublisherResolver publisherResolver;
+    private final IsbnService isbnService;
 
     public ImportContext create(List<PriceListRow> rows) {
-        Set<String> isbns = rows.stream()
-                .map(row -> normalizeIsbn(row.isbn()))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Set<String> isbn13Values = new LinkedHashSet<>();
+        Set<String> isbn10Values = new LinkedHashSet<>();
 
-        Map<String, Book> booksByIsbn = loadBooksByIsbn(isbns).stream()
+        for (PriceListRow row : rows) {
+            String normalized = isbnService.normalize(row.isbn());
+
+            if (isbnService.hasIsbn13Format(normalized)) {
+                isbn13Values.add(normalized);
+            }
+
+            if (isbnService.hasIsbn10Format(normalized)) {
+                isbn10Values.add(normalized);
+            }
+
+            ParsedIsbn parsedIsbn = isbnService.parse(normalized);
+
+            if (parsedIsbn.valid() && parsedIsbn.isbn13() != null) {
+                isbn13Values.add(parsedIsbn.isbn13());
+            }
+        }
+
+        Map<String, Book> booksByIsbn13 = loadBooksByIsbn13(isbn13Values).stream()
+                .filter(book -> book.getIsbn13() != null)
                 .collect(Collectors.toMap(
-                        book -> normalizeIsbn(book.getIsbn()),
+                        Book::getIsbn13,
                         Function.identity(),
-                        (existing, duplicate) -> existing
+                        this::chooseCanonicalBook
                 ));
+
+        Map<String, Book> booksByIsbn10 = loadBooksByIsbn10(isbn10Values).stream()
+                .filter(book -> book.getIsbn10() != null)
+                .collect(Collectors.toMap(
+                        Book::getIsbn10,
+                        Function.identity(),
+                        this::chooseCanonicalBook
+                ));
+
+        Map<String, Book> booksByCanonicalIsbn = new HashMap<>();
+        Map<String, IsbnBookConflict> conflicts = new HashMap<>();
+
+        booksByIsbn13.values().forEach(book ->
+                registerCanonicalBook(book, booksByCanonicalIsbn, conflicts)
+        );
+
+        booksByIsbn10.values().forEach(book ->
+                registerCanonicalBook(book, booksByCanonicalIsbn, conflicts)
+        );
 
         Map<String, Publisher> publishersByName = publisherResolver.loadPublishers(rows);
         Map<String, Author> authorsByName = authorResolver.loadAuthors(rows);
 
-        return new ImportContext(booksByIsbn, publishersByName, authorsByName);
+        return new ImportContext(
+                booksByIsbn13,
+                booksByIsbn10,
+                booksByCanonicalIsbn,
+                conflicts,
+                publishersByName,
+                authorsByName
+        );
     }
 
-    private List<Book> loadBooksByIsbn(Set<String> isbns) {
-        if (isbns.isEmpty()) {
+    private void registerCanonicalBook(
+            Book book,
+            Map<String, Book> booksByCanonicalIsbn,
+            Map<String, IsbnBookConflict> conflicts
+    ) {
+        ParsedIsbn parsedIsbn = parseBookIsbn(book);
+
+        if (!parsedIsbn.valid() || parsedIsbn.isbn13() == null) {
+            return;
+        }
+
+        String canonicalIsbn = parsedIsbn.isbn13();
+        Book existing = booksByCanonicalIsbn.get(canonicalIsbn);
+
+        if (existing == null) {
+            booksByCanonicalIsbn.put(canonicalIsbn, book);
+            return;
+        }
+
+        if (existing.getId().equals(book.getId())) {
+            return;
+        }
+
+        Book canonicalBook = chooseCanonicalBook(existing, book);
+        Book duplicateBook = canonicalBook.getId().equals(existing.getId()) ? book : existing;
+
+        booksByCanonicalIsbn.put(canonicalIsbn, canonicalBook);
+        conflicts.put(canonicalIsbn, new IsbnBookConflict(
+                canonicalIsbn,
+                parsedIsbn.isbn10(),
+                canonicalBook,
+                duplicateBook
+        ));
+    }
+
+    private ParsedIsbn parseBookIsbn(Book book) {
+        if (book.getIsbn13() != null) {
+            ParsedIsbn parsedIsbn13 = isbnService.parse(book.getIsbn13());
+
+            if (parsedIsbn13.valid()) {
+                return parsedIsbn13;
+            }
+        }
+
+        return isbnService.parse(book.getIsbn10());
+    }
+
+    private Book chooseCanonicalBook(Book first, Book second) {
+        boolean firstHasIsbn13 = first.getIsbn13() != null;
+        boolean secondHasIsbn13 = second.getIsbn13() != null;
+
+        if (firstHasIsbn13 && !secondHasIsbn13) {
+            return first;
+        }
+
+        if (secondHasIsbn13 && !firstHasIsbn13) {
+            return second;
+        }
+
+        return first.getId() <= second.getId() ? first : second;
+    }
+
+    private List<Book> loadBooksByIsbn13(Set<String> values) {
+        return loadInBatches(values, bookRepository::findByIsbn13In);
+    }
+
+    private List<Book> loadBooksByIsbn10(Set<String> values) {
+        return loadInBatches(values, bookRepository::findByIsbn10In);
+    }
+
+    private List<Book> loadInBatches(
+            Set<String> values,
+            Function<Collection<String>, List<Book>> loader
+    ) {
+        if (values.isEmpty()) {
             return List.of();
         }
 
-        List<String> isbnList = new ArrayList<>(isbns);
+        List<String> valueList = new ArrayList<>(values);
         List<Book> books = new ArrayList<>();
 
-        for (int fromIndex = 0; fromIndex < isbnList.size(); fromIndex += isbnQueryBatchSize) {
-            int toIndex = Math.min(fromIndex + isbnQueryBatchSize, isbnList.size());
-            books.addAll(bookRepository.findByIsbnIn(isbnList.subList(fromIndex, toIndex)));
+        for (int fromIndex = 0; fromIndex < valueList.size(); fromIndex += isbnQueryBatchSize) {
+            int toIndex = Math.min(fromIndex + isbnQueryBatchSize, valueList.size());
+            books.addAll(loader.apply(valueList.subList(fromIndex, toIndex)));
         }
 
         return books;

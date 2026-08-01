@@ -238,7 +238,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
         return new InventoryMatchCandidateResponse(
                 inventory.getId(),
                 book.getId(),
-                book.getIsbn(),
+                book.getPreferredIsbn(),
                 book.getTitle(),
                 authors,
                 publisher,

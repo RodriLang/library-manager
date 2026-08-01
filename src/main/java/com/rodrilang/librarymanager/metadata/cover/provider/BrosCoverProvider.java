@@ -21,11 +21,11 @@ public class BrosCoverProvider extends DirectUrlCoverProvider {
 
     @Override
     public Optional<CoverCandidate> findCover(Book book) {
-        if (book.getIsbn() == null || book.getIsbn().isBlank()) {
+        if (book.getPreferredIsbn() == null || book.getPreferredIsbn().isBlank()) {
             return Optional.empty();
         }
 
-        String isbn = book.getIsbn().trim();
+        String isbn = book.getPreferredIsbn().trim();
 
         String url = "https://imagenesal.bros.me/%s.jpg".formatted(isbn);
 

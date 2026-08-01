@@ -15,6 +15,7 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 @Mapper(componentModel = "spring", uses = {AuthorMapper.class, PublisherMapper.class, EditorialPriceMapper.class})
 public interface BookMapper {
 
+    @Mapping(target = "isbn", expression = "java(book.getPreferredIsbn())")
     @Mapping(target = "id", source = "book.id")
     @Mapping(target = "source", source = "book.source")
     @Mapping(target = "active", source = "book.active")
@@ -23,12 +24,16 @@ public interface BookMapper {
     @Mapping(target = "editorialPrice", source = "editorialPrice")
     BookDetailResponse toDetailResponse(Book book, EditorialPrice editorialPrice);
 
+    @Mapping(target = "isbn", expression = "java(book.getPreferredIsbn())")
     @Mapping(target = "id", source = "book.id")
     @Mapping(target = "publisherName", source = "book.publisher.name")
     @Mapping(target = "editorialPrice", source = "editorialPrice")
     BookSummaryResponse toSummaryResponse(Book book, EditorialPrice editorialPrice);
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "isbn", ignore = true)
+    @Mapping(target = "isbn10", ignore = true)
+    @Mapping(target = "isbn13", ignore = true)
     @Mapping(target = "active", ignore = true)
     @Mapping(target = "publisher", ignore = true)
     @Mapping(target = "authors", ignore = true)
@@ -42,6 +47,8 @@ public interface BookMapper {
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "isbn", ignore = true)
+    @Mapping(target = "isbn10", ignore = true)
+    @Mapping(target = "isbn13", ignore = true)
     @Mapping(target = "publisher", ignore = true)
     @Mapping(target = "authors", ignore = true)
     @Mapping(target = "source", ignore = true)

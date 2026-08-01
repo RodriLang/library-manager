@@ -67,7 +67,7 @@ public class InventoryServiceImpl implements InventoryService {
         if (inventoryRepository.existsByBookIdAndBookstoreIdAndCondition(bookId, bookstoreId, condition)) {
             throw new DuplicateResourceException(String.format(
                     "El libro ISBN: %s ya se encuentra registrado en el inventario como %s",
-                    book.getIsbn(),
+                    book.getPreferredIsbn(),
                     condition
             ));
         }

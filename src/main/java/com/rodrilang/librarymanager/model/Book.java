@@ -20,6 +20,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -47,6 +48,12 @@ public class Book extends AuditableEntity {
 
     @Column(unique = true, length = 20)
     private String isbn;
+
+    @Column(name = "isbn_10", length = 10)
+    private String isbn10;
+
+    @Column(name = "isbn_13", length = 13)
+    private String isbn13;
 
     @Column(nullable = false)
     private String title;
@@ -132,5 +139,10 @@ public class Book extends AuditableEntity {
     private void normalizeFields() {
         this.titleSort = TextNormalizer.normalizeForSort(title);
         this.isbn = IsbnUtils.normalize(isbn);
+    }
+
+    @Transient
+    public String getPreferredIsbn() {
+        return isbn13 != null ? isbn13 : isbn10;
     }
 }

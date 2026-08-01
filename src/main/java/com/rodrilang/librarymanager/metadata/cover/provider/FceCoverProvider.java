@@ -40,8 +40,8 @@ public class FceCoverProvider extends DirectUrlCoverProvider {
 
     @Override
     public Optional<CoverCandidate> findCover(Book book) {
-        if (hasText(book.getIsbn())) {
-            String directUrl = DIRECT_COVER_URL.formatted(book.getIsbn().trim());
+        if (hasText(book.getPreferredIsbn())) {
+            String directUrl = DIRECT_COVER_URL.formatted(book.getPreferredIsbn().trim());
 
             Optional<CoverCandidate> direct = buildCandidate(
                     directUrl,
