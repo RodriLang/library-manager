@@ -260,7 +260,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
 
     private String buildSku(Inventory inventory) {
 
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
 
         if (isbn != null) {
             return isbn;

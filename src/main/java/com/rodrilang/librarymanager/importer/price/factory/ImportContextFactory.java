@@ -1,9 +1,14 @@
 package com.rodrilang.librarymanager.importer.price.factory;
 
+import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
+import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.IsbnBookConflict;
+import com.rodrilang.librarymanager.importer.price.dto.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.resolver.AuthorResolver;
+import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.importer.price.resolver.PublisherResolver;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
@@ -36,26 +41,28 @@ public class ImportContextFactory {
     private final AuthorResolver authorResolver;
     private final PublisherResolver publisherResolver;
     private final IsbnService isbnService;
+    private final PriceListIdentifierResolver identifierResolver;
+    private final ProviderBookRepository providerBookRepository;
 
-    public ImportContext create(List<PriceListRow> rows) {
+    public ImportContext create(List<PriceListRow> rows, PriceListProvider provider) {
         Set<String> isbn13Values = new LinkedHashSet<>();
         Set<String> isbn10Values = new LinkedHashSet<>();
+        Set<String> externalCodes = new LinkedHashSet<>();
 
         for (PriceListRow row : rows) {
-            String normalized = isbnService.normalize(row.isbn());
+            PriceListIdentifier identifier = identifierResolver.resolve(row);
 
-            if (isbnService.hasIsbn13Format(normalized)) {
-                isbn13Values.add(normalized);
-            }
+            switch (identifier.type()) {
+                case ISBN -> {
+                    isbn13Values.add(identifier.isbn13());
 
-            if (isbnService.hasIsbn10Format(normalized)) {
-                isbn10Values.add(normalized);
-            }
-
-            ParsedIsbn parsedIsbn = isbnService.parse(normalized);
-
-            if (parsedIsbn.valid() && parsedIsbn.isbn13() != null) {
-                isbn13Values.add(parsedIsbn.isbn13());
+                    if (identifier.isbn10() != null) {
+                        isbn10Values.add(identifier.isbn10());
+                    }
+                }
+                case EXTERNAL_CODE -> externalCodes.add(identifier.externalCode());
+                case EMPTY -> {
+                }
             }
         }
 
@@ -86,13 +93,17 @@ public class ImportContextFactory {
                 registerCanonicalBook(book, booksByCanonicalIsbn, conflicts)
         );
 
+        Map<String, Book> booksByExternalCode = loadBooksByExternalCode(provider, externalCodes);
+
         Map<String, Publisher> publishersByName = publisherResolver.loadPublishers(rows);
         Map<String, Author> authorsByName = authorResolver.loadAuthors(rows);
 
         return new ImportContext(
+                provider,
                 booksByIsbn13,
                 booksByIsbn10,
                 booksByCanonicalIsbn,
+                booksByExternalCode,
                 conflicts,
                 publishersByName,
                 authorsByName
@@ -132,6 +143,24 @@ public class ImportContextFactory {
                 canonicalBook,
                 duplicateBook
         ));
+    }
+
+    private Map<String, Book> loadBooksByExternalCode(
+            PriceListProvider provider,
+            Set<String> externalCodes
+    ) {
+        if (provider == null || externalCodes.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        return providerBookRepository
+                .findByProviderIdAndExternalCodeIn(provider.getId(), externalCodes)
+                .stream()
+                .collect(Collectors.toMap(
+                        ProviderBook::getExternalCode,
+                        ProviderBook::getBook,
+                        (existing, repeated) -> existing
+                ));
     }
 
     private ParsedIsbn parseBookIsbn(Book book) {

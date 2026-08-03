@@ -29,26 +29,6 @@ public final class PriceListNormalizationUtils {
         return formatName(value);
     }
 
-    public static String normalizeIsbn(String isbn) {
-        if (!hasText(isbn)) {
-            return null;
-        }
-
-        String normalized = isbn.trim()
-                .replace("-", "")
-                .replace(" ", "");
-
-        if (normalized.equals("0")) {
-            return null;
-        }
-
-        if (!normalized.matches("\\d{10}|\\d{13}")) {
-            return null;
-        }
-
-        return normalized;
-    }
-
     public static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }

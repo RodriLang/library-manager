@@ -31,7 +31,6 @@ public interface BookMapper {
     BookSummaryResponse toSummaryResponse(Book book, EditorialPrice editorialPrice);
 
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "isbn", ignore = true)
     @Mapping(target = "isbn10", ignore = true)
     @Mapping(target = "isbn13", ignore = true)
     @Mapping(target = "active", ignore = true)
@@ -46,7 +45,6 @@ public interface BookMapper {
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "isbn", ignore = true)
     @Mapping(target = "isbn10", ignore = true)
     @Mapping(target = "isbn13", ignore = true)
     @Mapping(target = "publisher", ignore = true)

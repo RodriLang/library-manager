@@ -1,67 +1,79 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
+import com.rodrilang.librarymanager.importer.price.dto.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.importer.price.service.PriceListRowDeduplicator;
-import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
-import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class PriceListRowDeduplicatorImpl implements PriceListRowDeduplicator {
 
-    private final IsbnService isbnService;
+    private final PriceListIdentifierResolver identifierResolver;
 
     @Override
     public List<PriceListRow> deduplicate(List<PriceListRow> rows) {
         Map<String, PriceListRow> rowsByKey = new LinkedHashMap<>();
 
         for (PriceListRow row : rows) {
-            String key = resolveDeduplicationKey(row);
-            rowsByKey.merge(key, row, this::choosePreferredRow);
+            rowsByKey.merge(resolveDeduplicationKey(row), row, this::choosePreferredRow);
         }
 
         return new ArrayList<>(rowsByKey.values());
     }
 
     private String resolveDeduplicationKey(PriceListRow row) {
-        String normalized = isbnService.normalize(row.isbn());
-        ParsedIsbn parsedIsbn = isbnService.parse(normalized);
+        PriceListIdentifier identifier = identifierResolver.resolve(row);
 
-        if (parsedIsbn.valid()) {
-            return "CANONICAL:" + parsedIsbn.isbn13();
-        }
-
-        if (isbnService.hasIsbn13Format(normalized)) {
-            return "ISBN13_RAW:" + normalized;
-        }
-
-        if (isbnService.hasIsbn10Format(normalized)) {
-            return "ISBN10_RAW:" + normalized;
-        }
-
-        return "ROW:" + row.rowNumber();
+        return switch (identifier.type()) {
+            case ISBN -> "ISBN:" + identifier.isbn13();
+            case EXTERNAL_CODE -> "EXTERNAL:" + identifier.externalCode();
+            case EMPTY -> "ROW:" + row.rowNumber();
+        };
     }
 
-    private PriceListRow choosePreferredRow(PriceListRow current, PriceListRow candidate) {
-        boolean currentIsIsbn13 = isOriginalIsbn13(current.isbn());
-        boolean candidateIsIsbn13 = isOriginalIsbn13(candidate.isbn());
+    private PriceListRow choosePreferredRow(
+            PriceListRow first,
+            PriceListRow second
+    ) {
+        BigDecimal firstPrice = first.retailPrice();
+        BigDecimal secondPrice = second.retailPrice();
 
-        if (!currentIsIsbn13 && candidateIsIsbn13) {
-            return candidate;
+        if (firstPrice == null && secondPrice == null) {
+            return first;
         }
 
-        return current;
-    }
+        if (firstPrice == null) {
+            return second;
+        }
 
-    private boolean isOriginalIsbn13(String value) {
-        String normalized = isbnService.normalize(value);
-        return isbnService.hasIsbn13Format(normalized);
+        if (secondPrice == null) {
+            return first;
+        }
+
+        if (firstPrice.compareTo(secondPrice) == 0) {
+            return first;
+        }
+
+        log.warn(
+                "Conflicting prices for same identifier. firstRow={} secondRow={} identifier={} firstPrice={} secondPrice={}",
+                first.rowNumber(),
+                second.rowNumber(),
+                first.preferredIdentifier(),
+                firstPrice,
+                secondPrice
+        );
+
+        return first;
     }
 }

@@ -16,10 +16,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     boolean existsByBookIdAndBookstoreIdAndCondition(Long bookId, Long bookStoreId, BookCondition condition);
 
-    List<Inventory> findAllByBookstoreIdAndBookTitleSortAndActiveTrue(
-            Long bookstoreId,
-            String titleSort
-    );
+    boolean existsByBookId(Long bookId);
 
     @EntityGraph(attributePaths = {
             "book",
@@ -32,9 +29,21 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             "book",
             "book.publisher"
     })
-    List<Inventory> findAllByBookstoreIdAndBookIsbnAndActiveTrue(
-            Long bookstoreId,
-            String isbn
+    @Query("""
+            SELECT DISTINCT i
+            FROM Inventory i
+            JOIN i.book b
+            WHERE i.bookstore.id = :bookstoreId
+              AND i.active = true
+              AND (
+                    b.isbn13 = :isbn13
+                    OR (:isbn10 IS NOT NULL AND b.isbn10 = :isbn10)
+              )
+            """)
+    List<Inventory> findAllByBookstoreAndIsbn(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("isbn13") String isbn13,
+            @Param("isbn10") String isbn10
     );
 
     @EntityGraph(attributePaths = {
@@ -63,84 +72,224 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                     SELECT i.*
                     FROM inventory i
                     JOIN books b ON b.id = i.book_id
-                    LEFT JOIN publishers p ON p.id = b.publisher_id
                     WHERE i.active = true
-                        AND (
-                            lower(b.isbn) LIKE lower(concat('%', :query, '%'))
-                            OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
-                            OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
-                            OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                            OR EXISTS (
-                                SELECT 1
-                                FROM book_authors ba
-                                JOIN authors a ON a.id = ba.author_id
-                                WHERE ba.book_id = b.id
-                                AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                            )
-                            OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
-                            OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
-                            OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
-                            OR EXISTS (
-                                SELECT 1
-                                FROM book_authors ba
-                                JOIN authors a ON a.id = ba.author_id
-                                WHERE ba.book_id = b.id
-                                AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
-                            )
-                        )
+                      AND b.active = true
+                      AND i.bookstore_id = :bookstoreId
+                      AND (
+                            b.isbn_13 LIKE concat(:query, '%')
+                            OR b.isbn_10 LIKE concat(:query, '%')
+                      )
                     ORDER BY
                         CASE
-                            WHEN lower(b.isbn) = lower(:query) THEN 1
-                            WHEN lower(b.isbn) LIKE lower(concat(:query, '%')) THEN 2
-                            WHEN unaccent(lower(b.title)) LIKE unaccent(lower(concat(:query, '%'))) THEN 3
-                            WHEN EXISTS (
-                                SELECT 1
-                                FROM book_authors ba
-                                JOIN authors a ON a.id = ba.author_id
-                                WHERE ba.book_id = b.id
-                                  AND unaccent(lower(a.name)) LIKE unaccent(lower(concat(:query, '%')))
-                            ) THEN 4
-                            WHEN unaccent(lower(p.name)) LIKE unaccent(lower(concat(:query, '%'))) THEN 5
-                            ELSE 6
+                            WHEN b.isbn_13 = :query
+                              OR b.isbn_10 = :query
+                                THEN 1
+                            ELSE 2
                         END,
-                        GREATEST(
-                            similarity(unaccent(lower(b.title)), unaccent(lower(:query))),
-                            similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))),
-                            similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query)))
-                        ) DESC,
-                        b.title
+                        COALESCE(b.title_sort, b.title) ASC,
+                        i.id ASC
                     """,
             countQuery = """
                     SELECT COUNT(*)
                     FROM inventory i
                     JOIN books b ON b.id = i.book_id
-                    LEFT JOIN publishers p ON p.id = b.publisher_id
                     WHERE i.active = true
+                      AND b.active = true
+                      AND i.bookstore_id = :bookstoreId
                       AND (
-                            lower(b.isbn) LIKE lower(concat('%', :query, '%'))
-                            OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
-                            OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
-                            OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                            OR EXISTS (
-                                SELECT 1
-                                FROM book_authors ba
-                                JOIN authors a ON a.id = ba.author_id
-                                WHERE ba.book_id = b.id
-                                  AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                            )
-                            OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
-                            OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
-                            OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
-                            OR EXISTS (
-                                SELECT 1
-                                FROM book_authors ba
-                                JOIN authors a ON a.id = ba.author_id
-                                WHERE ba.book_id = b.id
-                                  AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
-                            )
-                        )
+                            b.isbn_13 LIKE concat(:query, '%')
+                            OR b.isbn_10 LIKE concat(:query, '%')
+                      )
                     """,
             nativeQuery = true
     )
-    Page<Inventory> search(@Param("query") String query, Pageable pageable);
+    Page<Inventory> searchByIsbn(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("query") String query,
+            Pageable pageable
+    );
+
+    @Query(
+            value = """
+                    WITH matches AS (
+                        SELECT
+                            i.id AS inventory_id,
+                            CASE
+                                WHEN immutable_unaccent(lower(b.title))
+                                     = immutable_unaccent(lower(:query))
+                                    THEN 1
+                                WHEN immutable_unaccent(lower(b.title))
+                                     LIKE concat(
+                                         immutable_unaccent(lower(:query)),
+                                         '%'
+                                     )
+                                    THEN 2
+                                ELSE 3
+                            END AS priority
+                        FROM inventory i
+                        JOIN books b ON b.id = i.book_id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(lower(b.title))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT
+                            i.id AS inventory_id,
+                            4 AS priority
+                        FROM inventory i
+                        JOIN books b ON b.id = i.book_id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(
+                                  lower(coalesce(b.subtitle, ''))
+                              )
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT
+                            i.id AS inventory_id,
+                            5 AS priority
+                        FROM publishers p
+                        JOIN books b ON b.publisher_id = p.id
+                        JOIN inventory i ON i.book_id = b.id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(lower(p.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT
+                            i.id AS inventory_id,
+                            CASE
+                                WHEN immutable_unaccent(lower(a.name))
+                                     LIKE concat(
+                                         immutable_unaccent(lower(:query)),
+                                         '%'
+                                     )
+                                    THEN 3
+                                ELSE 4
+                            END AS priority
+                        FROM authors a
+                        JOIN book_authors ba ON ba.author_id = a.id
+                        JOIN books b ON b.id = ba.book_id
+                        JOIN inventory i ON i.book_id = b.id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(lower(a.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    ),
+                    ranked_matches AS (
+                        SELECT
+                            inventory_id,
+                            MIN(priority) AS priority
+                        FROM matches
+                        GROUP BY inventory_id
+                    )
+                    SELECT i.*
+                    FROM ranked_matches rm
+                    JOIN inventory i ON i.id = rm.inventory_id
+                    JOIN books b ON b.id = i.book_id
+                    ORDER BY
+                        rm.priority ASC,
+                        coalesce(b.title_sort, b.title) ASC,
+                        i.id ASC
+                    """,
+            countQuery = """
+                    SELECT COUNT(DISTINCT matches.inventory_id)
+                    FROM (
+                        SELECT i.id AS inventory_id
+                        FROM inventory i
+                        JOIN books b ON b.id = i.book_id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(lower(b.title))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT i.id AS inventory_id
+                        FROM inventory i
+                        JOIN books b ON b.id = i.book_id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(
+                                  lower(coalesce(b.subtitle, ''))
+                              )
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT i.id AS inventory_id
+                        FROM publishers p
+                        JOIN books b ON b.publisher_id = p.id
+                        JOIN inventory i ON i.book_id = b.id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(lower(p.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT i.id AS inventory_id
+                        FROM authors a
+                        JOIN book_authors ba ON ba.author_id = a.id
+                        JOIN books b ON b.id = ba.book_id
+                        JOIN inventory i ON i.book_id = b.id
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND immutable_unaccent(lower(a.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    ) matches
+                    """,
+            nativeQuery = true
+    )
+    Page<Inventory> searchText(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("query") String query,
+            Pageable pageable
+    );
 }

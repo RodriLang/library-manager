@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.resolver.AuthorResolver;
+import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.importer.price.resolver.PublisherResolver;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Book;
@@ -31,12 +32,14 @@ class PriceListBookUpsertServiceImplTest {
         AuthorResolver authorResolver = mock(AuthorResolver.class);
         PublisherResolver publisherResolver = mock(PublisherResolver.class);
         IsbnService isbnService = new IsbnService();
+        PriceListIdentifierResolver identifierResolver = new PriceListIdentifierResolver(isbnService);
 
         service = new PriceListBookUpsertServiceImpl(
                 bookRepository,
                 authorResolver,
                 publisherResolver,
-                isbnService
+                isbnService,
+                identifierResolver
         );
     }
 
@@ -49,7 +52,11 @@ class PriceListBookUpsertServiceImplTest {
                 .build();
 
         ImportContext context = new ImportContext(
+                null,
                 new HashMap<>(Map.of("9780804429573", existingBook)),
+                new HashMap<>(),
+                new HashMap<>(Map.of("9780804429573", existingBook)),
+                new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>()
@@ -63,6 +70,8 @@ class PriceListBookUpsertServiceImplTest {
         assertSame(existingBook, result.book());
         assertEquals("080442957X", existingBook.getIsbn10());
         assertEquals("9780804429573", existingBook.getIsbn13());
+        assertSame(existingBook, context.booksByIsbn10().get("080442957X"));
+        assertSame(existingBook, context.booksByCanonicalIsbn().get("9780804429573"));
     }
 
     private PriceListRow createRow(String isbn, String title) {

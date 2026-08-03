@@ -3,6 +3,8 @@ package com.rodrilang.librarymanager.service.impl;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.ManualBookRequiredException;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.metadata.BookMetadata;
 import com.rodrilang.librarymanager.metadata.BookMetadataService;
 import com.rodrilang.librarymanager.model.Author;
@@ -12,7 +14,6 @@ import com.rodrilang.librarymanager.repository.AuthorRepository;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.service.BookCatalogService;
-import com.rodrilang.librarymanager.util.IsbnUtils;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,33 +30,57 @@ public class BookCatalogServiceImpl implements BookCatalogService {
     private final AuthorRepository authorRepository;
     private final PublisherRepository publisherRepository;
     private final BookMetadataService bookMetadataService;
+    private final IsbnService isbnService;
 
     @Transactional
     @Override
     public Book getOrCreateByIsbn(String isbn) {
+        ParsedIsbn parsedIsbn = isbnService.parse(isbn);
 
-        String normalizedIsbn = IsbnUtils.normalize(isbn);
+        if (!parsedIsbn.valid()) {
+            throw new ManualBookRequiredException(isbnService.normalize(isbn));
+        }
 
-        return bookRepository.findByIsbn(normalizedIsbn)
-                .orElseGet(() -> createBookFromMetadata(normalizedIsbn));
+        Book existingBook = findExistingBook(parsedIsbn);
+
+        if (existingBook != null) {
+            completeMissingIsbn(existingBook, parsedIsbn);
+            return existingBook;
+        }
+
+        return createBookFromMetadata(parsedIsbn);
     }
 
-    private Book createBookFromMetadata(String isbn) {
+    private Book findExistingBook(ParsedIsbn parsedIsbn) {
+        Book byIsbn13 = bookRepository.findByIsbn13(parsedIsbn.isbn13()).orElse(null);
 
-        String normalizedIsbn = IsbnUtils.normalize(isbn);
+        if (byIsbn13 != null) {
+            return byIsbn13;
+        }
 
-        BookMetadata metadata = bookMetadataService.findByIsbn(normalizedIsbn)
-                .orElseThrow(() -> new ManualBookRequiredException(normalizedIsbn));
+        if (parsedIsbn.isbn10() == null) {
+            return null;
+        }
+
+        return bookRepository.findByIsbn10(parsedIsbn.isbn10()).orElse(null);
+    }
+
+    private Book createBookFromMetadata(ParsedIsbn parsedIsbn) {
+        String preferredIsbn = parsedIsbn.preferredIsbn();
+
+        BookMetadata metadata = bookMetadataService.findByIsbn(preferredIsbn)
+                .orElseThrow(() -> new ManualBookRequiredException(preferredIsbn));
 
         if (metadata.title() == null || metadata.title().isBlank()) {
-            throw new ManualBookRequiredException(normalizedIsbn);
+            throw new ManualBookRequiredException(preferredIsbn);
         }
 
         Publisher publisher = resolvePublisher(metadata.publisher());
         Set<Author> authors = resolveAuthors(metadata.authors());
 
         Book book = Book.builder()
-                .isbn(normalizedIsbn)
+                .isbn10(parsedIsbn.isbn10())
+                .isbn13(parsedIsbn.isbn13())
                 .title(metadata.title())
                 .subtitle(metadata.subtitle())
                 .description(metadata.description())
@@ -71,6 +96,16 @@ public class BookCatalogServiceImpl implements BookCatalogService {
                 .build();
 
         return bookRepository.save(book);
+    }
+
+    private void completeMissingIsbn(Book book, ParsedIsbn parsedIsbn) {
+        if (book.getIsbn13() == null) {
+            book.setIsbn13(parsedIsbn.isbn13());
+        }
+
+        if (book.getIsbn10() == null && parsedIsbn.isbn10() != null) {
+            book.setIsbn10(parsedIsbn.isbn10());
+        }
     }
 
     private Publisher resolvePublisher(String publisherName) {

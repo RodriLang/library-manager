@@ -8,6 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.mapping.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -153,11 +154,39 @@ public class GlobalExceptionHandler {
         );
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGeneric(
-            Exception ex,
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleMessageNotReadable(
+            HttpMessageNotReadableException exception,
             HttpServletRequest request
     ) {
+        log.warn(
+                "Request inválido en {} {}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception
+        );
+
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_REQUEST_BODY",
+                "El cuerpo de la solicitud contiene valores inválidos.",
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleUnexpectedException(
+            Exception exception,
+            HttpServletRequest request
+    ) {
+        log.error(
+                "Error inesperado procesando {} {}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception
+        );
+
         return buildError(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",

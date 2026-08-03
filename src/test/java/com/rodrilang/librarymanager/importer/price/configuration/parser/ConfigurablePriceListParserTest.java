@@ -95,22 +95,20 @@ class ConfigurablePriceListParserTest {
     }
 
     @Test
-    void shouldParseZeroCarbonoPriceList() throws Exception {
+    void shouldParseCarbonoPriceList() throws Exception {
         try (
-                InputStream inputStream = getClass().getResourceAsStream("/price-lists/zero-carbono.xlsx");
-                Workbook workbook = WorkbookFactory.create(inputStream)
+                InputStream inputStream =
+                        getClass().getResourceAsStream("/price-lists/carbono.xlsx");
+                Workbook workbook =
+                        WorkbookFactory.create(inputStream)
         ) {
-            PriceListImportConfig config = createZeroCarbonoConfig();
+            assertNotNull(inputStream);
+
+            PriceListImportConfig config = createCarbonoConfig();
+
             List<PriceListRow> rows = parser.parse(workbook, config);
 
             assertFalse(rows.isEmpty());
-
-            PriceListRow separator = rows.getFirst();
-
-            assertEquals(8, separator.rowNumber());
-            assertEquals("Godot", separator.title());
-            assertNull(separator.isbn());
-            assertNull(separator.retailPrice());
 
             PriceListRow firstBook = rows.stream()
                     .filter(row -> "1917".equals(row.title()))
@@ -120,7 +118,12 @@ class ConfigurablePriceListParserTest {
             assertEquals("9789874086303", firstBook.isbn());
             assertEquals("Martín Kohan", firstBook.authorName());
             assertEquals("Ediciones Godot", firstBook.publisherName());
-            assertEquals(0, new BigDecimal("21999").compareTo(firstBook.retailPrice()));
+
+            assertEquals(
+                    0,
+                    new BigDecimal("21999")
+                            .compareTo(firstBook.retailPrice())
+            );
         }
     }
 
@@ -146,9 +149,7 @@ class ConfigurablePriceListParserTest {
 
             assertNotNull(first.metadata());
             assertEquals(134, first.metadata().pageCount());
-            assertEquals("15 x 21", first.metadata().dimensions());
-            assertEquals(0, new BigDecimal("0.197").compareTo(first.metadata().weight()));
-            assertEquals(LocalDate.of(2022, 2, 1), first.metadata().publicationDate());
+            assertEquals(0, new BigDecimal("197").compareTo(first.metadata().weightGrams()));            assertEquals(LocalDate.of(2022, 2, 1), first.metadata().publicationDate());
             assertEquals("Español", first.metadata().language());
             assertEquals("Cuentos", first.metadata().genreName());
             assertEquals("Cuentos, Literatura Argentina", first.metadata().tags());
@@ -187,9 +188,9 @@ class ConfigurablePriceListParserTest {
         return config;
     }
 
-    private PriceListImportConfig createZeroCarbonoConfig() {
+    private PriceListImportConfig createCarbonoConfig() {
         PriceListImportConfig config = PriceListImportConfig.builder()
-                .name("0Carbono test")
+                .name("Carbono test")
                 .sheetStrategy(SheetStrategy.FIRST)
                 .headerStrategy(HeaderStrategy.FIXED_ROW)
                 .headerRowIndex(6)

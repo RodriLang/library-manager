@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListBatchResult;
@@ -31,6 +32,7 @@ public class PriceListImportBatchServiceImpl implements PriceListImportBatchServ
     private final PriceListImportJobRepository jobRepository;
     private final PriceListBookUpsertService bookUpsertService;
     private final EditorialPriceService editorialPriceService;
+    private final ProviderBookService providerBookService;
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -38,7 +40,7 @@ public class PriceListImportBatchServiceImpl implements PriceListImportBatchServ
         PriceListImportJob job = jobRepository.findWithImportConfigById(jobId)
                 .orElseThrow(() -> new BusinessException("No se encontró el trabajo de importación."));
 
-        ImportContext context = importContextFactory.create(rows);
+        ImportContext context = importContextFactory.create(rows, job.getProvider());
 
         List<Book> books = new ArrayList<>(rows.size());
         List<Book> newBooks = new ArrayList<>();
@@ -65,6 +67,7 @@ public class PriceListImportBatchServiceImpl implements PriceListImportBatchServ
             }
         }
 
+        providerBookService.registerBatch(job.getProvider(), books, rows);
         PriceImportCounters counters = editorialPriceService.registerOrUpdateBatchForImport(books, rows, job);
 
         return new PriceListBatchResult(

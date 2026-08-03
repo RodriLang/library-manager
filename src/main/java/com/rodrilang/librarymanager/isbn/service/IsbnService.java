@@ -21,7 +21,34 @@ public class IsbnService {
         }
 
         if (isValidIsbn10(normalized)) {
-            return ParsedIsbn.fromIsbn10(value, normalized, calculateIsbn13FromIsbn10(normalized));
+            return ParsedIsbn.fromIsbn10(
+                    value,
+                    normalized,
+                    convertIsbn10ToIsbn13(normalized)
+            );
+        }
+
+        if (normalized.matches("97[89]\\d{9}")) {
+            String recovered = normalized
+                    + calculateIsbn13CheckDigit(normalized);
+
+            return ParsedIsbn.recoveredMissingCheckDigit(
+                    value,
+                    normalized,
+                    recovered
+            );
+        }
+
+        if (normalized.matches("97[89]\\d{9}X")) {
+            String base = normalized.substring(0, 12);
+            String recovered = base
+                    + calculateIsbn13CheckDigit(base);
+
+            return ParsedIsbn.recoveredInvalidX(
+                    value,
+                    normalized,
+                    recovered
+            );
         }
 
         return ParsedIsbn.invalid(value, normalized);
@@ -50,7 +77,10 @@ public class IsbnService {
 
         for (int i = 0; i < isbn.length(); i++) {
             char character = isbn.charAt(i);
-            int digit = character == 'X' ? 10 : Character.digit(character, 10);
+            int digit = character == 'X'
+                    ? 10
+                    : Character.digit(character, 10);
+
             sum += digit * (10 - i);
         }
 
@@ -64,14 +94,8 @@ public class IsbnService {
             return false;
         }
 
-        int sum = 0;
-
-        for (int i = 0; i < 12; i++) {
-            int digit = Character.digit(isbn.charAt(i), 10);
-            sum += digit * (i % 2 == 0 ? 1 : 3);
-        }
-
-        int expectedCheckDigit = (10 - sum % 10) % 10;
+        String base = isbn.substring(0, 12);
+        int expectedCheckDigit = calculateIsbn13CheckDigit(base);
         int actualCheckDigit = Character.digit(isbn.charAt(12), 10);
 
         return expectedCheckDigit == actualCheckDigit;
@@ -79,23 +103,84 @@ public class IsbnService {
 
     public boolean hasIsbn13Format(String value) {
         String normalized = normalize(value);
-        return normalized != null && normalized.matches("\\d{13}");
+
+        return normalized != null
+                && normalized.matches("\\d{13}");
     }
 
     public boolean hasIsbn10Format(String value) {
         String normalized = normalize(value);
-        return normalized != null && normalized.matches("\\d{9}[\\dX]");
+
+        return normalized != null
+                && normalized.matches("\\d{9}[\\dX]");
     }
 
-    private String calculateIsbn13FromIsbn10(String isbn10) {
+    public String convertIsbn10ToIsbn13(String value) {
+        String isbn10 = normalize(value);
+
+        if (!isValidIsbn10(isbn10)) {
+            return null;
+        }
+
         String base = "978" + isbn10.substring(0, 9);
+
+        return base + calculateIsbn13CheckDigit(base);
+    }
+
+    public boolean isRecoverableIsbn13(String value) {
+        String normalized = normalize(value);
+
+        if (normalized == null) {
+            return false;
+        }
+
+        /*
+         * Caso 1: ISBN-13 sin dígito verificador.
+         * Ejemplo: 978987598005
+         */
+        boolean missingCheckDigit = normalized.matches("97[89]\\d{9}");
+
+        /*
+         * Caso 2: ISBN-13 con X incorrecta como último carácter.
+         * Ejemplo: 978842541847X
+         */
+        boolean invalidXCheckDigit = normalized.matches("97[89]\\d{9}X");
+
+        return missingCheckDigit || invalidXCheckDigit;
+    }
+
+    public String recoverIsbn13(String value) {
+        String normalized = normalize(value);
+
+        if (!isRecoverableIsbn13(normalized)) {
+            return null;
+        }
+
+        String base = normalized.endsWith("X")
+                ? normalized.substring(0, 12)
+                : normalized;
+
+        return base + calculateIsbn13CheckDigit(base);
+    }
+
+    private int calculateIsbn13CheckDigit(String twelveDigits) {
+        if (twelveDigits == null || !twelveDigits.matches("\\d{12}")) {
+            throw new IllegalArgumentException(
+                    "Se requieren exactamente 12 dígitos."
+            );
+        }
+
         int sum = 0;
 
-        for (int i = 0; i < base.length(); i++) {
-            int digit = Character.digit(base.charAt(i), 10);
+        for (int i = 0; i < 12; i++) {
+            int digit = Character.digit(
+                    twelveDigits.charAt(i),
+                    10
+            );
+
             sum += digit * (i % 2 == 0 ? 1 : 3);
         }
 
-        return base + ((10 - sum % 10) % 10);
+        return (10 - sum % 10) % 10;
     }
 }

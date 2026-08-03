@@ -16,6 +16,8 @@ import java.time.LocalDate;
 import java.util.EnumMap;
 import java.util.Map;
 
+import static org.springframework.util.StringUtils.hasText;
+
 @Component
 @RequiredArgsConstructor
 public class ConfigurablePriceListRowMapper {
@@ -62,94 +64,52 @@ public class ConfigurablePriceListRowMapper {
             int rowIndex,
             Map<PriceListField, Object> values
     ) {
-        PriceListMetadata metadata =
-                PriceListMetadata.builder()
+        ParsedDimensions dimensions = parseDimensions(
+                text(values, PriceListField.DIMENSIONS)
+        );
 
-                        .subtitle(
-                                text(values, PriceListField.SUBTITLE)
-                        )
+        BigDecimal weightGrams = parseWeightGrams(
+                decimal(values, PriceListField.WEIGHT)
+        );
 
-                        .description(
-                                text(values, PriceListField.DESCRIPTION)
-                        )
-
-                        .genreName(
-                                text(values, PriceListField.GENRE)
-                        )
-
-                        .pageCount(
-                                integer(values, PriceListField.PAGE_COUNT)
-                        )
-
-                        .publicationDate(
-                                date(
-                                        values,
-                                        PriceListField.PUBLICATION_DATE
-                                )
-                        )
-
-                        .language(
-                                text(values, PriceListField.LANGUAGE)
-                        )
-
-                        .coverUrl(
-                                text(values, PriceListField.COVER_URL)
-                        )
-
-                        .collectionName(
-                                text(values, PriceListField.COLLECTION)
-                        )
-
-                        .dimensions(
-                                text(values, PriceListField.DIMENSIONS)
-                        )
-
-                        .weight(
-                                decimal(values, PriceListField.WEIGHT)
-                        )
-
-                        .tags(
-                                text(values, PriceListField.TAGS)
-                        )
-
-                        .externalCode(
-                                text(
-                                        values,
-                                        PriceListField.EXTERNAL_CODE
-                                )
-                        )
-
-                        .externalStock(
-                                integer(
-                                        values,
-                                        PriceListField.EXTERNAL_STOCK
-                                )
-                        )
-
-                        .observations(
-                                text(
-                                        values,
-                                        PriceListField.OBSERVATIONS
-                                )
-                        )
-
-                        .build();
+        PriceListMetadata metadata = PriceListMetadata.builder()
+                .subtitle(text(values, PriceListField.SUBTITLE))
+                .description(text(values, PriceListField.DESCRIPTION))
+                .genreName(text(values, PriceListField.GENRE))
+                .pageCount(integer(values, PriceListField.PAGE_COUNT))
+                .publicationDate(date(
+                        values,
+                        PriceListField.PUBLICATION_DATE
+                ))
+                .language(text(values, PriceListField.LANGUAGE))
+                .coverUrl(text(values, PriceListField.COVER_URL))
+                .collectionName(text(values, PriceListField.COLLECTION))
+                .widthCm(dimensions.widthCm())
+                .heightCm(dimensions.heightCm())
+                .depthCm(dimensions.depthCm())
+                .weightGrams(weightGrams)
+                .tags(text(values, PriceListField.TAGS))
+                .externalCode(text(
+                        values,
+                        PriceListField.EXTERNAL_CODE
+                ))
+                .externalStock(integer(
+                        values,
+                        PriceListField.EXTERNAL_STOCK
+                ))
+                .observations(text(
+                        values,
+                        PriceListField.OBSERVATIONS
+                ))
+                .build();
 
         return new PriceListRow(
                 rowIndex + 1,
-
                 text(values, PriceListField.ISBN),
-
                 text(values, PriceListField.TITLE),
-
                 text(values, PriceListField.AUTHOR),
-
                 text(values, PriceListField.PUBLISHER),
-
-                decimal(
-                        values,
-                        PriceListField.RETAIL_PRICE
-                ),
+                decimal(values, PriceListField.RETAIL_PRICE),
 
                 /*
                  * Temporal.
@@ -160,9 +120,7 @@ public class ConfigurablePriceListRowMapper {
                 null,
 
                 text(values, PriceListField.CATEGORY),
-
                 BookSource.EXTERNAL_METADATA,
-
                 metadata
         );
     }
@@ -197,5 +155,64 @@ public class ConfigurablePriceListRowMapper {
             PriceListField field
     ) {
         return (LocalDate) values.get(field);
+    }
+
+    private ParsedDimensions parseDimensions(String value) {
+        if (!hasText(value)) {
+            return ParsedDimensions.empty();
+        }
+
+        String normalized = value.trim()
+                .toLowerCase()
+                .replace("cms", "")
+                .replace("cm", "")
+                .replace("×", "x");
+
+        String[] parts = normalized.split("\\s*x\\s*");
+
+        if (parts.length < 2 || parts.length > 3) {
+            return ParsedDimensions.empty();
+        }
+
+        try {
+            BigDecimal widthCm = parseDimensionValue(parts[0]);
+            BigDecimal heightCm = parseDimensionValue(parts[1]);
+            BigDecimal depthCm = parts.length == 3
+                    ? parseDimensionValue(parts[2])
+                    : null;
+
+            return new ParsedDimensions(
+                    widthCm,
+                    heightCm,
+                    depthCm
+            );
+        } catch (NumberFormatException ex) {
+            return ParsedDimensions.empty();
+        }
+    }
+
+    private BigDecimal parseDimensionValue(String value) {
+        return new BigDecimal(
+                value.trim().replace(",", ".")
+        );
+    }
+
+    private BigDecimal parseWeightGrams(BigDecimal weightKilograms) {
+        if (weightKilograms == null) {
+            return null;
+        }
+
+        return weightKilograms.multiply(BigDecimal.valueOf(1000));
+    }
+
+    private record ParsedDimensions(
+            BigDecimal widthCm,
+            BigDecimal heightCm,
+            BigDecimal depthCm
+    ) {
+
+        private static ParsedDimensions empty() {
+            return new ParsedDimensions(null, null, null);
+        }
     }
 }

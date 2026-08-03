@@ -11,10 +11,11 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeMatc
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductMatchingService;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
-import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
 
     private final InventoryRepository inventoryRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
-    private final BookRepository bookRepository;
+    private final IsbnService isbnService;
 
     @Override
     public TiendanubeRemoteProductResponse analyze(Long bookstoreId, Long storeId, TiendanubeProductResponse product) {
@@ -147,27 +148,57 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
             TiendanubeProductResponse product,
             TiendanubeVariantResponse variant
     ) {
-        String barcode = TiendanubeProductUtils.normalizeIdentifier(variant.barcode());
+        MatchResult barcodeMatch = findInventoryMatchByIsbn(
+                bookstoreId,
+                variant.barcode(),
+                TiendanubeMatchType.EXACT_BARCODE
+        );
 
-        if (barcode != null) {
-            List<Inventory> candidates = inventoryRepository.findAllByBookstoreIdAndBookIsbnAndActiveTrue(bookstoreId, barcode);
-
-            if (!candidates.isEmpty()) {
-                return createMatchResult(TiendanubeMatchType.EXACT_BARCODE, candidates);
-            }
+        if (barcodeMatch != null) {
+            return barcodeMatch;
         }
 
-        String sku = TiendanubeProductUtils.normalizeIdentifier(variant.sku());
+        MatchResult skuMatch = findInventoryMatchByIsbn(
+                bookstoreId,
+                variant.sku(),
+                TiendanubeMatchType.EXACT_SKU
+        );
 
-        if (sku != null) {
-            List<Inventory> candidates = inventoryRepository.findAllByBookstoreIdAndBookIsbnAndActiveTrue(bookstoreId, sku);
-
-            if (!candidates.isEmpty()) {
-                return createMatchResult(TiendanubeMatchType.EXACT_SKU, candidates);
-            }
+        if (skuMatch != null) {
+            return skuMatch;
         }
 
         return findTextualMatch(bookstoreId, product);
+    }
+
+    private MatchResult findInventoryMatchByIsbn(
+            Long bookstoreId,
+            String value,
+            TiendanubeMatchType matchType
+    ) {
+        String normalized = TiendanubeProductUtils.normalizeIdentifier(value);
+
+        if (normalized == null) {
+            return null;
+        }
+
+        ParsedIsbn parsedIsbn = isbnService.parse(normalized);
+
+        if (!parsedIsbn.valid()) {
+            return null;
+        }
+
+        List<Inventory> candidates = inventoryRepository.findAllByBookstoreAndIsbn(
+                bookstoreId,
+                parsedIsbn.isbn13(),
+                parsedIsbn.isbn10()
+        );
+
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        return createMatchResult(matchType, candidates);
     }
 
     private MatchResult findTextualMatch(Long bookstoreId, TiendanubeProductResponse product) {
@@ -301,7 +332,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
             List<TiendanubeProductResponse> products,
             Inventory inventory
     ) {
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
 
         if (isbn == null) {
             return List.of();

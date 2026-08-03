@@ -56,4 +56,14 @@ public record PriceListRow(
                 null
         );
     }
+
+    public String preferredIdentifier() {
+        if (metadata != null
+                && metadata.externalCode() != null
+                && !metadata.externalCode().isBlank()) {
+            return metadata.externalCode();
+        }
+
+        return isbn;
+    }
 }

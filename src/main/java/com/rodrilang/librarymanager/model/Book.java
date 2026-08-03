@@ -3,7 +3,6 @@ package com.rodrilang.librarymanager.model;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.enums.CoverSearchStatus;
-import com.rodrilang.librarymanager.util.IsbnUtils;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -31,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 @Getter
@@ -45,9 +45,6 @@ public class Book extends AuditableEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(unique = true, length = 20)
-    private String isbn;
 
     @Column(name = "isbn_10", length = 10)
     private String isbn10;
@@ -138,7 +135,14 @@ public class Book extends AuditableEntity {
     @PreUpdate
     private void normalizeFields() {
         this.titleSort = TextNormalizer.normalizeForSort(title);
-        this.isbn = IsbnUtils.normalize(isbn);
+
+        if (isbn13 != null) {
+            isbn13 = isbn13.trim();
+        }
+
+        if (isbn10 != null) {
+            isbn10 = isbn10.trim().toUpperCase(Locale.ROOT);
+        }
     }
 
     @Transient

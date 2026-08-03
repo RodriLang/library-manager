@@ -24,9 +24,13 @@ public record PriceListMetadata(
 
         String collectionName,
 
-        String dimensions,
+        BigDecimal widthCm,
 
-        BigDecimal weight,
+        BigDecimal heightCm,
+
+        BigDecimal depthCm,
+
+        BigDecimal weightGrams,
 
         String tags,
 

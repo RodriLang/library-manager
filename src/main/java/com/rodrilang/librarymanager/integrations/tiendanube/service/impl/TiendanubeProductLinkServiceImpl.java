@@ -95,7 +95,7 @@ public class TiendanubeProductLinkServiceImpl implements TiendanubeProductLinkSe
             TiendanubeVariantResponse remoteVariant,
             Inventory inventory
     ) {
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
 
         boolean missingSku = remoteVariant.sku() == null || remoteVariant.sku().isBlank();
         boolean missingBarcode = remoteVariant.barcode() == null || remoteVariant.barcode().isBlank();

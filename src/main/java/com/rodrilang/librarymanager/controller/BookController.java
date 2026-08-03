@@ -82,12 +82,13 @@ public class BookController {
     @GetMapping("/search")
     public ResponseEntity<PageResponse<BookSummaryResponse>> search(
             @RequestParam String q,
+            @RequestParam(defaultValue = "false") boolean force,
             @ParameterObject
             @PageableDefault(size = 20)
             Pageable pageable
     ) {
         return ResponseEntity.ok(
-                PageResponse.of(bookService.search(q.trim(), pageable))
+                PageResponse.of(bookService.search(q.trim(), force, pageable))
         );
     }
 

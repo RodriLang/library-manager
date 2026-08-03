@@ -3,10 +3,13 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
-import com.rodrilang.librarymanager.importer.price.dto.BookIsbnValues;
 import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
+import com.rodrilang.librarymanager.importer.price.dto.PriceListIdentifier;
+import com.rodrilang.librarymanager.importer.price.dto.PriceListMetadata;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.enums.PriceListIdentifierType;
 import com.rodrilang.librarymanager.importer.price.resolver.AuthorResolver;
+import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.importer.price.resolver.PublisherResolver;
 import com.rodrilang.librarymanager.importer.price.service.PriceListBookUpsertService;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
@@ -29,6 +32,7 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
     private final AuthorResolver authorResolver;
     private final PublisherResolver publisherResolver;
     private final IsbnService isbnService;
+    private final PriceListIdentifierResolver identifierResolver;
 
     @Override
     public Book upsert(PriceListRow row, ImportContext context, LocalDate today) {
@@ -37,7 +41,7 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
 
         if (book == null) {
             Book newBook = createBook(row, context);
-            registerBookInContext(newBook, context);
+            registerBookInContext(newBook, row, context);
             return newBook;
         }
 
@@ -63,35 +67,50 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         }
 
         Book newBook = createBook(row, context);
-        registerBookInContext(newBook, context);
-
+        registerBookInContext(newBook, row, context);
         return new BookImportResult(newBook, true);
     }
 
-    private void registerBookInContext(Book book, ImportContext context) {
-        if (hasText(book.getIsbn13())) {
-            context.booksByIsbn13().put(book.getIsbn13(), book);
+    private void registerBookInContext(Book book, PriceListRow row, ImportContext context) {
+        PriceListIdentifier identifier = identifierResolver.resolve(row);
+
+        if (identifier.type() == PriceListIdentifierType.ISBN) {
+            if (hasText(book.getIsbn13())) {
+                context.booksByIsbn13().put(book.getIsbn13(), book);
+                context.booksByCanonicalIsbn().put(book.getIsbn13(), book);
+            }
+
+            if (hasText(book.getIsbn10())) {
+                context.booksByIsbn10().put(book.getIsbn10(), book);
+            }
+
+            return;
         }
 
-        if (hasText(book.getIsbn10())) {
-            context.booksByIsbn10().put(book.getIsbn10(), book);
-        }
-
-        ParsedIsbn parsedIsbn = isbnService.parse(book.getPreferredIsbn());
-
-        if (parsedIsbn.valid()) {
-            context.booksByCanonicalIsbn().put(parsedIsbn.isbn13(), book);
+        if (identifier.type() == PriceListIdentifierType.EXTERNAL_CODE) {
+            context.booksByExternalCode().put(identifier.externalCode(), book);
         }
     }
 
     private Book createBook(PriceListRow row, ImportContext context) {
-        BookIsbnValues isbnValues = resolveIsbnValues(row.isbn());
+        PriceListIdentifier identifier = identifierResolver.resolve(row);
+        PriceListMetadata metadata = row.metadata();
+        String coverUrl = resolveCoverUrl(metadata);
 
         return Book.builder()
-                .isbn(isbnValues.legacyIsbn())
-                .isbn10(isbnValues.isbn10())
-                .isbn13(isbnValues.isbn13())
+                .isbn10(identifier.isbn10())
+                .isbn13(identifier.isbn13())
                 .title(row.title().trim())
+                .description(resolveDescription(metadata))
+                .language(resolveLanguage(metadata))
+                .pageCount(resolvePageCount(metadata))
+                .publicationDate(resolvePublicationDate(metadata))
+                .coverUrl(coverUrl)
+                .widthCm(metadata != null ? metadata.widthCm() : null)
+                .heightCm(metadata != null ? metadata.heightCm() : null)
+                .depthCm(metadata != null ? metadata.depthCm() : null)
+                .weightGrams(metadata != null ? metadata.weightGrams() : null)
+                .coverSource(resolveCoverSource(context, coverUrl))
                 .source(BookSource.EDITORIAL_PRICE_LIST)
                 .catalogStatus(BookCatalogStatus.VERIFIED)
                 .categoryName(formatNullable(row.categoryName()))
@@ -99,29 +118,6 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
                 .authors(authorResolver.resolve(row, context))
                 .active(true)
                 .build();
-    }
-
-    private BookIsbnValues resolveIsbnValues(String value) {
-        String normalized = isbnService.normalize(value);
-        ParsedIsbn parsedIsbn = isbnService.parse(normalized);
-
-        if (parsedIsbn.valid()) {
-            return new BookIsbnValues(
-                    parsedIsbn.preferredIsbn(),
-                    parsedIsbn.isbn10(),
-                    parsedIsbn.isbn13()
-            );
-        }
-
-        if (isbnService.hasIsbn13Format(normalized)) {
-            return new BookIsbnValues(normalized, null, normalized);
-        }
-
-        if (isbnService.hasIsbn10Format(normalized)) {
-            return new BookIsbnValues(normalized, normalized, null);
-        }
-
-        return new BookIsbnValues(null, null, null);
     }
 
     private void completeMissingIsbn(Book book, ParsedIsbn parsedIsbn, ImportContext context) {
@@ -143,10 +139,6 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             book.setIsbn10(parsedIsbn.isbn10());
         }
 
-        if (!hasText(book.getIsbn())) {
-            book.setIsbn(parsedIsbn.preferredIsbn());
-        }
-
         if (hasText(book.getIsbn13())) {
             context.booksByIsbn13().put(book.getIsbn13(), book);
         }
@@ -158,12 +150,7 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         context.booksByCanonicalIsbn().put(canonicalIsbn, book);
     }
 
-    private void updateExistingBook(
-            Book book,
-            PriceListRow row,
-            ImportContext context
-    ) {
-
+    private void updateExistingBook(Book book, PriceListRow row, ImportContext context) {
         if (!hasText(book.getTitle()) && hasText(row.title())) {
             book.setTitle(row.title().trim());
         }
@@ -172,39 +159,106 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             book.setPublisher(publisherResolver.resolve(row, context));
         }
 
-        if ((book.getAuthors() == null || book.getAuthors().isEmpty())
-                && hasText(row.authorName())) {
+        if ((book.getAuthors() == null || book.getAuthors().isEmpty()) && hasText(row.authorName())) {
             book.setAuthors(authorResolver.resolve(row, context));
+        }
+
+        updateMetadata(book, row.metadata(), context);
+
+        String coverUrl = resolveCoverUrl(row.metadata());
+
+        if (!hasText(book.getCoverUrl()) && hasText(coverUrl)) {
+            book.setCoverUrl(coverUrl);
+            book.setCoverSource(resolveCoverSource(context, coverUrl));
+        }
+    }
+
+    private String resolveCoverUrl(PriceListMetadata metadata) {
+        if (metadata == null || !hasText(metadata.coverUrl())) {
+            return null;
+        }
+
+        return metadata.coverUrl().trim();
+    }
+
+    private String resolveCoverSource(ImportContext context, String coverUrl) {
+        if (!hasText(coverUrl) || context.provider() == null) {
+            return null;
+        }
+
+        return context.provider().getName();
+    }
+
+    private void updateMetadata(
+            Book book,
+            PriceListMetadata metadata,
+            ImportContext context
+    ) {
+        if (metadata == null) {
+            return;
+        }
+
+        if (!hasText(book.getDescription()) && hasText(metadata.description())) {
+            book.setDescription(metadata.description().trim());
+        }
+
+        if (!hasText(book.getLanguage()) && hasText(metadata.language())) {
+            book.setLanguage(metadata.language().trim());
+        }
+
+        if (book.getPageCount() == null && metadata.pageCount() != null) {
+            book.setPageCount(metadata.pageCount());
+        }
+
+        if (book.getPublicationDate() == null && metadata.publicationDate() != null) {
+            book.setPublicationDate(metadata.publicationDate());
+        }
+
+        if (!hasText(book.getCoverUrl()) && hasText(metadata.coverUrl())) {
+            book.setCoverUrl(metadata.coverUrl().trim());
+            book.setCoverSource(context.provider().getName());
+        }
+
+        if (book.getWeightGrams() == null && metadata.weightGrams() != null) {
+            book.setWeightGrams(metadata.weightGrams());
+        }
+
+        if (book.getWidthCm() == null && metadata.widthCm() != null) {
+            book.setWidthCm(metadata.widthCm());
+        }
+
+        if (book.getHeightCm() == null && metadata.heightCm() != null) {
+            book.setHeightCm(metadata.heightCm());
+        }
+
+        if (book.getDepthCm() == null && metadata.depthCm() != null) {
+            book.setDepthCm(metadata.depthCm());
         }
     }
 
     private Book findExistingBook(PriceListRow row, ImportContext context) {
-        String normalized = isbnService.normalize(row.isbn());
+        PriceListIdentifier identifier = identifierResolver.resolve(row);
 
-        if (isbnService.hasIsbn13Format(normalized)) {
-            Book exactByIsbn13 = context.booksByIsbn13().get(normalized);
+        if (identifier.type() == PriceListIdentifierType.ISBN) {
+            Book exactByIsbn13 = context.booksByIsbn13().get(identifier.isbn13());
 
             if (exactByIsbn13 != null) {
                 return exactByIsbn13;
             }
+
+            if (identifier.isbn10() != null) {
+                Book exactByIsbn10 = context.booksByIsbn10().get(identifier.isbn10());
+
+                if (exactByIsbn10 != null) {
+                    return exactByIsbn10;
+                }
+            }
+
+            return context.booksByCanonicalIsbn().get(identifier.isbn13());
         }
 
-        if (isbnService.hasIsbn10Format(normalized)) {
-            Book exactByIsbn10 = context.booksByIsbn10().get(normalized);
-
-            if (exactByIsbn10 != null) {
-                return exactByIsbn10;
-            }
-        }
-
-        ParsedIsbn parsedIsbn = isbnService.parse(normalized);
-
-        if (parsedIsbn.valid()) {
-            Book canonicalBook = context.booksByCanonicalIsbn().get(parsedIsbn.isbn13());
-
-            if (canonicalBook != null) {
-                return canonicalBook;
-            }
+        if (identifier.type() == PriceListIdentifierType.EXTERNAL_CODE) {
+            return context.booksByExternalCode().get(identifier.externalCode());
         }
 
         if (hasText(row.publisherName())) {
@@ -215,5 +269,25 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         }
 
         return bookRepository.findFirstByTitleIgnoreCase(row.title().trim()).orElse(null);
+    }
+
+    private String resolveDescription(PriceListMetadata metadata) {
+        return metadata != null && hasText(metadata.description())
+                ? metadata.description().trim()
+                : null;
+    }
+
+    private String resolveLanguage(PriceListMetadata metadata) {
+        return metadata != null && hasText(metadata.language())
+                ? metadata.language().trim()
+                : null;
+    }
+
+    private Integer resolvePageCount(PriceListMetadata metadata) {
+        return metadata != null ? metadata.pageCount() : null;
+    }
+
+    private LocalDate resolvePublicationDate(PriceListMetadata metadata) {
+        return metadata != null ? metadata.publicationDate() : null;
     }
 }

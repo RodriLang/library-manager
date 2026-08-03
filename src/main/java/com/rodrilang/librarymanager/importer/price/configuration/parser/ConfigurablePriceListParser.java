@@ -16,53 +16,34 @@ public class ConfigurablePriceListParser {
 
     private final PriceListSheetResolver sheetResolver;
 
-    private final ConfigurablePriceListTemplateValidator
-            templateValidator;
+    private final ConfigurablePriceListTemplateValidator templateValidator;
 
     private final ConfigurablePriceListRowMapper rowMapper;
 
-    private final ConfigurablePriceListRowInspector
-            rowInspector;
+    private final ConfigurablePriceListRowInspector rowInspector;
 
-    public List<PriceListRow> parse(
-            Workbook workbook,
-            PriceListImportConfig config
-    ) {
+    public List<PriceListRow> parse(Workbook workbook, PriceListImportConfig config) {
         try {
-            Sheet sheet = sheetResolver.resolve(
-                    workbook,
-                    config
-            );
+            Sheet sheet = sheetResolver.resolve(workbook, config);
 
-            templateValidator.validate(
-                    sheet,
-                    config
-            );
+            templateValidator.validate(sheet, config);
 
-            List<PriceListRow> rows =
-                    new ArrayList<>();
+            List<PriceListRow> rows = new ArrayList<>();
 
-            for (
-                    int rowIndex =
-                    config.getFirstDataRowIndex();
+            for (int rowIndex = config.getFirstDataRowIndex(); rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                Row excelRow = sheet.getRow(rowIndex);
 
-                    rowIndex <= sheet.getLastRowNum();
-
-                    rowIndex++
-            ) {
-
-                Row row = sheet.getRow(rowIndex);
-
-                if (rowInspector.isBlank(row, config)) {
+                if (excelRow == null) {
                     continue;
                 }
 
-                rows.add(
-                        rowMapper.map(
-                                row,
-                                config
-                        )
-                );
+                PriceListRow row = rowMapper.map(excelRow, config);
+
+                if (rowInspector.shouldSkip(row)) {
+                    continue;
+                }
+
+                rows.add(row);
             }
 
             return rows;
@@ -71,10 +52,7 @@ public class ConfigurablePriceListParser {
             throw ex;
 
         } catch (Exception ex) {
-            throw new BusinessException(
-                    "No se pudo procesar la lista de precios: "
-                            + ex.getMessage()
-            );
+            throw new BusinessException("No se pudo procesar la lista de precios: " + ex.getMessage());
         }
     }
 }
