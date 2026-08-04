@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.auth.dtos.request;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -9,7 +10,19 @@ public record UserRequestDto(
         String username,
 
         @NotBlank
-        @Size(min = 8, max = 12)
+        @Email
+        String email,
+
+        @NotBlank
+        @Size(max = 80)
+        String firstName,
+
+        @NotBlank
+        @Size(max = 80)
+        String lastName,
+
+        @NotBlank
+        @Size(min = 8, max = 72)
         String password
 ) {
 }

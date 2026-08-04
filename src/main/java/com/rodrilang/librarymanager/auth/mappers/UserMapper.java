@@ -19,5 +19,6 @@ public interface UserMapper {
     @Mapping(target = "updatedAt", ignore = true)
     User toEntity(UserRequestDto dto);
 
+    @Mapping(target = "displayName", expression = "java(entity.getDisplayName())")
     UserResponse toDto(User entity);
 }
