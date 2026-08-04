@@ -30,6 +30,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubePr
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductMatchingService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductSyncService;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -40,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +63,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     private final TiendanubeProductLinkService productLinkService;
     private final TiendanubeProductMatchingService matchingService;
     private final TiendanubeProductSyncService productSyncService;
+    private final IsbnService isbnService;
 
     @Override
     public TiendanubeImportPreviewResponse preview(
@@ -110,8 +114,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             throw new BusinessException("La publicación no tiene ISBN. Debe asociarse manualmente a un libro existente.");
         }
 
-        Book book = bookRepository.findByIsbn(isbn)
-                .orElseThrow(() -> new BusinessException("No existe un libro en el catálogo con ISBN " + isbn));
+        Book book = findBookByIsbn(isbn);
 
         Optional<Inventory> existingInventory = inventoryRepository.findWithBookDetailsByBookIdAndBookstoreIdAndCondition(
                 book.getId(),
@@ -213,15 +216,23 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
 
         List<Book> books = bookRepository.findAllByActiveTrue();
 
-        Map<String, Book> booksByIsbn = books.stream()
-                .filter(book ->
-                        TiendanubeProductUtils.normalizeIdentifier(book.getIsbn()) != null
-                )
-                .collect(Collectors.toMap(
-                        book -> TiendanubeProductUtils.normalizeIdentifier(book.getIsbn()),
-                        Function.identity(),
-                        (first, second) -> first
-                ));
+        Map<String, Book> booksByIsbn = new HashMap<>();
+
+        for (Book book : books) {
+            if (book.getIsbn13() != null) {
+                booksByIsbn.putIfAbsent(
+                        TiendanubeProductUtils.normalizeIdentifier(book.getIsbn13()),
+                        book
+                );
+            }
+
+            if (book.getIsbn10() != null) {
+                booksByIsbn.putIfAbsent(
+                        TiendanubeProductUtils.normalizeIdentifier(book.getIsbn10()),
+                        book
+                );
+            }
+        }
 
         return new PreviewContext(
                 linksByVariantId,
@@ -548,7 +559,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
 
         return new TiendanubeImportBookCandidateResponse(
                 book.getId(),
-                book.getIsbn(),
+                book.getPreferredIsbn(),
                 book.getTitle(),
                 authors,
                 publisher,
@@ -598,6 +609,34 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 page.size(),
                 page.totalPages(),
                 items
+        );
+    }
+
+    private Book findBookByIsbn(String value) {
+        ParsedIsbn parsedIsbn = isbnService.parse(value);
+
+        if (!parsedIsbn.valid()) {
+            throw new BusinessException("La publicación no tiene un ISBN válido.");
+        }
+
+        if (parsedIsbn.isbn13() != null) {
+            Optional<Book> byIsbn13 = bookRepository.findByIsbn13(parsedIsbn.isbn13());
+
+            if (byIsbn13.isPresent()) {
+                return byIsbn13.get();
+            }
+        }
+
+        if (parsedIsbn.isbn10() != null) {
+            Optional<Book> byIsbn10 = bookRepository.findByIsbn10(parsedIsbn.isbn10());
+
+            if (byIsbn10.isPresent()) {
+                return byIsbn10.get();
+            }
+        }
+
+        throw new BusinessException(
+                "No existe un libro en el catálogo con ISBN " + value
         );
     }
 

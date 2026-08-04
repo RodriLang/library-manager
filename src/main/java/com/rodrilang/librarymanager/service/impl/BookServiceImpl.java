@@ -10,6 +10,8 @@ import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.mapper.BookMapper;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
@@ -23,7 +25,6 @@ import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.EditorialPriceService;
 import com.rodrilang.librarymanager.service.PublisherService;
-import com.rodrilang.librarymanager.util.IsbnUtils;
 import com.rodrilang.librarymanager.util.PageableUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +34,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Set;
 
@@ -41,6 +41,8 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class BookServiceImpl implements BookService {
+
+    private static final Map<String, String> BOOK_SORT_MAPPING = Map.of("title", "titleSort");
 
     private final BookRepository bookRepository;
     private final BookMapper bookMapper;
@@ -50,16 +52,14 @@ public class BookServiceImpl implements BookService {
     private final EditorialPriceService editorialPriceService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
-
-    private static final Map<String, String> BOOK_SORT_MAPPING = Map.of("title", "titleSort");
+    private final IsbnService isbnService;
 
     @Transactional
     @Override
     public BookDetailResponse create(BookRequest request) {
+        ParsedIsbn parsedIsbn = parseRequiredIsbn(request.isbn());
 
-        String normalizedIsbn = IsbnUtils.normalize(request.isbn());
-
-        if (bookRepository.existsByIsbn(normalizedIsbn)) {
+        if (existsByParsedIsbn(parsedIsbn)) {
             throw new DuplicateResourceException("ISBN ya registrado");
         }
 
@@ -68,7 +68,8 @@ public class BookServiceImpl implements BookService {
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreContext.getCurrentBookstoreId());
 
         Book book = bookMapper.toEntity(request);
-        book.setIsbn(normalizedIsbn);
+        book.setIsbn10(parsedIsbn.isbn10());
+        book.setIsbn13(parsedIsbn.isbn13());
         book.setPublisher(publisher);
         book.setAuthors(authors);
         book.setSource(BookSource.MANUAL);
@@ -80,74 +81,120 @@ public class BookServiceImpl implements BookService {
             Book saved = bookRepository.save(book);
             return toDetailResponse(saved);
         } catch (DataIntegrityViolationException ex) {
-            log.error("Error de integridad al crear libro. isbn={}", normalizedIsbn, ex);
+            log.error("Error de integridad al crear libro. isbn={}", parsedIsbn.preferredIsbn(), ex);
             throw new BusinessException("No se pudo registrar el libro. Verifique los datos ingresados.");
         }
     }
 
     @Override
     public BookDetailResponse getById(Long id) {
-
         return toDetailResponse(getEntityById(id));
     }
 
     @Override
     public BookDetailResponse getByIsbn(String isbn) {
-
         return toDetailResponse(getEntityByIsbn(isbn));
     }
 
-    @Override
     @Transactional
+    @Override
     public BookDetailResponse lookupByIsbn(String isbn) {
-        Book book = bookCatalogService.getOrCreateByIsbn(isbn);
-
-        return toDetailResponse(book);
+        return toDetailResponse(bookCatalogService.getOrCreateByIsbn(isbn));
     }
 
     @Transactional
     @Override
     public BookDetailResponse update(Long bookId, UpdateBookRequest request) {
-
-        log.info("REQUEST coverUrl: {}", request.coverUrl());
         Book book = getEntityById(bookId);
 
         bookMapper.updateEntity(request, book);
 
         if (request.publisherId() != null) {
-            Publisher publisher = publisherService.getEntityById(request.publisherId());
-            book.setPublisher(publisher);
+            book.setPublisher(publisherService.getEntityById(request.publisherId()));
         }
 
         if (request.authorIds() != null) {
-            Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
-            book.setAuthors(authors);
+            book.setAuthors(authorService.getEntitiesByIds(request.authorIds()));
         }
 
-        Book saved = bookRepository.save(book);
-
-        return toDetailResponse(saved);
+        return toDetailResponse(bookRepository.save(book));
     }
 
     @Transactional(readOnly = true)
     @Override
-    public Page<BookSummaryResponse> search(String query, Pageable pageable) {
-
+    public Page<BookSummaryResponse> search(
+            String query,
+            boolean force,
+            Pageable pageable
+    ) {
         if (query == null || query.isBlank()) {
             return Page.empty(pageable);
         }
 
-        return bookRepository.search(query, pageable)
-                .map(this::toSummaryResponse);
+        String normalizedQuery = query.trim();
+
+        boolean identifierQuery =
+                normalizedQuery.matches("[0-9Xx\\-\\s]+");
+
+        if (!force) {
+            int minimumLength = identifierQuery ? 8 : 3;
+
+            if (normalizedQuery.length() < minimumLength) {
+                return Page.empty(pageable);
+            }
+        }
+
+        long repositoryStart = System.currentTimeMillis();
+
+        Page<Book> books;
+
+        if (identifierQuery) {
+            String normalizedIdentifier =
+                    normalizeSearchIdentifier(normalizedQuery);
+
+            if (normalizedIdentifier == null) {
+                return Page.empty(pageable);
+            }
+
+            books = bookRepository.searchByIsbn(
+                    normalizedIdentifier,
+                    pageable
+            );
+        } else {
+            books = bookRepository.searchText(
+                    normalizedQuery,
+                    pageable
+            );
+        }
+
+        long repositoryTime =
+                System.currentTimeMillis() - repositoryStart;
+
+        long mappingStart = System.currentTimeMillis();
+
+        Page<BookSummaryResponse> response =
+                books.map(this::toSummaryResponse);
+
+        long mappingTime =
+                System.currentTimeMillis() - mappingStart;
+
+        log.info(
+                "Book search timing. query={} repositoryTime={}ms mappingTime={}ms results={} totalElements={}",
+                normalizedQuery,
+                repositoryTime,
+                mappingTime,
+                books.getNumberOfElements(),
+                books.getTotalElements()
+        );
+
+        return response;
     }
 
     @Transactional(readOnly = true)
     @Override
     public Page<BookSummaryResponse> getAll(Pageable pageable) {
-
         if (PageableUtils.hasSort(pageable, "editorialPrice")) {
             boolean ascending = PageableUtils.isAscending(pageable, "editorialPrice");
-
             Pageable unsortedPageable = PageableUtils.withoutSort(pageable);
 
             Page<Book> books = ascending
@@ -158,22 +205,25 @@ public class BookServiceImpl implements BookService {
         }
 
         Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, BOOK_SORT_MAPPING);
-
-        return bookRepository.findAll(normalizedPageable)
-                .map(this::toSummaryResponse);
+        return bookRepository.findAll(normalizedPageable).map(this::toSummaryResponse);
     }
 
     @Override
     public Book getEntityById(Long id) {
-
         return bookRepository.findByIdWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró un libro con el ID: " + id));
     }
 
     @Override
     public Book getEntityByIsbn(String isbn) {
-        return bookRepository.findByIsbnWithDetails(isbn)
-                .orElseThrow(() -> new ResourceNotFoundException("No se encontró un libro con el ISBN: " + isbn));
+        ParsedIsbn parsedIsbn = parseRequiredIsbn(isbn);
+        Book book = findByParsedIsbnWithDetails(parsedIsbn);
+
+        if (book == null) {
+            throw new ResourceNotFoundException("No se encontró un libro con el ISBN: " + parsedIsbn.preferredIsbn());
+        }
+
+        return book;
     }
 
     @Override
@@ -183,20 +233,60 @@ public class BookServiceImpl implements BookService {
 
     @Override
     public boolean existsByIsbn(String isbn) {
-        return bookRepository.existsByIsbn(isbn);
+        ParsedIsbn parsedIsbn = isbnService.parse(isbn);
+        return parsedIsbn.valid() && existsByParsedIsbn(parsedIsbn);
+    }
+
+    private ParsedIsbn parseRequiredIsbn(String isbn) {
+        ParsedIsbn parsedIsbn = isbnService.parse(isbn);
+
+        if (!parsedIsbn.valid()) {
+            throw new BusinessException("El ISBN ingresado no es válido.");
+        }
+
+        return parsedIsbn;
+    }
+
+    private boolean existsByParsedIsbn(ParsedIsbn parsedIsbn) {
+        if (bookRepository.existsByIsbn13(parsedIsbn.isbn13())) {
+            return true;
+        }
+
+        return parsedIsbn.isbn10() != null && bookRepository.existsByIsbn10(parsedIsbn.isbn10());
+    }
+
+    private Book findByParsedIsbnWithDetails(ParsedIsbn parsedIsbn) {
+        Book byIsbn13 = bookRepository.findByIsbn13WithDetails(parsedIsbn.isbn13()).orElse(null);
+
+        if (byIsbn13 != null || parsedIsbn.isbn10() == null) {
+            return byIsbn13;
+        }
+
+        return bookRepository.findByIsbn10WithDetails(parsedIsbn.isbn10()).orElse(null);
+    }
+
+    private String normalizeSearchIdentifier(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value
+                .trim()
+                .toUpperCase()
+                .replaceAll("[^0-9X]", "");
+
+        return normalized.isBlank()
+                ? null
+                : normalized;
     }
 
     private BookSummaryResponse toSummaryResponse(Book book) {
-        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId())
-                .orElse(null);
-
+        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId()).orElse(null);
         return bookMapper.toSummaryResponse(book, editorialPrice);
     }
 
     private BookDetailResponse toDetailResponse(Book book) {
-        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId())
-                .orElse(null);
-
+        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId()).orElse(null);
         return bookMapper.toDetailResponse(book, editorialPrice);
     }
 }

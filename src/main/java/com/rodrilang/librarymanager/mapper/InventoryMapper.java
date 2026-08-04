@@ -43,7 +43,7 @@ public abstract class InventoryMapper {
 
     @Mapping(target = "id", source = "inventory.id")
     @Mapping(target = "bookId", source = "inventory.book.id")
-    @Mapping(target = "isbn", source = "inventory.book.isbn")
+    @Mapping(target = "isbn", expression = "java(inventory.getBook().getPreferredIsbn())")
     @Mapping(target = "title", source = "inventory.book.title")
     @Mapping(target = "publisherName", source = "inventory.book.publisher.name")
     @Mapping(target = "coverUrl", source = "inventory.book.coverUrl")

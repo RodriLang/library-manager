@@ -67,7 +67,7 @@ public class InventoryServiceImpl implements InventoryService {
         if (inventoryRepository.existsByBookIdAndBookstoreIdAndCondition(bookId, bookstoreId, condition)) {
             throw new DuplicateResourceException(String.format(
                     "El libro ISBN: %s ya se encuentra registrado en el inventario como %s",
-                    book.getIsbn(),
+                    book.getPreferredIsbn(),
                     condition
             ));
         }
@@ -218,17 +218,57 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Transactional(readOnly = true)
     @Override
-    public Page<InventorySummaryResponse> search(String query, Pageable pageable) {
-
+    public Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable) {
         if (query == null || query.isBlank()) {
-            Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
+            Pageable normalizedPageable = PageableUtils.mapSortProperties(
+                    pageable,
+                    INVENTORY_SORT_MAPPING
+            );
 
-            return inventoryRepository.findAllWithBookDetails(normalizedPageable)
+            return inventoryRepository
+                    .findAllWithBookDetails(normalizedPageable)
                     .map(this::toSummaryResponse);
         }
 
-        return inventoryRepository.search(query.trim(), pageable)
-                .map(this::toSummaryResponse);
+        String normalizedQuery = query.trim();
+
+        boolean identifierQuery =
+                normalizedQuery.matches("[0-9Xx\\-\\s]+");
+
+        if (!force) {
+            int minimumLength = identifierQuery ? 8 : 3;
+
+            if (normalizedQuery.length() < minimumLength) {
+                return Page.empty(pageable);
+            }
+        }
+
+        Page<Inventory> inventory;
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        if (identifierQuery) {
+            String normalizedIdentifier =
+                    normalizeSearchIdentifier(normalizedQuery);
+
+            if (normalizedIdentifier == null) {
+                return Page.empty(pageable);
+            }
+
+            inventory = inventoryRepository.searchByIsbn(
+                    bookstoreId,
+                    normalizedIdentifier,
+                    pageable
+            );
+        } else {
+            inventory = inventoryRepository.searchText(
+                    bookstoreId,
+                    normalizedQuery,
+                    pageable
+            );
+        }
+
+        return inventory.map(this::toSummaryResponse);
     }
 
     @Transactional
@@ -301,6 +341,21 @@ public class InventoryServiceImpl implements InventoryService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
                 ));
+    }
+
+    private String normalizeSearchIdentifier(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value
+                .trim()
+                .toUpperCase()
+                .replaceAll("[^0-9X]", "");
+
+        return normalized.isBlank()
+                ? null
+                : normalized;
     }
 
     private InventorySummaryResponse toSummaryResponse(Inventory inventory) {

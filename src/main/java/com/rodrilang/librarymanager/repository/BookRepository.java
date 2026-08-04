@@ -14,7 +14,17 @@ import java.util.Optional;
 
 public interface BookRepository extends JpaRepository<Book, Long> {
 
-    Optional<Book> findByIsbn(String isbn);
+    boolean existsByIsbn13(String isbn13);
+
+    boolean existsByIsbn10(String isbn10);
+
+    Optional<Book> findByIsbn13(String isbn13);
+
+    Optional<Book> findByIsbn10(String isbn10);
+
+    List<Book> findByIsbn13In(Collection<String> isbn13Values);
+
+    List<Book> findByIsbn10In(Collection<String> isbn10Values);
 
     @Query("""
             SELECT DISTINCT b
@@ -25,19 +35,6 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             """)
     Optional<Book> findByIdWithDetails(Long id);
 
-    @Query("""
-            SELECT DISTINCT b
-            FROM Book b
-            LEFT JOIN FETCH b.publisher
-            LEFT JOIN FETCH b.authors
-            WHERE b.isbn = :isbn
-            """)
-    Optional<Book> findByIsbnWithDetails(String isbn);
-
-    boolean existsByIsbn(String isbn);
-
-    List<Book> findByIsbnIn(Collection<String> isbns);
-
     Optional<Book> findFirstByTitleIgnoreCase(String title);
 
     Optional<Book> findFirstByTitleIgnoreCaseAndPublisher_NameIgnoreCase(String title, String publisherName);
@@ -46,87 +43,201 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             value = """
                     SELECT b.*
                     FROM books b
-                    LEFT JOIN publishers p ON p.id = b.publisher_id
-                    WHERE
-                        lower(coalesce(b.isbn, '')) LIKE lower(concat('%', :query, '%'))
-                        OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        )
-                        OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
-                        )
+                    WHERE b.active = true
+                      AND (
+                            b.isbn_13 LIKE concat(:query, '%')
+                            OR b.isbn_10 LIKE concat(:query, '%')
+                      )
                     ORDER BY
                         CASE
-                            WHEN lower(coalesce(b.isbn, '')) = lower(:query) THEN 1
-                            WHEN lower(coalesce(b.isbn, '')) LIKE lower(concat(:query, '%')) THEN 2
-                            WHEN unaccent(lower(b.title)) LIKE unaccent(lower(concat(:query, '%'))) THEN 3
-                            WHEN EXISTS (
-                                SELECT 1
-                                FROM book_authors ba
-                                JOIN authors a ON a.id = ba.author_id
-                                WHERE ba.book_id = b.id
-                                  AND unaccent(lower(a.name)) LIKE unaccent(lower(concat(:query, '%')))
-                            ) THEN 4
-                            WHEN unaccent(lower(p.name)) LIKE unaccent(lower(concat(:query, '%'))) THEN 5
-                            ELSE 6
+                            WHEN b.isbn_13 = :query THEN 1
+                            WHEN b.isbn_10 = :query THEN 1
+                            ELSE 2
                         END,
-                        GREATEST(
-                            similarity(unaccent(lower(b.title)), unaccent(lower(:query))),
-                            similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))),
-                            similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query)))
-                        ) DESC,
-                        b.title ASC
+                        b.title_sort ASC
                     """,
             countQuery = """
                     SELECT COUNT(*)
                     FROM books b
-                    LEFT JOIN publishers p ON p.id = b.publisher_id
-                    WHERE
-                        lower(b.isbn) LIKE lower(concat('%', :query, '%'))
-                        OR unaccent(lower(b.title)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(coalesce(b.subtitle, ''))) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR unaccent(lower(p.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND unaccent(lower(a.name)) LIKE unaccent(lower(concat('%', :query, '%')))
-                        )
-                        OR similarity(unaccent(lower(b.title)), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(b.subtitle, ''))), unaccent(lower(:query))) > 0.25
-                        OR similarity(unaccent(lower(coalesce(p.name, ''))), unaccent(lower(:query))) > 0.25
-                        OR EXISTS (
-                            SELECT 1
-                            FROM book_authors ba
-                            JOIN authors a ON a.id = ba.author_id
-                            WHERE ba.book_id = b.id
-                              AND similarity(unaccent(lower(a.name)), unaccent(lower(:query))) > 0.25
-                        )
+                    WHERE b.active = true
+                      AND (
+                            b.isbn_13 LIKE concat(:query, '%')
+                            OR b.isbn_10 LIKE concat(:query, '%')
+                      )
                     """,
             nativeQuery = true
     )
-    Page<Book> search(@Param("query") String query, Pageable pageable);
+    Page<Book> searchByIsbn(
+            @Param("query") String query,
+            Pageable pageable
+    );
+
+    @Query(
+            value = """
+                    WITH matches AS (
+                        SELECT
+                            b.id AS book_id,
+                            CASE
+                                WHEN immutable_unaccent(lower(b.title))
+                                     = immutable_unaccent(lower(:query))
+                                    THEN 1
+                                WHEN immutable_unaccent(lower(b.title))
+                                     LIKE concat(
+                                         immutable_unaccent(lower(:query)),
+                                         '%'
+                                     )
+                                    THEN 2
+                                ELSE 3
+                            END AS priority
+                        FROM books b
+                        WHERE b.active = true
+                          AND immutable_unaccent(lower(b.title))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT
+                            b.id AS book_id,
+                            4 AS priority
+                        FROM books b
+                        WHERE b.active = true
+                          AND immutable_unaccent(
+                                  lower(coalesce(b.subtitle, ''))
+                              )
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT
+                            b.id AS book_id,
+                            5 AS priority
+                        FROM publishers p
+                        JOIN books b ON b.publisher_id = p.id
+                        WHERE b.active = true
+                          AND immutable_unaccent(lower(p.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT
+                            ba.book_id,
+                            CASE
+                                WHEN immutable_unaccent(lower(a.name))
+                                     LIKE concat(
+                                         immutable_unaccent(lower(:query)),
+                                         '%'
+                                     )
+                                    THEN 3
+                                ELSE 4
+                            END AS priority
+                        FROM authors a
+                        JOIN book_authors ba ON ba.author_id = a.id
+                        JOIN books b ON b.id = ba.book_id
+                        WHERE b.active = true
+                          AND immutable_unaccent(lower(a.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    ),
+                    ranked_matches AS (
+                        SELECT
+                            book_id,
+                            MIN(priority) AS priority
+                        FROM matches
+                        GROUP BY book_id
+                    )
+                    SELECT b.*
+                    FROM ranked_matches rm
+                    JOIN books b ON b.id = rm.book_id
+                    ORDER BY
+                        rm.priority ASC,
+                        coalesce(b.title_sort, b.title) ASC,
+                        b.id ASC
+                    """,
+            countQuery = """
+                    SELECT COUNT(DISTINCT matches.book_id)
+                    FROM (
+                        SELECT b.id AS book_id
+                        FROM books b
+                        WHERE b.active = true
+                          AND immutable_unaccent(lower(b.title))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT b.id AS book_id
+                        FROM books b
+                        WHERE b.active = true
+                          AND immutable_unaccent(
+                                  lower(coalesce(b.subtitle, ''))
+                              )
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT b.id AS book_id
+                        FROM publishers p
+                        JOIN books b ON b.publisher_id = p.id
+                        WHERE b.active = true
+                          AND immutable_unaccent(lower(p.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    
+                        UNION ALL
+                    
+                        SELECT ba.book_id
+                        FROM authors a
+                        JOIN book_authors ba ON ba.author_id = a.id
+                        JOIN books b ON b.id = ba.book_id
+                        WHERE b.active = true
+                          AND immutable_unaccent(lower(a.name))
+                              LIKE concat(
+                                  '%',
+                                  immutable_unaccent(lower(:query)),
+                                  '%'
+                              )
+                    ) matches
+                    """,
+            nativeQuery = true
+    )
+    Page<Book> searchText(
+            @Param("query") String query,
+            Pageable pageable
+    );
 
     @Query("""
                 select b
                 from Book b
                 where b.active = true
-                  and b.isbn is not null
+                  and (
+                      b.isbn13 is not null
+                      or b.isbn10 is not null
+                  )
                   and (
                       b.subtitle is null
                       or b.description is null
@@ -224,25 +335,17 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             """)
     long countBooksPendingCoverEnrichment();
 
-    @Query("""
-            SELECT DISTINCT b
-            FROM Book b
-            LEFT JOIN FETCH b.authors
-            LEFT JOIN FETCH b.publisher
-            WHERE lower(function('unaccent', :remoteName))
-                  LIKE concat(lower(function('unaccent', b.title)), '%')
-            """)
-    List<Book> findCandidatesForTiendanubeImport(@Param("remoteName") String remoteName);
-
-    @EntityGraph(attributePaths = {
-            "authors",
-            "publisher"
-    })
-    List<Book> findAllByIsbnIn(Collection<String> isbns);
-
     @EntityGraph(attributePaths = {
             "authors",
             "publisher"
     })
     List<Book> findAllByActiveTrue();
+
+    @EntityGraph(attributePaths = {"publisher", "authors"})
+    @Query("SELECT b FROM Book b WHERE b.isbn13 = :isbn13")
+    Optional<Book> findByIsbn13WithDetails(@Param("isbn13") String isbn13);
+
+    @EntityGraph(attributePaths = {"publisher", "authors"})
+    @Query("SELECT b FROM Book b WHERE b.isbn10 = :isbn10")
+    Optional<Book> findByIsbn10WithDetails(@Param("isbn10") String isbn10);
 }

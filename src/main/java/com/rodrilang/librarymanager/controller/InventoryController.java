@@ -95,12 +95,13 @@ public class InventoryController {
     @GetMapping("/search")
     public ResponseEntity<PageResponse<InventorySummaryResponse>> search(
             @RequestParam String q,
+            @RequestParam(defaultValue = "false") boolean force,
             @ParameterObject
             @PageableDefault(size = 20)
             Pageable pageable
     ) {
         return ResponseEntity.ok(
-                PageResponse.of(inventoryService.search(q.trim(), pageable))
+                PageResponse.of(inventoryService.search(q.trim(), force, pageable))
         );
     }
 

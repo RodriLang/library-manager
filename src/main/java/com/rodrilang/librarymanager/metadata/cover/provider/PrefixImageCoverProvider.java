@@ -14,11 +14,11 @@ public abstract class PrefixImageCoverProvider extends DirectUrlCoverProvider {
 
     @Override
     public Optional<CoverCandidate> findCover(Book book) {
-        if (book.getIsbn() == null || book.getIsbn().isBlank()) {
+        String isbn = book.getPreferredIsbn();
+
+        if (isbn == null || isbn.isBlank()) {
             return Optional.empty();
         }
-
-        String isbn = book.getIsbn().trim();
 
         if (isbn.length() < 7) {
             return Optional.empty();
@@ -27,13 +27,7 @@ public abstract class PrefixImageCoverProvider extends DirectUrlCoverProvider {
         String prefix = isbn.substring(0, 7);
         String url = buildUrl(prefix, isbn);
 
-        return buildCandidate(
-                url,
-                name(),
-                book.getTitle(),
-                mime(),
-                score()
-        );
+        return buildCandidate(url, name(), book.getTitle(), mime(), score());
     }
 
     protected abstract String buildUrl(String prefix, String isbn);

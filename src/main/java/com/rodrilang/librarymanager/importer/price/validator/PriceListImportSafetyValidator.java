@@ -2,13 +2,14 @@ package com.rodrilang.librarymanager.importer.price.validator;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.List;
 
-import static com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils.normalizeIsbn;
 import static org.springframework.util.StringUtils.hasText;
 
 @Component
@@ -22,6 +23,8 @@ public class PriceListImportSafetyValidator {
     private static final double MIN_ISBN_RATIO = 0.80;
     private static final int MIN_ROWS_WITH_ISBN_TO_VALIDATE_RATIO = 20;
     private static final double MAX_ABSURD_PRICE_RATIO = 0.10;
+
+    private final IsbnService isbnService;
 
     public void validate(
             List<PriceListRow> rows,
@@ -72,7 +75,9 @@ public class PriceListImportSafetyValidator {
                 .count();
 
         long rowsWithValidIsbn = rows.stream()
-                .filter(row -> normalizeIsbn(row.isbn()) != null)
+                .filter(row -> hasText(row.isbn()))
+                .map(row -> isbnService.parse(row.isbn()))
+                .filter(ParsedIsbn::valid)
                 .count();
 
         if (rowsWithIsbn >= MIN_ROWS_WITH_ISBN_TO_VALIDATE_RATIO) {
@@ -97,6 +102,5 @@ public class PriceListImportSafetyValidator {
                     "Se detectó una cantidad inusual de precios fuera de rango. No se realizó la importación."
             );
         }
-
     }
 }

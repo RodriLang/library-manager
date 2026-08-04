@@ -64,7 +64,7 @@ public class BookCoverEnrichmentServiceImpl implements BookCoverEnrichmentServic
                 log.error(
                         "Error buscando portada para bookId={} isbn={}",
                         book.getId(),
-                        book.getIsbn(),
+                        book.getPreferredIsbn(),
                         ex
                 );
             }
@@ -103,7 +103,7 @@ public class BookCoverEnrichmentServiceImpl implements BookCoverEnrichmentServic
                     log.info(
                             "Portada encontrada para bookId={} isbn={} source={} score={}",
                             book.getId(),
-                            book.getIsbn(),
+                            book.getPreferredIsbn(),
                             candidate.source(),
                             candidate.score()
                     );
@@ -116,7 +116,7 @@ public class BookCoverEnrichmentServiceImpl implements BookCoverEnrichmentServic
                     log.info(
                             "No se encontró portada para bookId={} isbn={} title={}",
                             book.getId(),
-                            book.getIsbn(),
+                            book.getPreferredIsbn(),
                             book.getTitle()
                     );
 

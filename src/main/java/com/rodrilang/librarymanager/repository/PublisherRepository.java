@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.model.Publisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
@@ -31,5 +32,16 @@ public interface PublisherRepository extends JpaRepository<Publisher, Long> {
                   function('unaccent', lower(:name))
             """)
     boolean existsNormalized(String name);
+
+    @Modifying(flushAutomatically = true)
+    @Query(
+            value = """
+                    INSERT INTO publishers (name, created_at, updated_at)
+                    VALUES (:name, NOW(), NOW())
+                    ON CONFLICT (name) DO NOTHING
+                    """,
+            nativeQuery = true
+    )
+    void insertIfAbsent(String name);
 
 }

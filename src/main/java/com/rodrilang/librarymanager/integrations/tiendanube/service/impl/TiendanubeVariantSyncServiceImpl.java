@@ -150,7 +150,7 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
         }
 
         try {
-            String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
+            String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
             String sku = link.getSku();
 
             if ((sku == null || sku.isBlank()) && isbn != null) {

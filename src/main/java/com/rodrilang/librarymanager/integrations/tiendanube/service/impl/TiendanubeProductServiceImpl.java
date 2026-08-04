@@ -231,7 +231,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         Book book = inventory.getBook();
 
         String sku = buildSku(inventory);
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(book.getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(book.getPreferredIsbn());
 
         TiendanubeCreateVariantRequest variant = new TiendanubeCreateVariantRequest(
                 inventory.getSalePrice(),
@@ -260,7 +260,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
 
     private String buildSku(Inventory inventory) {
 
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getIsbn());
+        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
 
         if (isbn != null) {
             return isbn;

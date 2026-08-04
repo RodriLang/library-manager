@@ -25,11 +25,11 @@ public class AbeBooksCoverProvider extends DirectUrlCoverProvider {
     @Override
     public Optional<CoverCandidate> findCover(Book book) {
 
-        if (book.getIsbn() == null || book.getIsbn().isBlank()) {
+        if (book.getPreferredIsbn() == null || book.getPreferredIsbn().isBlank()) {
             return Optional.empty();
         }
 
-        String url = COVER_URL.formatted(book.getIsbn().trim());
+        String url = COVER_URL.formatted(book.getPreferredIsbn().trim());
 
         return buildCandidate(
                 url,

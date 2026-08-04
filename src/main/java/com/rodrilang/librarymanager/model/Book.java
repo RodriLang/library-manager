@@ -3,7 +3,6 @@ package com.rodrilang.librarymanager.model;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.enums.CoverSearchStatus;
-import com.rodrilang.librarymanager.util.IsbnUtils;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,6 +19,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -30,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 @Getter
@@ -45,8 +46,11 @@ public class Book extends AuditableEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, length = 20)
-    private String isbn;
+    @Column(name = "isbn_10", length = 10)
+    private String isbn10;
+
+    @Column(name = "isbn_13", length = 13)
+    private String isbn13;
 
     @Column(nullable = false)
     private String title;
@@ -131,6 +135,18 @@ public class Book extends AuditableEntity {
     @PreUpdate
     private void normalizeFields() {
         this.titleSort = TextNormalizer.normalizeForSort(title);
-        this.isbn = IsbnUtils.normalize(isbn);
+
+        if (isbn13 != null) {
+            isbn13 = isbn13.trim();
+        }
+
+        if (isbn10 != null) {
+            isbn10 = isbn10.trim().toUpperCase(Locale.ROOT);
+        }
+    }
+
+    @Transient
+    public String getPreferredIsbn() {
+        return isbn13 != null ? isbn13 : isbn10;
     }
 }

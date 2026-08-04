@@ -25,7 +25,7 @@ public interface InventoryService {
 
     Page<InventorySummaryResponse> getAll(Pageable pageable);
 
-    Page<InventorySummaryResponse> search(String query, Pageable pageable);
+    Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable);
 
     void removeBook(Long bookId);
 

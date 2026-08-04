@@ -1,13 +1,19 @@
 package com.rodrilang.librarymanager.importer.price.model;
 
+import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
+import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
 import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
@@ -44,8 +50,22 @@ public class PriceListImportJob {
     private String idempotencyKey;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "price_list_source", nullable = false)
+    @Column(name = "price_list_source")
     private PriceListSource priceListSource;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "provider_id",
+            foreignKey = @ForeignKey(name = "fk_price_list_import_jobs_provider")
+    )
+    private PriceListProvider provider;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "import_config_id",
+            foreignKey = @ForeignKey(name = "fk_price_list_import_jobs_config")
+    )
+    private PriceListImportConfig importConfig;
 
     @Column(name = "valid_from", nullable = false)
     private LocalDate validFrom;

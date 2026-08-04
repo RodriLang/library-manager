@@ -58,11 +58,13 @@ public class BookMetadataEnrichmentServiceImpl implements BookMetadataEnrichment
     }
 
     private boolean enrich(Book book) {
-        if (book.getIsbn() == null || book.getIsbn().isBlank()) {
+        String isbn = book.getPreferredIsbn();
+
+        if (isbn == null || isbn.isBlank()) {
             return false;
         }
 
-        Optional<BookMetadata> metadataOptional = bookMetadataService.findByIsbn(book.getIsbn());
+        Optional<BookMetadata> metadataOptional = bookMetadataService.findByIsbn(isbn);
 
         if (metadataOptional.isEmpty()) {
             return false;

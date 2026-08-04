@@ -32,13 +32,13 @@ public class PriceListImportController {
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     public ResponseEntity<PriceListImportStartResponse> importPriceList(
-            @RequestParam PriceListSource priceListSource,
+            @RequestParam Long providerId,
             @RequestParam MultipartFile file,
             @RequestParam LocalDate validFrom,
             @RequestHeader("Idempotency-Key") String idempotencyKey
     ) {
         return ResponseEntity.accepted().body(
-                priceListImportService.startImport(priceListSource, file, validFrom, idempotencyKey)
+                priceListImportService.startImport(providerId, file, validFrom, idempotencyKey)
         );
     }
 

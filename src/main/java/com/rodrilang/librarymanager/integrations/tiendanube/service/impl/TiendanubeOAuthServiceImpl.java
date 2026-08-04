@@ -35,7 +35,6 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
 
     @Override
     public TiendanubeAuthorizationResponse createAuthorizationUrl() {
-
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
         String state = stateService.create(bookstoreId);
@@ -68,6 +67,8 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
 
         TiendanubeStore store = storeRepository.findByBookstoreId(bookstoreId).orElseGet(TiendanubeStore::new);
 
+        Instant now = Instant.now();
+
         store.setBookstore(bookstore);
         store.setStoreId(response.userId());
         store.setAccessToken(response.accessToken());
@@ -75,16 +76,19 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
         store.setScope(response.scope());
         store.setActive(true);
         store.setTokenValid(true);
-        store.setLastValidatedAt(Instant.now());
+        store.setLastValidatedAt(now);
         store.setConnectionError(null);
-        store.setConnectedAt(Instant.now());
+        store.setConnectedAt(now);
 
         storeRepository.save(store);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public TiendanubeConnectionStatusResponse getStatus() {
-        return storeRepository.findByBookstoreIdAndActiveTrue(1L)
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        return storeRepository.findByBookstoreIdAndActiveTrue(bookstoreId)
                 .map(store -> {
                     if (!store.isTokenValid()) {
                         return new TiendanubeConnectionStatusResponse(

@@ -23,15 +23,9 @@ public class PublisherResolver {
     private final PublisherRepository publisherRepository;
 
     public Map<String, Publisher> loadPublishers(List<PriceListRow> rows) {
-        Map<String, Publisher> publishersByName = publisherRepository.findAll()
-                .stream()
-                .collect(Collectors.toMap(
-                        publisher -> normalizeName(publisher.getName()),
-                        Function.identity(),
-                        (existing, repeated) -> existing
-                ));
+        Map<String, Publisher> publishersByName = loadPublishersByNormalizedName();
 
-        Map<String, String> originalNamesByNormalizedName = rows.stream()
+        Map<String, String> missingNames = rows.stream()
                 .map(PriceListRow::publisherName)
                 .filter(PriceListNormalizationUtils::hasText)
                 .map(String::trim)
@@ -41,21 +35,12 @@ public class PublisherResolver {
                         (existing, repeated) -> existing
                 ));
 
-        List<Publisher> newPublishers = originalNamesByNormalizedName.entrySet()
-                .stream()
+        missingNames.entrySet().stream()
                 .filter(entry -> !publishersByName.containsKey(entry.getKey()))
-                .map(entry -> Publisher.builder()
-                        .name(entry.getValue())
-                        .build())
-                .toList();
+                .map(Map.Entry::getValue)
+                .forEach(publisherRepository::insertIfAbsent);
 
-        publisherRepository.saveAll(newPublishers)
-                .forEach(publisher -> publishersByName.put(
-                        normalizeName(publisher.getName()),
-                        publisher
-                ));
-
-        return publishersByName;
+        return loadPublishersByNormalizedName();
     }
 
     public Publisher resolve(PriceListRow row, ImportContext context) {
@@ -64,5 +49,14 @@ public class PublisherResolver {
         }
 
         return context.publishersByName().get(normalizeName(row.publisherName()));
+    }
+
+    private Map<String, Publisher> loadPublishersByNormalizedName() {
+        return publisherRepository.findAll().stream()
+                .collect(Collectors.toMap(
+                        publisher -> normalizeName(publisher.getName()),
+                        Function.identity(),
+                        (existing, repeated) -> existing
+                ));
     }
 }

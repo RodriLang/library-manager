@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.service;
 import com.rodrilang.librarymanager.dto.internal.EditorialPriceImportResult;
 import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.EditorialPrice;
@@ -24,7 +25,7 @@ public interface EditorialPriceService {
     PriceImportCounters registerOrUpdateBatchForImport(
             List<Book> books,
             List<PriceListRow> rows,
-            LocalDate validFrom
+            PriceListImportJob job
     );
 
     Optional<EditorialPrice> findCurrentByBookId(Long bookId);

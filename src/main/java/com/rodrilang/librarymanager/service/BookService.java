@@ -20,7 +20,7 @@ public interface BookService {
 
     BookDetailResponse update(Long bookId, UpdateBookRequest request);
 
-    Page<BookSummaryResponse> search(String query, Pageable pageable);
+    Page<BookSummaryResponse> search(String query, boolean force, Pageable pageable);
 
     Page<BookSummaryResponse> getAll(Pageable pageable);
 

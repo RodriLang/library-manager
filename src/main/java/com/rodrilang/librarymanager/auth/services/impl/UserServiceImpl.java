@@ -1,0 +1,71 @@
+package com.rodrilang.librarymanager.auth.services.impl;
+
+import com.rodrilang.librarymanager.auth.dtos.request.UserRequestDto;
+import com.rodrilang.librarymanager.auth.dtos.response.UserResponse;
+import com.rodrilang.librarymanager.auth.enums.RoleType;
+import com.rodrilang.librarymanager.auth.mappers.UserMapper;
+import com.rodrilang.librarymanager.auth.models.Role;
+import com.rodrilang.librarymanager.auth.models.User;
+import com.rodrilang.librarymanager.auth.repositories.UserRepository;
+import com.rodrilang.librarymanager.auth.services.RoleService;
+import com.rodrilang.librarymanager.auth.services.UserService;
+import com.rodrilang.librarymanager.exception.DuplicateResourceException;
+import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Locale;
+import java.util.Set;
+
+@Service
+@RequiredArgsConstructor
+public class UserServiceImpl implements UserService {
+
+    private final UserRepository userRepository;
+    private final RoleService roleService;
+    private final UserMapper userMapper;
+    private final PasswordEncoder passwordEncoder;
+
+    @Override
+    @Transactional
+    public UserResponse createUser(UserRequestDto request) {
+        String normalizedUsername = normalizeUsername(request.username());
+
+        validateUsername(normalizedUsername);
+
+        User user = userMapper.toEntity(request);
+
+        user.setUsername(normalizedUsername);
+        user.setPassword(passwordEncoder.encode(request.password()));
+
+        Role role = roleService.findByName(RoleType.BOOKSTORE_ADMIN);
+        user.setRoles(Set.of(role));
+
+        User savedUser = userRepository.save(user);
+
+        return userMapper.toDto(savedUser);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserResponse findByUsername(String username) {
+        String normalizedUsername = normalizeUsername(username);
+
+        User user = userRepository.findByUsername(normalizedUsername)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el usuario autenticado."));
+
+        return userMapper.toDto(user);
+    }
+
+    private void validateUsername(String username) {
+        if (userRepository.existsByUsername(username)) {
+            throw new DuplicateResourceException("Ya existe un usuario registrado como " + username);
+        }
+    }
+
+    private String normalizeUsername(String username) {
+        return username.trim().toLowerCase(Locale.ROOT);
+    }
+}

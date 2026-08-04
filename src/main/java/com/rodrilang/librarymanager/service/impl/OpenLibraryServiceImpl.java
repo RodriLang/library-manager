@@ -1,5 +1,9 @@
 package com.rodrilang.librarymanager.service.impl;
 
+import com.rodrilang.librarymanager.enums.BookCatalogStatus;
+import com.rodrilang.librarymanager.enums.BookSource;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.metadata.openlibrary.dto.OpenLibraryAuthorDto;
 import com.rodrilang.librarymanager.metadata.openlibrary.dto.OpenLibraryBookResponse;
 import com.rodrilang.librarymanager.model.Author;
@@ -12,6 +16,7 @@ import com.rodrilang.librarymanager.service.OpenLibraryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 
 import java.util.Map;
@@ -27,10 +32,25 @@ public class OpenLibraryServiceImpl implements OpenLibraryService {
     private final BookRepository bookRepository;
     private final AuthorRepository authorRepository;
     private final PublisherRepository publisherRepository;
+    private final IsbnService isbnService;
 
     @Override
+    @Transactional
     public Optional<Book> findByIsbn(String isbn) {
-        String key = "ISBN:" + isbn;
+        ParsedIsbn parsedIsbn = isbnService.parse(isbn);
+
+        if (!parsedIsbn.valid()) {
+            return Optional.empty();
+        }
+
+        Optional<Book> existingBook = findExistingBook(parsedIsbn);
+
+        if (existingBook.isPresent()) {
+            return existingBook;
+        }
+
+        String preferredIsbn = parsedIsbn.preferredIsbn();
+        String key = "ISBN:" + preferredIsbn;
 
         Map<String, OpenLibraryBookResponse> response = openLibraryRestClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -47,23 +67,34 @@ public class OpenLibraryServiceImpl implements OpenLibraryService {
         }
 
         OpenLibraryBookResponse bookResponse = response.get(key);
-
         Publisher publisher = resolvePublisher(bookResponse);
-
         Set<Author> authors = resolveAuthors(bookResponse);
 
         Book book = Book.builder()
-                .isbn(isbn)
+                .isbn10(parsedIsbn.isbn10())
+                .isbn13(parsedIsbn.isbn13())
                 .title(bookResponse.title())
                 .subtitle(bookResponse.subtitle())
                 .pageCount(bookResponse.numberOfPages())
                 .coverUrl(resolveCoverUrl(bookResponse))
+                .source(BookSource.EXTERNAL_METADATA)
+                .catalogStatus(BookCatalogStatus.PENDING_REVIEW)
                 .publisher(publisher)
                 .authors(authors)
                 .active(true)
                 .build();
 
         return Optional.of(bookRepository.save(book));
+    }
+
+    private Optional<Book> findExistingBook(ParsedIsbn parsedIsbn) {
+        Optional<Book> byIsbn13 = bookRepository.findByIsbn13(parsedIsbn.isbn13());
+
+        if (byIsbn13.isPresent() || parsedIsbn.isbn10() == null) {
+            return byIsbn13;
+        }
+
+        return bookRepository.findByIsbn10(parsedIsbn.isbn10());
     }
 
     private Publisher resolvePublisher(OpenLibraryBookResponse response) {
@@ -86,8 +117,7 @@ public class OpenLibraryServiceImpl implements OpenLibraryService {
             return Set.of();
         }
 
-        return response.authors()
-                .stream()
+        return response.authors().stream()
                 .map(OpenLibraryAuthorDto::name)
                 .filter(name -> name != null && !name.isBlank())
                 .map(this::resolveAuthor)
