@@ -39,6 +39,15 @@ public class User {
     @Column(nullable = false, unique = true)
     private String username;
 
+    @Column(name = "email", nullable = false, unique = true, length = 150)
+    private String email;
+
+    @Column(name = "first_name", nullable = false, length = 80)
+    private String firstName;
+
+    @Column(name = "last_name", nullable = false, length = 80)
+    private String lastName;
+
     @Column(nullable = false)
     private String password;
 
@@ -74,5 +83,9 @@ public class User {
     @PreUpdate
     private void updateTimestamp() {
         updatedAt = Instant.now();
+    }
+
+    public String getDisplayName() {
+        return (firstName + " " + lastName).trim();
     }
 }

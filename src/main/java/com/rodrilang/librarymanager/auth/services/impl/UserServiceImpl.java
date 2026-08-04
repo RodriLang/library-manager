@@ -31,13 +31,18 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse createUser(UserRequestDto request) {
-        String normalizedUsername = normalizeUsername(request.username());
+        String normalizedUsername = normalize(request.username());
+        String normalizedEmail = normalize(request.email());
 
         validateUsername(normalizedUsername);
+        validateEmail(normalizedEmail);
 
         User user = userMapper.toEntity(request);
 
         user.setUsername(normalizedUsername);
+        user.setEmail(normalizedEmail);
+        user.setFirstName(request.firstName().trim());
+        user.setLastName(request.lastName().trim());
         user.setPassword(passwordEncoder.encode(request.password()));
 
         Role role = roleService.findByName(RoleType.BOOKSTORE_ADMIN);
@@ -51,9 +56,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public UserResponse findByUsername(String username) {
-        String normalizedUsername = normalizeUsername(username);
-
-        User user = userRepository.findByUsername(normalizedUsername)
+        User user = userRepository.findByUsername(normalize(username))
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró el usuario autenticado."));
 
         return userMapper.toDto(user);
@@ -65,7 +68,13 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    private String normalizeUsername(String username) {
-        return username.trim().toLowerCase(Locale.ROOT);
+    private void validateEmail(String email) {
+        if (userRepository.existsByEmail(email)) {
+            throw new DuplicateResourceException("Ya existe un usuario registrado con el correo " + email);
+        }
+    }
+
+    private String normalize(String value) {
+        return value.trim().toLowerCase(Locale.ROOT);
     }
 }
