@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.exception;
 
+import com.rodrilang.librarymanager.auth.exceptions.InvalidTokenException;
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,6 +10,8 @@ import org.springframework.data.mapping.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -149,6 +152,48 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT,
                 "DATA_INTEGRITY_ERROR",
                 "No se pudo completar la operación porque los datos no cumplen una restricción del sistema.",
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentials(
+            BadCredentialsException exception,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.UNAUTHORIZED,
+                "INVALID_CREDENTIALS",
+                "El usuario o la contraseña son incorrectos.",
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(UsernameNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUsernameNotFound(
+            UsernameNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.UNAUTHORIZED,
+                "INVALID_CREDENTIALS",
+                "El usuario o la contraseña son incorrectos.",
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(InvalidTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidToken(
+            InvalidTokenException exception,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.UNAUTHORIZED,
+                "INVALID_TOKEN",
+                exception.getMessage(),
                 request.getRequestURI(),
                 null
         );
