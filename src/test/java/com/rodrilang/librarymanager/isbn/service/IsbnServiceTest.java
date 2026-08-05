@@ -57,4 +57,26 @@ class IsbnServiceTest {
     void shouldNormalizeSpacesAndHyphens() {
         assertEquals("9780306406157", isbnService.normalize("978-0-306-40615-7"));
     }
+
+    @Test
+    void shouldParseIsbnWithSpaces() {
+        ParsedIsbn result = isbnService.parse("978 9877911022");
+
+        assertTrue(result.valid());
+        assertEquals("9789877911022", result.isbn13());
+    }
+
+    @Test
+    void shouldRejectBlankIsbn() {
+        ParsedIsbn result = isbnService.parse("   ");
+
+        assertFalse(result.valid());
+    }
+
+    @Test
+    void shouldRejectNullIsbn() {
+        ParsedIsbn result = isbnService.parse(null);
+
+        assertFalse(result.valid());
+    }
 }

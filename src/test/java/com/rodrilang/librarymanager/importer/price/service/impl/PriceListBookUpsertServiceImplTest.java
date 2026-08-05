@@ -12,6 +12,9 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -20,26 +23,31 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.mockito.Mockito.mock;
 
+@ExtendWith(MockitoExtension.class)
 class PriceListBookUpsertServiceImplTest {
+
+    @Mock
+    private BookRepository bookRepository;
+
+    @Mock
+    private AuthorResolver authorResolver;
+
+    @Mock
+    private PublisherResolver publisherResolver;
 
     private PriceListBookUpsertServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        BookRepository bookRepository = mock(BookRepository.class);
-        AuthorResolver authorResolver = mock(AuthorResolver.class);
-        PublisherResolver publisherResolver = mock(PublisherResolver.class);
         IsbnService isbnService = new IsbnService();
-        PriceListIdentifierResolver identifierResolver = new PriceListIdentifierResolver(isbnService);
 
         service = new PriceListBookUpsertServiceImpl(
                 bookRepository,
                 authorResolver,
                 publisherResolver,
                 isbnService,
-                identifierResolver
+                new PriceListIdentifierResolver(isbnService)
         );
     }
 
@@ -53,28 +61,64 @@ class PriceListBookUpsertServiceImplTest {
 
         ImportContext context = new ImportContext(
                 null,
-                new HashMap<>(Map.of("9780804429573", existingBook)),
+                new HashMap<>(
+                        Map.of(
+                                "9780804429573",
+                                existingBook
+                        )
+                ),
                 new HashMap<>(),
-                new HashMap<>(Map.of("9780804429573", existingBook)),
+                new HashMap<>(
+                        Map.of(
+                                "9780804429573",
+                                existingBook
+                        )
+                ),
                 new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>()
         );
 
-        PriceListRow row = createRow("080442957X", "Test book");
+        PriceListRow row =
+                createRow(
+                        "080442957X",
+                        "Test book"
+                );
 
-        BookImportResult result = service.findOrCreate(row, context);
+        BookImportResult result =
+                service.findOrCreate(row, context);
 
         assertFalse(result.created());
         assertSame(existingBook, result.book());
-        assertEquals("080442957X", existingBook.getIsbn10());
-        assertEquals("9780804429573", existingBook.getIsbn13());
-        assertSame(existingBook, context.booksByIsbn10().get("080442957X"));
-        assertSame(existingBook, context.booksByCanonicalIsbn().get("9780804429573"));
+
+        assertEquals(
+                "080442957X",
+                existingBook.getIsbn10()
+        );
+
+        assertEquals(
+                "9780804429573",
+                existingBook.getIsbn13()
+        );
+
+        assertSame(
+                existingBook,
+                context.booksByIsbn10()
+                        .get("080442957X")
+        );
+
+        assertSame(
+                existingBook,
+                context.booksByCanonicalIsbn()
+                        .get("9780804429573")
+        );
     }
 
-    private PriceListRow createRow(String isbn, String title) {
+    private PriceListRow createRow(
+            String isbn,
+            String title
+    ) {
         return new PriceListRow(
                 2,
                 isbn,
@@ -83,8 +127,8 @@ class PriceListBookUpsertServiceImplTest {
                 null,
                 new BigDecimal("1000"),
                 null,
-                null,
-                BookSource.EXTERNAL_METADATA
+                BookSource.EXTERNAL_METADATA,
+                null
         );
     }
 }

@@ -192,16 +192,22 @@ public class PriceListCellValueConverter {
     }
 
     private BigDecimal parseDecimal(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
         String normalized = raw
                 .replace("$", "")
                 .replaceAll("\\s+", "")
-                .trim();
+                .trim()
+                .replace("0.,", "0.")
+                .replace("0,.", "0.");
 
-        if (normalized.matches("-?\\d{1,3}(\\.\\d{3})+(,\\d+)?")) {
+        if (normalized.matches("-?[1-9]\\d{0,2}(\\.\\d{3})+(,\\d+)?")) {
             normalized = normalized
                     .replace(".", "")
                     .replace(",", ".");
-        } else if (normalized.matches("-?\\d{1,3}(,\\d{3})+(\\.\\d+)?")) {
+        } else if (normalized.matches("-?[1-9]\\d{0,2}(,\\d{3})+(\\.\\d+)?")) {
             normalized = normalized.replace(",", "");
         } else {
             normalized = normalized.replace(",", ".");

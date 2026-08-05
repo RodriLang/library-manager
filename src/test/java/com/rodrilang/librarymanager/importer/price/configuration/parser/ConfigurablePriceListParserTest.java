@@ -147,9 +147,11 @@ class ConfigurablePriceListParserTest {
             assertEquals("Aguinaldo", first.publisherName());
             assertEquals(0, new BigDecimal("14500").compareTo(first.retailPrice()));
 
+            assertEquals(0, new BigDecimal("14500").compareTo(first.retailPrice()), () -> "Precio leído: " + first.retailPrice());
             assertNotNull(first.metadata());
             assertEquals(134, first.metadata().pageCount());
-            assertEquals(0, new BigDecimal("197").compareTo(first.metadata().weightGrams()));            assertEquals(LocalDate.of(2022, 2, 1), first.metadata().publicationDate());
+            assertEquals(0, new BigDecimal("197").compareTo(first.metadata().weightGrams()));
+            assertEquals(LocalDate.of(2022, 2, 1), first.metadata().publicationDate());
             assertEquals("Español", first.metadata().language());
             assertEquals("Cuentos", first.metadata().genreName());
             assertEquals("Cuentos, Literatura Argentina", first.metadata().tags());
@@ -161,7 +163,8 @@ class ConfigurablePriceListParserTest {
     private PriceListImportConfig createByrConfig() {
         PriceListImportConfig config = PriceListImportConfig.builder()
                 .name("B&R test")
-                .sheetStrategy(SheetStrategy.FIRST)
+                .sheetStrategy(SheetStrategy.BY_INDEX)
+                .sheetIndex(0)
                 .headerStrategy(HeaderStrategy.FIXED_ROW)
                 .headerRowIndex(2)
                 .firstDataRowIndex(3)
@@ -191,7 +194,8 @@ class ConfigurablePriceListParserTest {
     private PriceListImportConfig createCarbonoConfig() {
         PriceListImportConfig config = PriceListImportConfig.builder()
                 .name("Carbono test")
-                .sheetStrategy(SheetStrategy.FIRST)
+                .sheetStrategy(SheetStrategy.BY_INDEX)
+                .sheetIndex(0)
                 .headerStrategy(HeaderStrategy.FIXED_ROW)
                 .headerRowIndex(6)
                 .firstDataRowIndex(7)
@@ -214,7 +218,8 @@ class ConfigurablePriceListParserTest {
         PriceListImportConfig config =
                 PriceListImportConfig.builder()
                         .name("Luongo test")
-                        .sheetStrategy(SheetStrategy.FIRST)
+                        .sheetStrategy(SheetStrategy.BY_INDEX)
+                        .sheetIndex(0)
                         .headerStrategy(HeaderStrategy.FIXED_ROW)
                         .headerRowIndex(0)
                         .firstDataRowIndex(1)
