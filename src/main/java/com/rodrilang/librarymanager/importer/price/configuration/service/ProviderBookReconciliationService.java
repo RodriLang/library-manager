@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.configuration.service;
 
-import com.rodrilang.librarymanager.importer.price.configuration.dto.ProviderBookReconciliationPreview;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.ProviderBookReconciliationResult;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookReconciliationPreview;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookReconciliationResult;
 
 public interface ProviderBookReconciliationService {
 

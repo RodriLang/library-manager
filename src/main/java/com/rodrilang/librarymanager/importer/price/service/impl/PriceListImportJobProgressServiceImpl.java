@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.dto.ImportStatistics;
+import com.rodrilang.librarymanager.importer.price.dto.internal.ImportStatistics;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportError;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobError;
@@ -48,8 +48,9 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         job.setCreatedBooks(importStatistics.createdBooks());
         job.setCreatedPrices(importStatistics.createdPrices());
         job.setUpdatedPrices(importStatistics.updatedPrices());
-        job.setErrorCount(importStatistics.errors());
         job.setUnchangedPrices(importStatistics.unchangedPrices());
+        job.setSkippedRows(importStatistics.skippedRows());
+        job.setErrorCount(importStatistics.errors());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -61,8 +62,9 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         job.setCreatedBooks(importStatistics.createdBooks());
         job.setCreatedPrices(importStatistics.createdPrices());
         job.setUpdatedPrices(importStatistics.updatedPrices());
-        job.setErrorCount(importStatistics.errors());
         job.setUnchangedPrices(importStatistics.unchangedPrices());
+        job.setSkippedRows(importStatistics.skippedRows());
+        job.setErrorCount(importStatistics.errors());
         job.setFinishedAt(Instant.now());
     }
 

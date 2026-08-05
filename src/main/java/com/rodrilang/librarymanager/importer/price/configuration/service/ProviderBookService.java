@@ -1,8 +1,8 @@
 package com.rodrilang.librarymanager.importer.price.configuration.service;
 
-import com.rodrilang.librarymanager.importer.price.configuration.dto.ProviderBookRegistrationResult;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookRegistrationResult;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.model.Book;
 
 import java.util.List;

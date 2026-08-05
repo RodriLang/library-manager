@@ -1,10 +1,10 @@
 package com.rodrilang.librarymanager.service;
 
 import com.rodrilang.librarymanager.dto.internal.EditorialPriceImportResult;
-import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 
@@ -18,7 +18,7 @@ public interface EditorialPriceService {
     EditorialPriceImportResult registerOrUpdateForImport(
             Book book,
             BigDecimal price,
-            PriceListSource source,
+            PriceListProvider provider,
             LocalDate validFrom
     );
 

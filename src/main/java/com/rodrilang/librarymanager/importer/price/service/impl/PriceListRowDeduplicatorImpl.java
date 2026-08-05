@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
-import com.rodrilang.librarymanager.importer.price.dto.PriceListIdentifier;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.importer.price.service.PriceListRowDeduplicator;
 import lombok.RequiredArgsConstructor;

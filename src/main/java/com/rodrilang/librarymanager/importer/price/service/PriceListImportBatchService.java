@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.service;
 
-import com.rodrilang.librarymanager.importer.price.dto.PriceListBatchResult;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListBatchResult;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 
 import java.util.List;
 

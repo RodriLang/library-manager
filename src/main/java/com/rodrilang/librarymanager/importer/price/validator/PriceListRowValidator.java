@@ -1,9 +1,9 @@
 package com.rodrilang.librarymanager.importer.price.validator;
 
 import com.rodrilang.librarymanager.enums.RowValidationSeverity;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListIdentifier;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportError;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.enums.PriceListIdentifierType;
 import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;

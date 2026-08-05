@@ -13,12 +13,76 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.time.temporal.ChronoField;
 import java.util.List;
+import java.util.Locale;
 
 @Component
 @RequiredArgsConstructor
 public class PriceListCellValueConverter {
+
+    private static DateTimeFormatter strictFormatter(String pattern) {
+        return new DateTimeFormatterBuilder()
+                .appendPattern(pattern)
+                .toFormatter()
+                .withResolverStyle(ResolverStyle.SMART);
+    }
+
+    private static final List<DateTimeFormatter> DATE_FORMATTERS =
+            List.of(
+                    DateTimeFormatter.ISO_LOCAL_DATE,
+
+                    DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+                    DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+
+                    DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+                    DateTimeFormatter.ofPattern("d/M/yyyy"),
+                    DateTimeFormatter.ofPattern("dd/M/yyyy"),
+                    DateTimeFormatter.ofPattern("d/MM/yyyy"),
+
+                    DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+                    DateTimeFormatter.ofPattern("d-M-yyyy"),
+                    DateTimeFormatter.ofPattern("dd-M-yyyy"),
+                    DateTimeFormatter.ofPattern("d-MM-yyyy"),
+
+                    DateTimeFormatter.ofPattern("d/M/yy"),
+                    DateTimeFormatter.ofPattern("dd/MM/yy"),
+                    DateTimeFormatter.ofPattern("d-M-yy"),
+                    DateTimeFormatter.ofPattern("dd-MM-yy"),
+
+                    new DateTimeFormatterBuilder()
+                            .appendPattern("yyyy/MM")
+                            .parseDefaulting(
+                                    ChronoField.DAY_OF_MONTH,
+                                    1
+                            )
+                            .toFormatter(),
+
+                    new DateTimeFormatterBuilder()
+                            .appendPattern("yyyy-MM")
+                            .parseDefaulting(
+                                    ChronoField.DAY_OF_MONTH,
+                                    1
+                            )
+                            .toFormatter(),
+
+                    new DateTimeFormatterBuilder()
+                            .appendPattern("MM/yyyy")
+                            .parseDefaulting(
+                                    ChronoField.DAY_OF_MONTH,
+                                    1
+                            )
+                            .toFormatter(),
+
+                    new DateTimeFormatterBuilder()
+                            .appendPattern("M/yyyy")
+                            .parseDefaulting(
+                                    ChronoField.DAY_OF_MONTH,
+                                    1
+                            )
+                            .toFormatter()
+            );
 
     private final ExcelCellValueReader cellValueReader;
 
@@ -32,38 +96,86 @@ public class PriceListCellValueConverter {
 
         String raw = cellValueReader.read(cell);
 
-        if (raw.isBlank()) {
+        if (raw == null || raw.isBlank()) {
             return null;
         }
 
         return switch (type) {
+            case TEXT, URL -> raw.trim();
 
-            case TEXT, URL ->
-                    raw.trim();
+            case ISBN -> parseIsbn(cell, raw);
 
-            case ISBN ->
-                    normalizeIsbn(raw);
+            case DECIMAL -> parseDecimal(cell, raw);
 
-            case DECIMAL ->
-                    parseDecimal(cell, raw);
+            case INTEGER -> parseInteger(raw);
 
-            case INTEGER ->
-                    parseInteger(raw);
+            case DATE -> parseDate(cell, raw);
+        };
+    }
 
-            case DATE ->
-                    parseDate(cell, raw);
+    public Object convert(
+            String raw,
+            PriceListValueType type
+    ) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        return switch (type) {
+            case TEXT, URL -> raw.trim();
+
+            case ISBN -> normalizeIsbn(raw);
+
+            case DECIMAL -> parseDecimal(raw);
+
+            case INTEGER -> parseInteger(raw);
+
+            case DATE -> parseTextDate(raw.trim());
         };
     }
 
     private String normalizeIsbn(String value) {
-        String normalized = value.replaceAll(
-                "[^0-9Xx]",
-                ""
-        );
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+
+        String scientificCandidate = trimmed
+                .replace(",", ".")
+                .replaceAll("\\s+", "");
+
+        if (scientificCandidate.matches(
+                "[-+]?\\d+(?:\\.\\d+)?[eE][-+]?\\d+"
+        )) {
+            try {
+                return new BigDecimal(scientificCandidate)
+                        .toBigIntegerExact()
+                        .toString();
+            } catch (ArithmeticException | NumberFormatException ignored) {
+                return null;
+            }
+        }
+
+        String normalized = trimmed.replaceAll("[^0-9Xx]", "");
 
         return normalized.isBlank()
                 ? null
-                : normalized;
+                : normalized.toUpperCase(Locale.ROOT);
+    }
+
+    private String parseIsbn(Cell cell, String raw) {
+        if (cell.getCellType() == CellType.NUMERIC) {
+            try {
+                return BigDecimal.valueOf(cell.getNumericCellValue())
+                        .toBigIntegerExact()
+                        .toString();
+            } catch (ArithmeticException exception) {
+                return normalizeIsbn(raw);
+            }
+        }
+
+        return normalizeIsbn(raw);
     }
 
     private BigDecimal parseDecimal(
@@ -76,28 +188,28 @@ public class PriceListCellValueConverter {
             );
         }
 
+        return parseDecimal(raw);
+    }
+
+    private BigDecimal parseDecimal(String raw) {
         String normalized = raw
                 .replace("$", "")
                 .replaceAll("\\s+", "")
                 .trim();
 
-        /*
-         * 14.500,00
-         */
-        if (normalized.matches(
-                ".*\\.\\d{3},\\d+"
-        )) {
+        if (normalized.matches("-?\\d{1,3}(\\.\\d{3})+(,\\d+)?")) {
             normalized = normalized
                     .replace(".", "")
                     .replace(",", ".");
+        } else if (normalized.matches("-?\\d{1,3}(,\\d{3})+(\\.\\d+)?")) {
+            normalized = normalized.replace(",", "");
         } else {
-            normalized = normalized
-                    .replace(",", ".");
+            normalized = normalized.replace(",", ".");
         }
 
         try {
             return new BigDecimal(normalized);
-        } catch (NumberFormatException ex) {
+        } catch (NumberFormatException exception) {
             return null;
         }
     }
@@ -107,7 +219,7 @@ public class PriceListCellValueConverter {
             return new BigDecimal(
                     raw.replace(",", ".")
             ).intValue();
-        } catch (NumberFormatException ex) {
+        } catch (NumberFormatException exception) {
             return null;
         }
     }
@@ -116,9 +228,10 @@ public class PriceListCellValueConverter {
             Cell cell,
             String raw
     ) {
-        if (cell.getCellType() == CellType.NUMERIC
-                && DateUtil.isCellDateFormatted(cell)) {
-
+        if (
+                cell.getCellType() == CellType.NUMERIC
+                        && DateUtil.isCellDateFormatted(cell)
+        ) {
             return cell
                     .getLocalDateTimeCellValue()
                     .toLocalDate();
@@ -128,30 +241,22 @@ public class PriceListCellValueConverter {
     }
 
     private LocalDate parseTextDate(String value) {
-        List<DateTimeFormatter> formatters = List.of(
+        if (value == null || value.isBlank()) {
+            return null;
+        }
 
-                DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+        String normalized = value
+                .trim()
+                .replace(".", "/");
 
-                new DateTimeFormatterBuilder()
-                        .appendPattern("yyyy/MM")
-                        .parseDefaulting(
-                                ChronoField.DAY_OF_MONTH,
-                                1
-                        )
-                        .toFormatter(),
-
-                DateTimeFormatter.ofPattern("dd/MM/yyyy"),
-
-                DateTimeFormatter.ISO_LOCAL_DATE
-        );
-
-        for (DateTimeFormatter formatter : formatters) {
+        for (DateTimeFormatter formatter : DATE_FORMATTERS) {
             try {
                 return LocalDate.parse(
-                        value,
+                        normalized,
                         formatter
                 );
             } catch (DateTimeParseException ignored) {
+                // Se prueba el siguiente formato.
             }
         }
 

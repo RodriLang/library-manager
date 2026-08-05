@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.configuration.controller;
 
-import com.rodrilang.librarymanager.importer.price.configuration.dto.ProviderBookReconciliationPreview;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.ProviderBookReconciliationResult;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookReconciliationPreview;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookReconciliationResult;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookReconciliationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

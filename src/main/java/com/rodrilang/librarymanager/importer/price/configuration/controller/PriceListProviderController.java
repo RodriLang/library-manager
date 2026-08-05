@@ -1,9 +1,9 @@
 package com.rodrilang.librarymanager.importer.price.configuration.controller;
 
-import com.rodrilang.librarymanager.importer.price.configuration.dto.CreatePriceListImportConfigRequest;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.CreatePriceListProviderRequest;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListImportConfigResponse;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListProviderResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.request.CreatePriceListImportConfigRequest;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.request.CreatePriceListProviderRequest;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.PriceListImportConfigResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.PriceListProviderResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListWorkbookAnalysisResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListImportConfigService;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListProviderService;

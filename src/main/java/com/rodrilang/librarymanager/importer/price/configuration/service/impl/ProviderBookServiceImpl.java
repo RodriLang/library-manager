@@ -1,13 +1,13 @@
 package com.rodrilang.librarymanager.importer.price.configuration.service.impl;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.ProviderBookRegistrationResult;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookRegistrationResult;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
 import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListIdentifier;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.model.Book;
 import lombok.RequiredArgsConstructor;

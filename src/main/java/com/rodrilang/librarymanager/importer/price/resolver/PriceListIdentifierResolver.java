@@ -1,9 +1,9 @@
 package com.rodrilang.librarymanager.importer.price.resolver;
 
 import com.rodrilang.librarymanager.importer.price.configuration.enums.ProviderBookIdentifierStatus;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListIdentifier;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListMetadata;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListMetadata;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.isbn.model.IsbnParseStatus;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;

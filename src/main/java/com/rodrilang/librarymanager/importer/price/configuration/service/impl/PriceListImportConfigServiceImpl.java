@@ -1,10 +1,10 @@
 package com.rodrilang.librarymanager.importer.price.configuration.service.impl;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.CreatePriceListImportConfigRequest;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListColumnMappingRequest;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListColumnMappingResponse;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListImportConfigResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.request.CreatePriceListImportConfigRequest;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.request.PriceListColumnMappingRequest;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.PriceListColumnMappingResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.PriceListImportConfigResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.enums.HeaderStrategy;
 import com.rodrilang.librarymanager.importer.price.configuration.enums.PriceListField;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
@@ -102,13 +102,6 @@ public class PriceListImportConfigServiceImpl implements PriceListImportConfigSe
 
     private void validateSheetConfiguration(CreatePriceListImportConfigRequest request) {
         switch (request.sheetStrategy()) {
-
-            case FIRST -> {
-                if (request.sheetIndex() != null
-                        || hasText(request.sheetName())) {
-                    throw new BusinessException("La estrategia FIRST no permite indicar hoja.");
-                }
-            }
 
             case BY_INDEX -> {
                 if (request.sheetIndex() == null) {

@@ -2,8 +2,8 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.enums.BookSource;
-import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.resolver.AuthorResolver;
 import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.importer.price.resolver.PublisherResolver;

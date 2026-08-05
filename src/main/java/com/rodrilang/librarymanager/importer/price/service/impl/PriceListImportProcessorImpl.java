@@ -1,28 +1,28 @@
 package com.rodrilang.librarymanager.importer.price.service.impl;
 
-import com.rodrilang.librarymanager.enums.RowValidationSeverity;
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.dto.ImportStatistics;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListBatchResult;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListValidationResult;
+import com.rodrilang.librarymanager.importer.price.config.PriceListImportProperties;
+import com.rodrilang.librarymanager.importer.price.configuration.parser.StreamingConfigurablePriceListParser;
+import com.rodrilang.librarymanager.importer.price.dto.internal.ImportStatistics;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListBatchResult;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListImportSafetySummary;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingStatistics;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
+import com.rodrilang.librarymanager.importer.price.repository.PriceListImportStagingRepository;
 import com.rodrilang.librarymanager.importer.price.resolver.PriceListImportParserResolver;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportBatchService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportJobProgressService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportProcessor;
-import com.rodrilang.librarymanager.importer.price.service.PriceListRowDeduplicator;
+import com.rodrilang.librarymanager.importer.price.staging.PriceListImportStagingService;
+import com.rodrilang.librarymanager.importer.price.storage.PriceListImportFileStorage;
 import com.rodrilang.librarymanager.importer.price.validator.PriceListImportSafetyValidator;
-import com.rodrilang.librarymanager.importer.price.validator.PriceListValidationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
+import java.nio.file.Path;
 import java.util.List;
 
 @Slf4j
@@ -30,131 +30,152 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
-    private static final int MAX_ERRORS_TO_LOG = 50;
-    private static final int MAX_WARNINGS_TO_LOG = 20;
-
-    @Value("${app.price-import.batch-size:500}")
-    private int batchSize;
-
     private final PriceListImportJobRepository jobRepository;
-    private final PriceListImportParserResolver importParserResolver;
+    private final PriceListImportParserResolver parserResolver;
+    private final PriceListImportStagingService stagingService;
+    private final PriceListImportStagingRepository stagingRepository;
     private final PriceListImportSafetyValidator safetyValidator;
-    private final PriceListValidationService validationService;
-    private final PriceListImportJobProgressService progressService;
-    private final PriceListRowDeduplicator rowDeduplicator;
     private final PriceListImportBatchService batchService;
+    private final PriceListImportJobProgressService progressService;
+    private final PriceListImportFileStorage fileStorage;
+    private final PriceListImportProperties properties;
 
     @Override
-    public void process(Long jobId, byte[] fileBytes) {
+    public void process(Long jobId, Path filePath) {
         try {
             progressService.markProcessing(jobId);
 
-            PriceListImportJob job = jobRepository.findWithImportConfigById(jobId)
+            PriceListImportJob job = jobRepository
+                    .findWithImportConfigById(jobId)
                     .orElseThrow(() ->
                             new BusinessException(
                                     "No se encontró el trabajo de importación."
                             )
                     );
 
-            try (Workbook workbook = WorkbookFactory.create(
-                    new ByteArrayInputStream(fileBytes)
-            )) {
-                List<PriceListRow> parsedRows =
-                        importParserResolver.parse(workbook, job);
+            StreamingConfigurablePriceListParser parser = parserResolver.resolveStreaming(job);
 
-                List<PriceListRow> rows =
-                        rowDeduplicator.deduplicate(parsedRows);
+            PriceListStagingStatistics staging =
+                    stagingService.stage(
+                            jobId,
+                            filePath,
+                            job.getImportConfig(),
+                            parser
+                    );
 
-                log.info(
-                        "Price list deduplication completed. "
-                                + "jobId={} parsedRows={} effectiveRows={} duplicates={}",
-                        jobId,
-                        parsedRows.size(),
-                        rows.size(),
-                        parsedRows.size() - rows.size()
-                );
+            PriceListImportSafetySummary safetySummary =
+                    new PriceListImportSafetySummary(
+                            staging.parsedRows(),
+                            staging.processableRows(),
+                            staging.validRows(),
+                            staging.invalidRows(),
+                            staging.duplicateRows(),
+                            staging.rowsWithPrice(),
+                            staging.rowsWithTitle(),
+                            staging.rowsWithIsbn(),
+                            staging.rowsWithValidIsbn(),
+                            staging.rowsWithAbsurdPrice()
+                    );
 
-                PriceListValidationResult validation =
-                        validationService.validate(rows);
+            log.info(
+                    """
+                            Price list staging completed. jobId={} \
+                            parsedRows={} processableRows={} validRows={} invalidRows={} \
+                            duplicateRows={} rowsWithPrice={} rowsWithTitle={} \
+                            rowsWithIsbn={} rowsWithValidIsbn={} rowsWithAbsurdPrice={}
+                            """,
+                    jobId,
+                    staging.parsedRows(),
+                    staging.processableRows(),
+                    staging.validRows(),
+                    staging.invalidRows(),
+                    staging.duplicateRows(),
+                    staging.rowsWithPrice(),
+                    staging.rowsWithTitle(),
+                    staging.rowsWithIsbn(),
+                    staging.rowsWithValidIsbn(),
+                    staging.rowsWithAbsurdPrice()
+            );
 
-                progressService.updateTotalRows(
-                        jobId,
-                        validation.validRows().size(),
-                        validation.errors().size()
-                );
+            long classifiedRows =
+                    staging.validRows()
+                            + staging.invalidRows()
+                            + staging.duplicateRows();
 
-                progressService.saveErrors(
-                        jobId,
-                        validation.errors()
-                );
+            log.info(
+                    "Staging balance. processableRows={} classifiedRows={}",
+                    staging.processableRows(),
+                    classifiedRows
+            );
 
-                logValidationResult(
-                        jobId,
-                        rows.size(),
-                        validation
-                );
+            safetyValidator.validate(safetySummary);
 
-                safetyValidator.validate(
-                        rows,
-                        validation.validRows()
-                );
+            progressService.updateTotalRows(
+                    jobId,
+                    Math.toIntExact(staging.validRows()),
+                    Math.toIntExact(staging.invalidRows())
+            );
 
-                processValidRows(
-                        jobId,
-                        validation
-                );
-            }
-        } catch (Exception ex) {
+            processStagedRows(
+                    jobId,
+                    staging.validRows(),
+                    staging.invalidRows()
+            );
+
+        } catch (Exception exception) {
             log.error(
                     "Price list import failed. jobId={}",
                     jobId,
-                    ex
+                    exception
             );
 
             progressService.markFailed(
                     jobId,
-                    ex.getMessage()
+                    safeMessage(exception)
             );
 
-            if (ex instanceof BusinessException businessException) {
-                throw businessException;
-            }
-
-            throw new BusinessException(
-                    "No se pudo procesar la lista de precios: "
-                            + ex.getMessage()
-            );
+        } finally {
+            stagingRepository.deleteByJobId(jobId);
+            fileStorage.deleteQuietly(filePath);
         }
     }
 
-    private void processValidRows(
+    private void processStagedRows(
             Long jobId,
-            PriceListValidationResult validation
+            long totalValidRows,
+            long invalidRows
     ) {
-        List<PriceListRow> rows = validation.validRows();
+        long afterId = 0;
 
         int processedRows = 0;
         int createdBooks = 0;
         int createdPrices = 0;
         int updatedPrices = 0;
         int unchangedPrices = 0;
+        int skippedRows = 0;
 
-        for (
-                int fromIndex = 0;
-                fromIndex < rows.size();
-                fromIndex += batchSize
-        ) {
-            int toIndex = Math.min(
-                    fromIndex + batchSize,
-                    rows.size()
-            );
+        while (true) {
+            List<PriceListRow> batch =
+                    stagingRepository.findValidBatch(
+                            jobId,
+                            afterId,
+                            properties.batchSize()
+                    );
 
-            List<PriceListRow> batchRows =
-                    rows.subList(fromIndex, toIndex);
+            if (batch.isEmpty()) {
+                break;
+            }
+
+            long nextAfterId =
+                    stagingRepository.findLastIdInBatch(
+                            jobId,
+                            afterId,
+                            properties.batchSize()
+                    );
 
             PriceListBatchResult result =
                     batchService.processBatch(
-                            batchRows,
+                            batch,
                             jobId
                     );
 
@@ -163,123 +184,96 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
             createdPrices += result.createdPrices();
             updatedPrices += result.updatedPrices();
             unchangedPrices += result.unchangedPrices();
+            skippedRows += result.skippedRows();
 
-            progressService.updateProgress(
-                    jobId,
+            afterId = nextAfterId;
+
+            ImportStatistics statistics =
                     new ImportStatistics(
                             processedRows,
                             createdBooks,
                             createdPrices,
                             updatedPrices,
                             unchangedPrices,
-                            validation.errors().size()
-                    )
+                            skippedRows,
+                            Math.toIntExact(invalidRows)
+                    );
+
+            progressService.updateProgress(
+                    jobId,
+                    statistics
             );
 
             log.info(
                     "Price import batch completed. "
-                            + "jobId={} processedRows={}/{} createdBooks={} "
-                            + "createdPrices={} updatedPrices={} unchangedPrices={}",
+                            + "jobId={} processedRows={}/{} "
+                            + "createdPrices={} updatedPrices={} "
+                            + "unchangedPrices={} skippedRows={}",
                     jobId,
                     processedRows,
-                    rows.size(),
-                    createdBooks,
+                    totalValidRows,
                     createdPrices,
                     updatedPrices,
-                    unchangedPrices
+                    unchangedPrices,
+                    skippedRows
             );
         }
 
-        progressService.markCompleted(
-                jobId,
+        ImportStatistics finalStatistics =
                 new ImportStatistics(
                         processedRows,
                         createdBooks,
                         createdPrices,
                         updatedPrices,
                         unchangedPrices,
-                        validation.errors().size()
-                )
+                        skippedRows,
+                        Math.toIntExact(invalidRows)
+                );
+
+        validateFinalCounters(
+                jobId,
+                finalStatistics
+        );
+
+        progressService.markCompleted(
+                jobId,
+                finalStatistics
         );
     }
 
-    private void logValidationResult(
+    private void validateFinalCounters(
             Long jobId,
-            int totalRows,
-            PriceListValidationResult validation
+            ImportStatistics statistics
     ) {
-        long errorCount = validation.errors()
-                .stream()
-                .filter(error ->
-                        error.severity()
-                                == RowValidationSeverity.ERROR
-                )
-                .count();
+        int accountedRows =
+                statistics.createdPrices()
+                        + statistics.updatedPrices()
+                        + statistics.unchangedPrices()
+                        + statistics.skippedRows();
 
-        long warningCount = validation.errors()
-                .stream()
-                .filter(error ->
-                        error.severity()
-                                == RowValidationSeverity.WARNING
-                )
-                .count();
-
-        log.info(
-                "Price list validation completed. "
-                        + "jobId={} totalRows={} validRows={} errors={} warnings={}",
-                jobId,
-                totalRows,
-                validation.validRows().size(),
-                errorCount,
-                warningCount
-        );
-
-        validation.errors()
-                .stream()
-                .filter(error ->
-                        error.severity()
-                                == RowValidationSeverity.ERROR
-                )
-                .limit(MAX_ERRORS_TO_LOG)
-                .forEach(error -> log.error(
-                        "Import error row={} isbn={} severity={} message={}",
-                        error.rowNumber(),
-                        error.isbn(),
-                        error.severity(),
-                        error.message()
-                ));
-
-        validation.errors()
-                .stream()
-                .filter(error ->
-                        error.severity()
-                                == RowValidationSeverity.WARNING
-                )
-                .limit(MAX_WARNINGS_TO_LOG)
-                .forEach(error -> log.warn(
-                        "Import warning row={} isbn={} severity={} message={}",
-                        error.rowNumber(),
-                        error.isbn(),
-                        error.severity(),
-                        error.message()
-                ));
-
-        if (errorCount > MAX_ERRORS_TO_LOG) {
-            log.error(
-                    "Additional blocking import errors omitted from log. "
-                            + "jobId={} omittedErrors={}",
-                    jobId,
-                    errorCount - MAX_ERRORS_TO_LOG
-            );
-        }
-
-        if (warningCount > MAX_WARNINGS_TO_LOG) {
+        if (accountedRows != statistics.processedRows()) {
             log.warn(
-                    "Additional import warnings omitted from log. "
-                            + "jobId={} omittedWarnings={}",
+                    "Import counters mismatch. "
+                            + "jobId={} processed={} accounted={} "
+                            + "difference={} created={} updated={} "
+                            + "unchanged={} skipped={}",
                     jobId,
-                    warningCount - MAX_WARNINGS_TO_LOG
+                    statistics.processedRows(),
+                    accountedRows,
+                    statistics.processedRows() - accountedRows,
+                    statistics.createdPrices(),
+                    statistics.updatedPrices(),
+                    statistics.unchangedPrices(),
+                    statistics.skippedRows()
             );
         }
+    }
+
+    private String safeMessage(Exception exception) {
+        String message = exception.getMessage();
+
+        return message == null || message.isBlank()
+                ? "La importación no pudo completarse."
+                : message;
     }
 }
