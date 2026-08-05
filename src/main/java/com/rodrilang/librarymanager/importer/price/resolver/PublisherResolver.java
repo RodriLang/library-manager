@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.resolver;
 
-import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.PublisherRepository;

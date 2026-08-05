@@ -5,24 +5,27 @@ import com.rodrilang.librarymanager.importer.price.configuration.model.PriceList
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListImportConfigRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListImportJobErrorResponse;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListImportJobStatusResponse;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListImportStartResponse;
+import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobErrorResponse;
+import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobStatusResponse;
+import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportStartResponse;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatus;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobErrorRepository;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.importer.price.service.PriceListAsyncProcessor;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
+import com.rodrilang.librarymanager.importer.price.storage.PriceListImportFileStorage;
 import com.rodrilang.librarymanager.importer.price.validator.PriceListImportDateValidator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -31,11 +34,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PriceListImportServiceImpl implements PriceListImportService {
 
+    private static final int MAX_STATUS_ERRORS = 100;
+
     private final PriceListImportJobRepository jobRepository;
     private final PriceListImportJobErrorRepository errorRepository;
     private final PriceListAsyncProcessor asyncProcessor;
     private final PriceListProviderRepository providerRepository;
     private final PriceListImportConfigRepository configRepository;
+    private final PriceListImportFileStorage fileStorage;
 
     @Override
     @Transactional
@@ -56,20 +62,15 @@ public class PriceListImportServiceImpl implements PriceListImportService {
         }
 
         PriceListProvider provider = providerRepository.findById(providerId)
-                .orElseThrow(() ->
-                        new BusinessException(
-                                "No se encontró el proveedor seleccionado."
-                        )
-                );
+                        .orElseThrow(() -> new BusinessException("No se encontró el proveedor seleccionado."));
 
         if (!provider.isActive()) {
-            throw new BusinessException(
-                    "El proveedor seleccionado está inactivo."
-            );
+            throw new BusinessException("El proveedor seleccionado está inactivo.");
         }
 
         PriceListImportConfig importConfig =
-                configRepository.findFirstByProviderIdAndActiveTrue(providerId)
+                configRepository
+                        .findFirstByProviderIdAndActiveTrue(providerId)
                         .orElseThrow(() ->
                                 new BusinessException(
                                         "El proveedor seleccionado no tiene una configuración de importación activa."
@@ -89,29 +90,12 @@ public class PriceListImportServiceImpl implements PriceListImportService {
     @Transactional(readOnly = true)
     public PriceListImportJobStatusResponse getStatus(Long jobId) {
         PriceListImportJob job = jobRepository.findById(jobId)
-                .orElseThrow(() ->
-                        new BusinessException(
-                                "No se encontró la importación solicitada."
-                        )
-                );
-
-        int progress = job.getTotalRows() == 0
-                ? 0
-                : (job.getProcessedRows() * 100)
-                  / job.getTotalRows();
+                .orElseThrow(() -> new BusinessException("No se encontró la importación solicitada."));
 
         List<PriceListImportJobErrorResponse> errors =
-                errorRepository.findByJobIdOrderByRowNumberAsc(jobId)
-                        .stream()
-                        .map(error ->
-                                new PriceListImportJobErrorResponse(
-                                        error.getRowNumber(),
-                                        error.getIsbn(),
-                                        error.getMessage(),
-                                        error.getSeverity()
-                                )
-                        )
-                        .toList();
+                shouldIncludeErrors(job.getStatus())
+                        ? loadErrors(jobId)
+                        : List.of();
 
         return new PriceListImportJobStatusResponse(
                 job.getId(),
@@ -122,10 +106,55 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 job.getCreatedPrices(),
                 job.getUpdatedPrices(),
                 job.getUnchangedPrices(),
-                progress,
+                job.getSkippedRows(),
+                calculateProgress(job),
+                job.getErrorCount(),
                 job.getErrorMessage(),
                 errors
         );
+    }
+
+    private int calculateProgress(PriceListImportJob job) {
+        if (job.getStatus() == PriceListImportJobStatus.COMPLETED) {
+            return 100;
+        }
+
+        if (job.getTotalRows() <= 0) {
+            return 0;
+        }
+
+        long percentage =
+                ((long) job.getProcessedRows() * 100)
+                        / job.getTotalRows();
+
+        return (int) Math.min(percentage, 100);
+    }
+
+    private boolean shouldIncludeErrors(
+            PriceListImportJobStatus status
+    ) {
+        return status == PriceListImportJobStatus.COMPLETED
+                || status == PriceListImportJobStatus.FAILED;
+    }
+
+    private List<PriceListImportJobErrorResponse> loadErrors(Long jobId) {
+        Pageable firstPage = PageRequest.of(0, MAX_STATUS_ERRORS);
+
+        return errorRepository
+                .findByJobIdOrderByRowNumberAsc(
+                        jobId,
+                        firstPage
+                )
+                .stream()
+                .map(error ->
+                        new PriceListImportJobErrorResponse(
+                                error.getRowNumber(),
+                                error.getIsbn(),
+                                error.getMessage(),
+                                error.getSeverity()
+                        )
+                )
+                .toList();
     }
 
     private PriceListImportStartResponse createAndStartJob(
@@ -135,59 +164,82 @@ public class PriceListImportServiceImpl implements PriceListImportService {
             LocalDate validFrom,
             String idempotencyKey
     ) {
-        byte[] fileBytes = readFile(file);
+        Path filePath = fileStorage.store(file);
 
-        PriceListImportJob job = PriceListImportJob.builder()
-                .idempotencyKey(idempotencyKey)
-                .provider(provider)
-                .importConfig(importConfig)
-                .priceListSource(null)
-                .validFrom(validFrom)
-                .status(PriceListImportJobStatus.PENDING)
-                .totalRows(0)
-                .processedRows(0)
-                .createdBooks(0)
-                .createdPrices(0)
-                .updatedPrices(0)
-                .unchangedPrices(0)
-                .errorCount(0)
-                .createdAt(Instant.now())
-                .build();
+        try {
+            PriceListImportJob job =
+                    PriceListImportJob.builder()
+                            .idempotencyKey(idempotencyKey)
+                            .provider(provider)
+                            .importConfig(importConfig)
+                            .validFrom(validFrom)
+                            .status(PriceListImportJobStatus.PENDING)
+                            .totalRows(0)
+                            .processedRows(0)
+                            .createdBooks(0)
+                            .createdPrices(0)
+                            .updatedPrices(0)
+                            .unchangedPrices(0)
+                            .skippedRows(0)
+                            .errorCount(0)
+                            .createdAt(Instant.now())
+                            .build();
 
-        PriceListImportJob savedJob =
-                jobRepository.save(job);
+            PriceListImportJob savedJob =
+                    jobRepository.save(job);
 
-        startProcessingAfterCommit(
-                savedJob.getId(),
-                fileBytes
-        );
+            startProcessingAfterCommit(
+                    savedJob.getId(),
+                    filePath
+            );
 
-        return new PriceListImportStartResponse(
-                savedJob.getId(),
-                savedJob.getStatus(),
-                "La importación fue iniciada."
-        );
+            return new PriceListImportStartResponse(
+                    savedJob.getId(),
+                    savedJob.getStatus(),
+                    "La importación fue iniciada."
+            );
+
+        } catch (RuntimeException exception) {
+            fileStorage.deleteQuietly(filePath);
+            throw exception;
+        }
     }
 
     private void startProcessingAfterCommit(
             Long jobId,
-            byte[] fileBytes
+            Path filePath
     ) {
         if (!TransactionSynchronizationManager
                 .isSynchronizationActive()) {
 
-            asyncProcessor.process(jobId, fileBytes);
+            asyncProcessor.process(jobId, filePath);
             return;
         }
 
         TransactionSynchronizationManager.registerSynchronization(
                 new TransactionSynchronization() {
+
                     @Override
                     public void afterCommit() {
-                        asyncProcessor.process(
-                                jobId,
-                                fileBytes
-                        );
+                        try {
+                            asyncProcessor.process(
+                                    jobId,
+                                    filePath
+                            );
+                        } catch (RuntimeException exception) {
+                            fileStorage.deleteQuietly(filePath);
+                            throw exception;
+                        }
+                    }
+
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (
+                                status != TransactionSynchronization
+                                        .STATUS_COMMITTED
+                        ) {
+                            fileStorage.deleteQuietly(filePath);
+                        }
                     }
                 }
         );
@@ -201,22 +253,5 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 job.getStatus(),
                 "La importación ya había sido iniciada."
         );
-    }
-
-    private byte[] readFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException(
-                    "Debe seleccionar un archivo Excel."
-            );
-        }
-
-        try {
-            return file.getBytes();
-        } catch (IOException exception) {
-            throw new BusinessException(
-                    "No se pudo leer el archivo Excel: "
-                            + exception.getMessage()
-            );
-        }
     }
 }

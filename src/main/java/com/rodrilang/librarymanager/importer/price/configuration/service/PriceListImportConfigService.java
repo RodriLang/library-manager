@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.configuration.service;
 
-import com.rodrilang.librarymanager.importer.price.configuration.dto.CreatePriceListImportConfigRequest;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListImportConfigResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.request.CreatePriceListImportConfigRequest;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.PriceListImportConfigResponse;
 
 public interface PriceListImportConfigService {
 

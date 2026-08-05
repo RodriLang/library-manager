@@ -4,8 +4,8 @@ import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.importer.price.configuration.enums.PriceListField;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListMetadata;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListMetadata;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
@@ -110,15 +110,6 @@ public class ConfigurablePriceListRowMapper {
                 text(values, PriceListField.AUTHOR),
                 text(values, PriceListField.PUBLISHER),
                 decimal(values, PriceListField.RETAIL_PRICE),
-
-                /*
-                 * Temporal.
-                 *
-                 * El configurable todavía no utiliza
-                 * PriceListSource.
-                 */
-                null,
-
                 text(values, PriceListField.CATEGORY),
                 BookSource.EXTERNAL_METADATA,
                 metadata

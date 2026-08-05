@@ -15,8 +15,6 @@ public class PriceListSheetResolver {
     ) {
         return switch (config.getSheetStrategy()) {
 
-            case FIRST -> workbook.getSheetAt(0);
-
             case BY_INDEX -> resolveByIndex(
                     workbook,
                     config.getSheetIndex()

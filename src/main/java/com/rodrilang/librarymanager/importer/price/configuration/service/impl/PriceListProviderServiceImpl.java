@@ -1,8 +1,8 @@
 package com.rodrilang.librarymanager.importer.price.configuration.service.impl;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.CreatePriceListProviderRequest;
-import com.rodrilang.librarymanager.importer.price.configuration.dto.PriceListProviderResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.request.CreatePriceListProviderRequest;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.response.PriceListProviderResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListProviderService;

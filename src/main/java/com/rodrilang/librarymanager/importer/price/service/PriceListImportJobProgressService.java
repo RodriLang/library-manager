@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.service;
 
-import com.rodrilang.librarymanager.importer.price.dto.ImportStatistics;
+import com.rodrilang.librarymanager.importer.price.dto.internal.ImportStatistics;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportError;
 
 import java.util.List;

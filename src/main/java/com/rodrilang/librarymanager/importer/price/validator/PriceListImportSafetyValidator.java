@@ -1,56 +1,60 @@
 package com.rodrilang.librarymanager.importer.price.validator;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
-import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
-import com.rodrilang.librarymanager.isbn.service.IsbnService;
-import lombok.RequiredArgsConstructor;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListImportSafetySummary;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
-import java.util.List;
-
-import static org.springframework.util.StringUtils.hasText;
-
 @Component
-@RequiredArgsConstructor
 public class PriceListImportSafetyValidator {
 
-    private static final BigDecimal MAX_REASONABLE_PRICE = new BigDecimal("500000");
     private static final double MIN_VALID_ROWS_RATIO = 0.80;
     private static final double MIN_PRICE_RATIO = 0.90;
     private static final double MIN_TITLE_RATIO = 0.90;
     private static final double MIN_ISBN_RATIO = 0.80;
+
     private static final int MIN_ROWS_WITH_ISBN_TO_VALIDATE_RATIO = 20;
     private static final double MAX_ABSURD_PRICE_RATIO = 0.10;
 
-    private final IsbnService isbnService;
-
     public void validate(
-            List<PriceListRow> rows,
-            List<PriceListRow> validRows
+            PriceListImportSafetySummary summary
     ) {
-        if (rows.isEmpty()) {
-            throw new BusinessException("El archivo no contiene filas para importar.");
-        }
+        long processableRows = summary.processableRows();
 
-        if (validRows.isEmpty()) {
-            throw new BusinessException("No se encontraron filas válidas para importar.");
-        }
-
-        double validRowsRatio = (double) validRows.size() / rows.size();
-
-        if (validRowsRatio < MIN_VALID_ROWS_RATIO) {
+        if (processableRows <= 0) {
             throw new BusinessException(
-                    "El archivo tiene demasiadas filas inválidas. Verifique que corresponda al proveedor seleccionado."
+                    "El archivo no contiene filas para importar."
             );
         }
 
-        long rowsWithValidPrice = rows.stream()
-                .filter(row -> row.retailPrice() != null)
-                .count();
+        long acceptedRows =
+                summary.validRows()
+                        + summary.duplicateRows();
 
-        double priceRatio = (double) rowsWithValidPrice / rows.size();
+        if (acceptedRows <= 0) {
+            throw new BusinessException(
+                    "No se encontraron filas válidas para importar."
+            );
+        }
+
+        double validRowsRatio =
+                ratio(acceptedRows, processableRows);
+
+        if (validRowsRatio < MIN_VALID_ROWS_RATIO) {
+            throw new BusinessException(
+                    "El archivo tiene demasiadas filas inválidas. "
+                            + "Filas procesables: " + processableRows
+                            + ", válidas: " + summary.validRows()
+                            + ", duplicadas: " + summary.duplicateRows()
+                            + ", inválidas: " + summary.invalidRows()
+                            + ". Verifique la configuración del proveedor."
+            );
+        }
+
+        double priceRatio =
+                ratio(
+                        summary.rowsWithPrice(),
+                        processableRows
+                );
 
         if (priceRatio < MIN_PRICE_RATIO) {
             throw new BusinessException(
@@ -58,11 +62,11 @@ public class PriceListImportSafetyValidator {
             );
         }
 
-        long rowsWithTitle = rows.stream()
-                .filter(row -> hasText(row.title()))
-                .count();
-
-        double titleRatio = (double) rowsWithTitle / rows.size();
+        double titleRatio =
+                ratio(
+                        summary.rowsWithTitle(),
+                        processableRows
+                );
 
         if (titleRatio < MIN_TITLE_RATIO) {
             throw new BusinessException(
@@ -70,18 +74,15 @@ public class PriceListImportSafetyValidator {
             );
         }
 
-        long rowsWithIsbn = rows.stream()
-                .filter(row -> hasText(row.isbn()))
-                .count();
-
-        long rowsWithValidIsbn = rows.stream()
-                .filter(row -> hasText(row.isbn()))
-                .map(row -> isbnService.parse(row.isbn()))
-                .filter(ParsedIsbn::valid)
-                .count();
-
-        if (rowsWithIsbn >= MIN_ROWS_WITH_ISBN_TO_VALIDATE_RATIO) {
-            double isbnRatio = (double) rowsWithValidIsbn / rowsWithIsbn;
+        if (
+                summary.rowsWithIsbn()
+                        >= MIN_ROWS_WITH_ISBN_TO_VALIDATE_RATIO
+        ) {
+            double isbnRatio =
+                    ratio(
+                            summary.rowsWithValidIsbn(),
+                            summary.rowsWithIsbn()
+                    );
 
             if (isbnRatio < MIN_ISBN_RATIO) {
                 throw new BusinessException(
@@ -90,17 +91,28 @@ public class PriceListImportSafetyValidator {
             }
         }
 
-        long absurdPrices = rows.stream()
-                .filter(row -> row.retailPrice() != null)
-                .filter(row -> row.retailPrice().compareTo(MAX_REASONABLE_PRICE) > 0)
-                .count();
-
-        double absurdPriceRatio = (double) absurdPrices / rows.size();
+        double absurdPriceRatio =
+                ratio(
+                        summary.rowsWithAbsurdPrice(),
+                        processableRows
+                );
 
         if (absurdPriceRatio > MAX_ABSURD_PRICE_RATIO) {
             throw new BusinessException(
-                    "Se detectó una cantidad inusual de precios fuera de rango. No se realizó la importación."
+                    "Se detectó una cantidad inusual de precios fuera de rango. "
+                            + "No se realizó la importación."
             );
         }
+    }
+
+    private double ratio(
+            long numerator,
+            long denominator
+    ) {
+        if (denominator <= 0) {
+            return 0;
+        }
+
+        return (double) numerator / denominator;
     }
 }

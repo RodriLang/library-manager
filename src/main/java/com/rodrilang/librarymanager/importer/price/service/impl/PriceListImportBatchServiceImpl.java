@@ -3,10 +3,10 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
-import com.rodrilang.librarymanager.importer.price.dto.ImportContext;
-import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListBatchResult;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListBatchResult;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.factory.ImportContextFactory;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
@@ -75,7 +75,8 @@ public class PriceListImportBatchServiceImpl implements PriceListImportBatchServ
                 createdBooks,
                 counters.createdPrices(),
                 counters.updatedPrices(),
-                counters.unchangedPrices()
+                counters.unchangedPrices(),
+                counters.skippedRows()
         );
     }
 }

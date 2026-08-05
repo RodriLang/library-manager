@@ -1,8 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.controller;
 
-import com.rodrilang.librarymanager.importer.price.dto.PriceListImportJobStatusResponse;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListImportStartResponse;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
+import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobStatusResponse;
+import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportStartResponse;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

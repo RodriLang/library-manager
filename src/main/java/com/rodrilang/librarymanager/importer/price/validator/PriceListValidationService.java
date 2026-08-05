@@ -2,8 +2,8 @@ package com.rodrilang.librarymanager.importer.price.validator;
 
 import com.rodrilang.librarymanager.enums.RowValidationSeverity;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportError;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListValidationResult;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListValidationResult;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import lombok.RequiredArgsConstructor;

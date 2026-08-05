@@ -2,7 +2,6 @@ package com.rodrilang.librarymanager.importer.price.model;
 
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -49,10 +48,6 @@ public class PriceListImportJob {
     @Column(name = "idempotency_key", nullable = false, unique = true)
     private String idempotencyKey;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "price_list_source")
-    private PriceListSource priceListSource;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "provider_id",
@@ -91,6 +86,10 @@ public class PriceListImportJob {
 
     @Column(name = "unchanged_prices", nullable = false)
     private int unchangedPrices;
+
+    @Builder.Default
+    @Column(name = "skipped_rows", nullable = false)
+    private int skippedRows = 0;
 
     @Column(name = "error_count", nullable = false)
     private int errorCount;

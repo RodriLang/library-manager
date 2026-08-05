@@ -5,107 +5,104 @@ import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.Pr
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListSheetAnalysisResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListSuggestedMappingResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListWorkbookAnalysisResponse;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.internal.PriceListSheetPreview;
+import com.rodrilang.librarymanager.importer.price.configuration.analysis.StreamingPriceListWorkbookReader;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListMappingSuggester;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListWorkbookAnalyzer;
-import com.rodrilang.librarymanager.importer.price.util.ExcelCellValueReader;
 import lombok.RequiredArgsConstructor;
-import org.apache.poi.ss.usermodel.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.InputStream;
 import java.text.Normalizer;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.Semaphore;
 
 @Service
 @RequiredArgsConstructor
-public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer {
-
-    private static final int MAX_PREVIEW_ROWS = 30;
+public class PriceListWorkbookAnalyzerImpl
+        implements PriceListWorkbookAnalyzer {
 
     private static final Set<String> HEADER_KEYWORDS = Set.of(
             "isbn",
             "ean",
             "codigo",
-            "código",
             "barra",
             "titulo",
-            "título",
             "autor",
             "editorial",
             "sello",
             "pvp",
             "precio",
             "genero",
-            "género",
             "paginas",
-            "páginas",
             "idioma",
             "sinopsis",
             "descripcion",
-            "descripción",
             "stock"
     );
 
-    private final ExcelCellValueReader cellValueReader;
+    private final StreamingPriceListWorkbookReader workbookReader;
     private final PriceListMappingSuggester mappingSuggester;
 
+    private final Semaphore analysisSemaphore =
+            new Semaphore(1, true);
+
     @Override
-    public PriceListWorkbookAnalysisResponse analyze(MultipartFile file) {
-        validateFile(file);
+    public PriceListWorkbookAnalysisResponse analyze(
+            MultipartFile file
+    ) {
+        if (!analysisSemaphore.tryAcquire()) {
+            throw new BusinessException(
+                    "Ya hay una plantilla siendo analizada. "
+                            + "Esperá unos instantes e intentá nuevamente."
+            );
+        }
 
-        try (
-                InputStream inputStream = file.getInputStream();
-                Workbook workbook = WorkbookFactory.create(inputStream)
-        ) {
-
+        try {
             List<PriceListSheetAnalysisResponse> sheets =
-                    new ArrayList<>();
+                    workbookReader.read(file)
+                            .stream()
+                            .map(this::analyzeSheet)
+                            .toList();
 
-            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
-                sheets.add(analyzeSheet(workbook.getSheetAt(i), i));
-            }
-
-            return new PriceListWorkbookAnalysisResponse(file.getOriginalFilename(), sheets);
-
-        } catch (Exception ex) {
-            throw new BusinessException("No se pudo analizar el archivo Excel: " + ex.getMessage());
+            return new PriceListWorkbookAnalysisResponse(
+                    file.getOriginalFilename(),
+                    sheets
+            );
+        } finally {
+            analysisSemaphore.release();
         }
     }
 
     private PriceListSheetAnalysisResponse analyzeSheet(
-            Sheet sheet,
-            int sheetIndex
+            PriceListSheetPreview sheet
     ) {
-        int columnCount = findMaximumColumnCount(sheet);
-
-        List<PriceListPreviewRowResponse> preview =
-                readPreviewRows(sheet, columnCount);
-
         Integer suggestedHeaderRowIndex =
-                detectHeaderRow(preview);
+                detectHeaderRow(sheet.rows());
 
-        List<PriceListSuggestedMappingResponse> suggestedMappings =
+        List<PriceListSuggestedMappingResponse>
+                suggestedMappings =
                 resolveSuggestedMappings(
-                        preview,
+                        sheet.rows(),
                         suggestedHeaderRowIndex
                 );
 
         return new PriceListSheetAnalysisResponse(
-                sheetIndex,
-                sheet.getSheetName(),
-                calculatePhysicalRowCount(sheet),
-                columnCount,
+                sheet.sheetIndex(),
+                sheet.sheetName(),
+                sheet.observedRowCount(),
+                sheet.columnCount(),
+                sheet.truncated(),
                 suggestedHeaderRowIndex,
                 suggestedMappings,
-                preview
+                sheet.rows()
         );
     }
 
-    private List<PriceListSuggestedMappingResponse> resolveSuggestedMappings(
+    private List<PriceListSuggestedMappingResponse>
+    resolveSuggestedMappings(
             List<PriceListPreviewRowResponse> preview,
             Integer headerRowIndex
     ) {
@@ -122,80 +119,15 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
                 .orElseGet(List::of);
     }
 
-    private List<PriceListPreviewRowResponse> readPreviewRows(Sheet sheet, int columnCount) {
-        List<PriceListPreviewRowResponse> rows = new ArrayList<>();
-
-        int lastPreviewRow = Math.min(sheet.getLastRowNum(), MAX_PREVIEW_ROWS - 1);
-
-        for (int rowIndex = 0; rowIndex <= lastPreviewRow; rowIndex++) {
-
-            Row row = sheet.getRow(rowIndex);
-
-            List<String> cells = new ArrayList<>();
-
-            for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
-                cells.add(getCellValue(row, columnIndex));
-            }
-
-            rows.add(new PriceListPreviewRowResponse(rowIndex, cells));
-        }
-
-        return rows;
-    }
-
-    private int findMaximumColumnCount(Sheet sheet) {
-        int maxColumnCount = 0;
-
-        int lastRowIndex = Math.min(
-                sheet.getLastRowNum(),
-                MAX_PREVIEW_ROWS - 1
-        );
-
-        for (int rowIndex = 0;
-             rowIndex <= lastRowIndex;
-             rowIndex++) {
-
-            Row row = sheet.getRow(rowIndex);
-
-            if (row == null) {
-                continue;
-            }
-
-            int lastNonBlankColumn = findLastNonBlankColumn(row);
-
-            maxColumnCount = Math.max(
-                    maxColumnCount,
-                    lastNonBlankColumn + 1
-            );
-        }
-
-        return maxColumnCount;
-    }
-
-    private int findLastNonBlankColumn(Row row) {
-        int lastNonBlankColumn = -1;
-
-        for (Cell cell : row) {
-            String value = cellValueReader.read(cell);
-
-            if (!value.isBlank()) {
-                lastNonBlankColumn = Math.max(
-                        lastNonBlankColumn,
-                        cell.getColumnIndex()
-                );
-            }
-        }
-
-        return lastNonBlankColumn;
-    }
-
-    private Integer detectHeaderRow(List<PriceListPreviewRowResponse> rows) {
+    private Integer detectHeaderRow(
+            List<PriceListPreviewRowResponse> rows
+    ) {
         Integer bestRow = null;
         int bestScore = 0;
 
         for (PriceListPreviewRowResponse row : rows) {
-
-            int score = calculateHeaderScore(row.cells());
+            int score =
+                    calculateHeaderScore(row.cells());
 
             if (score > bestScore) {
                 bestScore = score;
@@ -203,10 +135,14 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
             }
         }
 
-        return bestScore >= 2 ? bestRow : null;
+        return bestScore >= 2
+                ? bestRow
+                : null;
     }
 
-    private int calculateHeaderScore(List<String> cells) {
+    private int calculateHeaderScore(
+            List<String> cells
+    ) {
         int score = 0;
 
         for (String cell : cells) {
@@ -216,8 +152,7 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
                 continue;
             }
 
-            boolean matches = HEADER_KEYWORDS
-                    .stream()
+            boolean matches = HEADER_KEYWORDS.stream()
                     .anyMatch(normalized::contains);
 
             if (matches) {
@@ -226,28 +161,6 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
         }
 
         return score;
-    }
-
-    private int calculatePhysicalRowCount(Sheet sheet) {
-        if (sheet.getPhysicalNumberOfRows() == 0) {
-            return 0;
-        }
-
-        return sheet.getLastRowNum() + 1;
-    }
-
-    private String getCellValue(Row row, int columnIndex) {
-        if (row == null) {
-            return "";
-        }
-
-        Cell cell = row.getCell(columnIndex, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
-
-        if (cell == null) {
-            return "";
-        }
-
-        return cellValueReader.read(cell);
     }
 
     private String normalize(String value) {
@@ -266,23 +179,5 @@ public class PriceListWorkbookAnalyzerImpl implements PriceListWorkbookAnalyzer 
                 .replaceAll("[^a-z0-9]+", " ")
                 .trim()
                 .replaceAll("\\s+", " ");
-    }
-
-    private void validateFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException("Debe seleccionar un archivo Excel.");
-        }
-
-        String fileName = file.getOriginalFilename();
-
-        if (fileName == null) {
-            throw new BusinessException("No se pudo determinar el nombre del archivo.");
-        }
-
-        String normalized = fileName.toLowerCase(Locale.ROOT);
-
-        if (!normalized.endsWith(".xls") && !normalized.endsWith(".xlsx")) {
-            throw new BusinessException("El archivo debe tener formato .xls o .xlsx.");
-        }
     }
 }

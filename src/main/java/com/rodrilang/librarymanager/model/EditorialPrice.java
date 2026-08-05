@@ -1,11 +1,8 @@
 package com.rodrilang.librarymanager.model;
 
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
@@ -52,10 +49,6 @@ public class EditorialPrice extends AuditableEntity {
     @Builder.Default
     @Column(nullable = false, length = 3)
     private String currency = "ARS";
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private PriceListSource source;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(

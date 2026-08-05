@@ -2,7 +2,7 @@ package com.rodrilang.librarymanager.importer.price.configuration.parser;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.stereotype.Component;

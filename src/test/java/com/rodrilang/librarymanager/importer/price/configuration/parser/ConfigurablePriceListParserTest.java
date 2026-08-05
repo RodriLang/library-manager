@@ -6,7 +6,7 @@ import com.rodrilang.librarymanager.importer.price.configuration.enums.PriceList
 import com.rodrilang.librarymanager.importer.price.configuration.enums.SheetStrategy;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.util.ExcelCellValueReader;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;

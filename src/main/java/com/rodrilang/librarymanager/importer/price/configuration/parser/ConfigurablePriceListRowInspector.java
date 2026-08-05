@@ -2,7 +2,8 @@ package com.rodrilang.librarymanager.importer.price.configuration.parser;
 
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListMetadata;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.util.ExcelCellValueReader;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.Cell;
@@ -40,21 +41,38 @@ public class ConfigurablePriceListRowInspector {
     }
 
     public boolean shouldSkip(PriceListRow row) {
-        boolean hasIdentifier = hasText(row.isbn());
-        boolean hasTitle = hasText(row.title());
-        boolean hasAuthor = hasText(row.authorName());
-        boolean hasPublisher = hasText(row.publisherName());
-        boolean hasPrice = row.retailPrice() != null;
+        return !hasText(row.isbn())
+                && !hasText(row.title())
+                && !hasText(row.authorName())
+                && !hasText(row.publisherName())
+                && !hasText(row.categoryName())
+                && row.retailPrice() == null
+                && !hasMetadata(row.metadata());
+    }
 
-        if (!hasIdentifier && !hasTitle && !hasAuthor && !hasPublisher && !hasPrice) {
-            return true;
+    private boolean hasMetadata(
+            PriceListMetadata metadata
+    ) {
+        if (metadata == null) {
+            return false;
         }
 
-        return !hasIdentifier
-                && hasTitle
-                && !hasAuthor
-                && !hasPublisher
-                && !hasPrice;
+        return hasText(metadata.externalCode())
+                || hasText(metadata.subtitle())
+                || hasText(metadata.description())
+                || hasText(metadata.genreName())
+                || hasText(metadata.collectionName())
+                || hasText(metadata.language())
+                || hasText(metadata.coverUrl())
+                || hasText(metadata.tags())
+                || hasText(metadata.observations())
+                || metadata.externalStock() != null
+                || metadata.pageCount() != null
+                || metadata.publicationDate() != null
+                || metadata.widthCm() != null
+                || metadata.heightCm() != null
+                || metadata.depthCm() != null
+                || metadata.weightGrams() != null;
     }
 
     private boolean hasText(String value) {

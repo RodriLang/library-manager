@@ -3,10 +3,10 @@ package com.rodrilang.librarymanager.service.impl;
 import com.rodrilang.librarymanager.dto.internal.EditorialPriceImportResult;
 import com.rodrilang.librarymanager.enums.EditorialPriceChangeType;
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.dto.PriceImportCounters;
-import com.rodrilang.librarymanager.importer.price.dto.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
-import com.rodrilang.librarymanager.importer.price.parser.PriceListSource;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
@@ -35,16 +35,17 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     private final EditorialPriceRepository editorialPriceRepository;
 
     @Override
+    @Transactional
     public EditorialPriceImportResult registerOrUpdateForImport(
             Book book,
             BigDecimal price,
-            PriceListSource source,
+            PriceListProvider provider,
             LocalDate validFrom
     ) {
         EditorialPrice existing = editorialPriceRepository
-                .findByBookIdAndSourceAndValidFrom(
+                .findByBookIdAndProviderIdAndValidFrom(
                         book.getId(),
-                        source,
+                        provider.getId(),
                         validFrom
                 )
                 .orElse(null);
@@ -54,7 +55,7 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                     .book(book)
                     .price(price)
                     .currency("ARS")
-                    .source(source)
+                    .provider(provider)
                     .validFrom(validFrom)
                     .active(true)
                     .build();
@@ -88,7 +89,15 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             PriceListImportJob job
     ) {
         if (books.isEmpty()) {
-            return new PriceImportCounters(0, 0, 0);
+            return new PriceImportCounters(0, 0, 0, 0);
+        }
+
+        if (books.size() != rows.size()) {
+            throw new IllegalArgumentException(
+                    "La cantidad de libros no coincide con la cantidad de filas. "
+                            + "books=" + books.size()
+                            + ", rows=" + rows.size()
+            );
         }
 
         validateOrigin(job);
@@ -109,6 +118,7 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         int createdPrices = 0;
         int updatedPrices = 0;
         int unchangedPrices = 0;
+        int skippedRows = 0;
 
         Map<Long, PriceListRow> processedRowsByBookId = new HashMap<>();
 
@@ -117,12 +127,26 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             PriceListRow row = rows.get(i);
             EditorialPrice existing = existingByBookId.get(book.getId());
 
-            PriceListRow previousRow = processedRowsByBookId.putIfAbsent(book.getId(), row);
+            PriceListRow previousRow =
+                    processedRowsByBookId.putIfAbsent(
+                            book.getId(),
+                            row
+                    );
 
             if (previousRow != null) {
-                if (previousRow.retailPrice().compareTo(row.retailPrice()) != 0) {
+                skippedRows++;
+
+                if (
+                        previousRow.retailPrice() != null
+                                && row.retailPrice() != null
+                                && previousRow.retailPrice()
+                                .compareTo(row.retailPrice()) != 0
+                ) {
                     log.warn(
-                            "Conflicting prices for same book. bookId={} title='{}' firstRow={} firstIsbn={} firstPrice={} secondRow={} secondIsbn={} secondPrice={}",
+                            "Conflicting prices for same book. "
+                                    + "bookId={} title='{}' "
+                                    + "firstRow={} firstIsbn={} firstPrice={} "
+                                    + "secondRow={} secondIsbn={} secondPrice={}",
                             book.getId(),
                             book.getTitle(),
                             previousRow.rowNumber(),
@@ -176,7 +200,27 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             editorialPriceRepository.saveAll(toSave);
         }
 
-        return new PriceImportCounters(createdPrices, updatedPrices, unchangedPrices);
+        int accountedRows =
+                createdPrices
+                        + updatedPrices
+                        + unchangedPrices
+                        + skippedRows;
+
+        if (accountedRows != rows.size()) {
+            log.warn(
+                    "Price batch counters mismatch. "
+                            + "rows={} created={} updated={} "
+                            + "unchanged={} skipped={} accounted={}",
+                    rows.size(),
+                    createdPrices,
+                    updatedPrices,
+                    unchangedPrices,
+                    skippedRows,
+                    accountedRows
+            );
+        }
+
+        return new PriceImportCounters(createdPrices, updatedPrices, unchangedPrices, skippedRows);
     }
 
     @Transactional(readOnly = true)
@@ -190,19 +234,12 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     }
 
     private List<EditorialPrice> loadExistingPrices(List<Long> bookIds, PriceListImportJob job) {
-        if (job.getImportConfig() != null) {
-            return editorialPriceRepository.findByBookIdInAndProviderIdAndValidFrom(
-                    bookIds,
-                    job.getProvider().getId(),
-                    job.getValidFrom()
-            );
-        }
-
-        return editorialPriceRepository.findByBookIdInAndSourceAndValidFrom(
-                bookIds,
-                job.getPriceListSource(),
-                job.getValidFrom()
-        );
+        return editorialPriceRepository
+                .findByBookIdInAndProviderIdAndValidFrom(
+                        bookIds,
+                        job.getProvider().getId(),
+                        job.getValidFrom()
+                );
     }
 
     private EditorialPrice createPrice(Book book, PriceListRow row, PriceListImportJob job) {
@@ -210,7 +247,6 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 .book(book)
                 .price(row.retailPrice())
                 .currency("ARS")
-                .source(job.getPriceListSource())
                 .provider(job.getProvider())
                 .validFrom(job.getValidFrom())
                 .active(true)
@@ -218,16 +254,13 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     }
 
     private void validateOrigin(PriceListImportJob job) {
-        boolean legacy = job.getPriceListSource() != null
-                && job.getProvider() == null
-                && job.getImportConfig() == null;
-
-        boolean configurable = job.getPriceListSource() == null
-                && job.getProvider() != null
-                && job.getImportConfig() != null;
-
-        if (!legacy && !configurable) {
-            throw new BusinessException("La importación no tiene un origen válido.");
+        if (
+                job.getProvider() == null
+                        || job.getImportConfig() == null
+        ) {
+            throw new BusinessException(
+                    "La importación no tiene un proveedor o una configuración válida."
+            );
         }
     }
 
