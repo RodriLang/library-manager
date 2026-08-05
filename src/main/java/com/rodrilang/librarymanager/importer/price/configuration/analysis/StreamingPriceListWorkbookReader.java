@@ -4,7 +4,9 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.config.PriceListAnalysisProperties;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.internal.PriceListSheetPreview;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.util.XMLHelper;
 import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
@@ -17,35 +19,57 @@ import org.xml.sax.InputSource;
 import org.xml.sax.XMLReader;
 
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class StreamingPriceListWorkbookReader {
 
     private final PriceListAnalysisProperties properties;
+    private final PriceListAnalysisFileStorage fileStorage;
 
     public List<PriceListSheetPreview> read(
             MultipartFile file
     ) {
         validateFile(file);
 
-        try (
-                InputStream inputStream = file.getInputStream();
-                OPCPackage opcPackage =
-                        OPCPackage.open(inputStream)
-        ) {
-            XSSFReader reader = new XSSFReader(opcPackage);
+        Path temporaryFile = fileStorage.store(file);
 
-            StylesTable styles = reader.getStylesTable();
+        try {
+            return readFromPath(temporaryFile);
+
+        } finally {
+            fileStorage.deleteQuietly(temporaryFile);
+        }
+    }
+
+    private List<PriceListSheetPreview> readFromPath(
+            Path filePath
+    ) {
+        try (
+                OPCPackage opcPackage =
+                        OPCPackage.open(
+                                filePath.toFile(),
+                                PackageAccess.READ
+                        )
+        ) {
+            XSSFReader reader =
+                    new XSSFReader(opcPackage);
+
+            StylesTable styles =
+                    reader.getStylesTable();
 
             ReadOnlySharedStringsTable sharedStrings =
                     new ReadOnlySharedStringsTable(opcPackage);
 
             DataFormatter formatter =
-                    new DataFormatter(Locale.forLanguageTag("es-AR"));
+                    new DataFormatter(
+                            Locale.forLanguageTag("es-AR")
+                    );
 
             XSSFReader.SheetIterator sheetIterator =
                     (XSSFReader.SheetIterator)
@@ -58,11 +82,13 @@ public class StreamingPriceListWorkbookReader {
 
             while (
                     sheetIterator.hasNext()
-                            && sheets.size() < properties.maxSheets()
+                            && sheets.size()
+                            < properties.maxSheets()
             ) {
-                try (InputStream sheetStream =
-                             sheetIterator.next()) {
-
+                try (
+                        InputStream sheetStream =
+                                sheetIterator.next()
+                ) {
                     String sheetName =
                             sheetIterator.getSheetName();
 
@@ -91,6 +117,7 @@ public class StreamingPriceListWorkbookReader {
 
         } catch (BusinessException exception) {
             throw exception;
+
         } catch (Exception exception) {
             throw new BusinessException(
                     "No se pudo analizar el archivo Excel: "
@@ -126,13 +153,19 @@ public class StreamingPriceListWorkbookReader {
                         false
                 );
 
-        XMLReader parser = XMLHelper.newXMLReader();
+        XMLReader parser =
+                XMLHelper.newXMLReader();
+
         parser.setContentHandler(contentHandler);
 
         try {
-            parser.parse(new InputSource(sheetStream));
-        } catch (PreviewLimitReachedException ignored) {
-            // Finalización esperada al obtener la vista previa.
+            parser.parse(
+                    new InputSource(sheetStream)
+            );
+        } catch (
+                PreviewLimitReachedException ignored
+        ) {
+            // Finalización esperada.
         }
 
         return previewHandler.toResult();
