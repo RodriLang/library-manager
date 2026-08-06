@@ -4,27 +4,26 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookRegistrationResult;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
 import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
+import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookBatchRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.ProviderBookUpsertRow;
 import com.rodrilang.librarymanager.importer.price.resolver.PriceListIdentifierResolver;
 import com.rodrilang.librarymanager.model.Book;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.springframework.util.StringUtils.hasText;
 
@@ -33,6 +32,7 @@ import static org.springframework.util.StringUtils.hasText;
 public class ProviderBookServiceImpl implements ProviderBookService {
 
     private final ProviderBookRepository providerBookRepository;
+    private final ProviderBookBatchRepository providerBookBatchRepository;
     private final PriceListIdentifierResolver identifierResolver;
 
     @Override
@@ -89,106 +89,40 @@ public class ProviderBookServiceImpl implements ProviderBookService {
         }
 
         if (rows == null || books.size() != rows.size()) {
-            throw new BusinessException(
-                    "La cantidad de libros no coincide con la cantidad de filas importadas."
-            );
+            throw new BusinessException("La cantidad de libros no coincide con la cantidad de filas importadas.");
         }
 
-        Long providerId = provider.getId();
         Instant now = Instant.now();
 
-        List<PriceListIdentifier> identifiers = rows.stream()
-                .map(identifierResolver::resolve)
-                .toList();
+        Map<Long, ProviderBookUpsertRow> upsertRowsByBookId = new LinkedHashMap<>();
 
-        List<Long> bookIds = books.stream()
-                .map(Book::getId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-
-        Map<Long, ProviderBook> existingByBookId = providerBookRepository
-                .findByProviderIdAndBookIdIn(providerId, bookIds)
-                .stream()
-                .collect(Collectors.toMap(
-                        providerBook -> providerBook.getBook().getId(),
-                        Function.identity()
-                ));
-
-        Set<String> externalCodes = identifiers.stream()
-                .map(PriceListIdentifier::externalCode)
-                .filter(StringUtils::hasText)
-                .map(String::trim)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        Map<String, ProviderBook> existingByExternalCode =
-                externalCodes.isEmpty()
-                        ? new HashMap<>()
-                        : providerBookRepository
-                        .findByProviderIdAndExternalCodeIn(
-                                providerId,
-                                externalCodes
-                        )
-                        .stream()
-                        .collect(Collectors.toMap(
-                                ProviderBook::getExternalCode,
-                                Function.identity(),
-                                (first, repeated) -> first,
-                                HashMap::new
-                        ));
-
-        /*
-         * También contiene las relaciones nuevas creadas durante
-         * este mismo lote, para detectar códigos repetidos sin
-         * hacer consultas adicionales.
-         */
-        Map<String, ProviderBook> ownersByExternalCode =
-                new HashMap<>(existingByExternalCode);
-
-        Map<Long, ProviderBook> toSaveByBookId = new LinkedHashMap<>();
+        Map<String, Long> bookIdByExternalCode = new HashMap<>();
 
         for (int i = 0; i < books.size(); i++) {
             Book book = books.get(i);
-            PriceListIdentifier identifier = identifiers.get(i);
+            PriceListIdentifier identifier = identifierResolver.resolve(rows.get(i));
 
-            ProviderBook providerBook =
-                    existingByBookId.get(book.getId());
-
-            boolean changed = false;
-
-            if (providerBook == null) {
-                providerBook = ProviderBook.builder()
-                        .provider(provider)
-                        .book(book)
-                        .active(true)
-                        .createdAt(now)
-                        .updatedAt(now)
-                        .lastSeenAt(now)
-                        .build();
-
-                existingByBookId.put(book.getId(), providerBook);
-                changed = true;
+            if (book.getId() == null) {
+                throw new IllegalStateException(
+                        "No se puede registrar un libro sin ID."
+                );
             }
 
-            String newExternalCode = normalizeNullable(
-                    identifier.externalCode()
-            );
+            String externalCode = normalizeNullable(identifier.externalCode());
 
-            String previousExternalCode = normalizeNullable(
-                    providerBook.getExternalCode()
-            );
+            if (externalCode != null) {
+                Long previousBookId =
+                        bookIdByExternalCode.putIfAbsent(
+                                externalCode,
+                                book.getId()
+                        );
 
-            if (newExternalCode != null) {
-                ProviderBook owner =
-                        ownersByExternalCode.get(newExternalCode);
-
-                if (owner != null
-                        && !owner.getBook().getId().equals(book.getId())) {
+                if (previousBookId != null && !previousBookId.equals(book.getId())) {
                     throw new BusinessException(
                             "El código externo "
-                                    + newExternalCode
-                                    + " está asociado a más de un libro del proveedor: "
-                                    + owner.getBook().getId()
+                                    + externalCode
+                                    + " está asociado a más de un libro del lote: "
+                                    + previousBookId
                                     + " y "
                                     + book.getId()
                                     + "."
@@ -196,72 +130,27 @@ public class ProviderBookServiceImpl implements ProviderBookService {
                 }
             }
 
-            if (!Objects.equals(
-                    previousExternalCode,
-                    newExternalCode
-            )) {
-                if (previousExternalCode != null) {
-                    ProviderBook previousOwner =
-                            ownersByExternalCode.get(previousExternalCode);
-
-                    if (previousOwner == providerBook) {
-                        ownersByExternalCode.remove(previousExternalCode);
-                    }
-                }
-
-                providerBook.setExternalCode(newExternalCode);
-                changed = true;
-            }
-
-            if (newExternalCode != null) {
-                ownersByExternalCode.put(
-                        newExternalCode,
-                        providerBook
-                );
-            }
-
-            if (!Objects.equals(
-                    providerBook.getReportedIsbn(),
-                    identifier.reportedIsbn()
-            )) {
-                providerBook.setReportedIsbn(
-                        identifier.reportedIsbn()
-                );
-                changed = true;
-            }
-
-            if (providerBook.getIdentifierStatus()
-                    != identifier.status()) {
-                providerBook.setIdentifierStatus(
-                        identifier.status()
-                );
-                changed = true;
-            }
-
-            if (!providerBook.isActive()) {
-                providerBook.setActive(true);
-                changed = true;
-            }
-
-            /*
-             * Para una importación inicial casi todos serán nuevos.
-             * En reimportaciones, actualizar lastSeenAt obliga a
-             * guardar la relación aunque los demás datos no cambien.
-             */
-            providerBook.setLastSeenAt(now);
-
-            if (changed) {
-                providerBook.setUpdatedAt(now);
-                toSaveByBookId.put(
-                        book.getId(),
-                        providerBook
-                );
-            }
+            upsertRowsByBookId.putIfAbsent(
+                    book.getId(),
+                    new ProviderBookUpsertRow(
+                            book.getId(),
+                            externalCode,
+                            identifier.reportedIsbn(),
+                            identifier.status()
+                    )
+            );
         }
 
-        if (!toSaveByBookId.isEmpty()) {
-            providerBookRepository.saveAll(
-                    toSaveByBookId.values()
+        try {
+            providerBookBatchRepository.upsertBatch(
+                    provider.getId(),
+                    new ArrayList<>(upsertRowsByBookId.values()),
+                    now
+            );
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(
+                    "No se pudieron registrar las referencias del proveedor. "
+                            + "Verifique que ningún código externo esté asociado a más de un libro."
             );
         }
     }
@@ -272,13 +161,6 @@ public class ProviderBookServiceImpl implements ProviderBookService {
         }
 
         return value.trim();
-    }
-
-    private boolean equalsNullable(
-            String first,
-            String second
-    ) {
-        return java.util.Objects.equals(first, second);
     }
 
     private void validateExternalCodeAvailability(Long providerId, Long bookId, String externalCode) {

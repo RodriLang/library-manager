@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.importer.price.repository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.StagingInsertResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -87,7 +88,7 @@ public class PriceListImportStagingRepository {
         );
     }
 
-    public List<PriceListRow> findValidBatch(
+    public List<PriceListStagingRow> findValidBatch(
             Long jobId,
             long afterId,
             int limit
@@ -110,8 +111,11 @@ public class PriceListImportStagingRepository {
                         "limit", limit
                 ),
                 (resultSet, rowNum) ->
-                        deserialize(
-                                resultSet.getString("row_payload")
+                        new PriceListStagingRow(
+                                resultSet.getLong("id"),
+                                deserialize(
+                                        resultSet.getString("row_payload")
+                                )
                         )
         );
     }
