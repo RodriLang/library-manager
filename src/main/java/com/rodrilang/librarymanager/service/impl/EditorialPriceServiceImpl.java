@@ -4,9 +4,12 @@ import com.rodrilang.librarymanager.dto.internal.EditorialPriceImportResult;
 import com.rodrilang.librarymanager.enums.EditorialPriceChangeType;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceInsertRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceUpdateRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
+import com.rodrilang.librarymanager.importer.price.repository.EditorialPriceBatchRepository;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
@@ -23,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -33,6 +37,7 @@ import java.util.stream.Collectors;
 public class EditorialPriceServiceImpl implements EditorialPriceService {
 
     private final EditorialPriceRepository editorialPriceRepository;
+    private final EditorialPriceBatchRepository editorialPriceBatchRepository;
 
     @Override
     @Transactional
@@ -89,7 +94,12 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             PriceListImportJob job
     ) {
         if (books.isEmpty()) {
-            return new PriceImportCounters(0, 0, 0, 0);
+            return new PriceImportCounters(
+                    0,
+                    0,
+                    0,
+                    0
+            );
         }
 
         if (books.size() != rows.size()) {
@@ -104,28 +114,63 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
         List<Long> bookIds = books.stream()
                 .map(Book::getId)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
 
-        Map<Long, EditorialPrice> existingByBookId = loadExistingPrices(bookIds, job).stream()
-                .collect(Collectors.toMap(
-                        price -> price.getBook().getId(),
-                        Function.identity()
-                ));
+        long loadStart = System.nanoTime();
 
-        List<EditorialPrice> toSave = new ArrayList<>();
+        Map<Long, EditorialPrice> existingByBookId =
+                loadExistingPrices(bookIds, job)
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        price -> price
+                                                .getBook()
+                                                .getId(),
+                                        Function.identity()
+                                )
+                        );
+
+        log.info(
+                "Loaded {} editorial prices in {}ms",
+                existingByBookId.size(),
+                (System.nanoTime() - loadStart) / 1_000_000
+        );
+
+        List<EditorialPriceInsertRow> toInsert =
+                new ArrayList<>();
+
+        List<EditorialPriceUpdateRow> toUpdate =
+                new ArrayList<>();
 
         int createdPrices = 0;
         int updatedPrices = 0;
         int unchangedPrices = 0;
         int skippedRows = 0;
 
-        Map<Long, PriceListRow> processedRowsByBookId = new HashMap<>();
+        Map<Long, PriceListRow> processedRowsByBookId =
+                new HashMap<>();
+
+        long classifyStart = System.nanoTime();
 
         for (int i = 0; i < books.size(); i++) {
             Book book = books.get(i);
             PriceListRow row = rows.get(i);
-            EditorialPrice existing = existingByBookId.get(book.getId());
+
+            if (book == null || book.getId() == null) {
+                throw new IllegalStateException(
+                        "No se puede registrar el precio de un libro sin ID."
+                );
+            }
+
+            if (row.retailPrice() == null) {
+                throw new IllegalStateException(
+                        "No se puede registrar un precio nulo. "
+                                + "row=" + row.rowNumber()
+                                + ", bookId=" + book.getId()
+                );
+            }
 
             PriceListRow previousRow =
                     processedRowsByBookId.putIfAbsent(
@@ -138,7 +183,6 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
                 if (
                         previousRow.retailPrice() != null
-                                && row.retailPrice() != null
                                 && previousRow.retailPrice()
                                 .compareTo(row.retailPrice()) != 0
                 ) {
@@ -161,44 +205,76 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 continue;
             }
 
-            if (existing == null) {
-                EditorialPrice newPrice = createPrice(book, row, job);
+            EditorialPrice existing =
+                    existingByBookId.get(book.getId());
 
-                toSave.add(newPrice);
-                existingByBookId.put(book.getId(), newPrice);
+            if (existing == null) {
+                toInsert.add(
+                        new EditorialPriceInsertRow(
+                                book.getId(),
+                                row.retailPrice()
+                        )
+                );
+
                 createdPrices++;
                 continue;
             }
 
-            if (existing.getPrice().compareTo(row.retailPrice()) == 0) {
+            if (
+                    existing.getPrice()
+                            .compareTo(row.retailPrice()) == 0
+                            && Boolean.TRUE.equals(existing.getActive())
+            ) {
                 unchangedPrices++;
                 continue;
             }
 
             log.warn(
-                    "Editorial price updated during import. bookId={} title='{}' row={} isbn={} previousPrice={} newPrice={} providerId={} validFrom={}",
+                    "Editorial price updated during import. "
+                            + "editorialPriceId={} bookId={} title='{}' "
+                            + "row={} isbn={} previousPrice={} newPrice={} "
+                            + "previousActive={} providerId={} validFrom={}",
+                    existing.getId(),
                     book.getId(),
                     book.getTitle(),
                     row.rowNumber(),
                     row.isbn(),
                     existing.getPrice(),
                     row.retailPrice(),
+                    existing.getActive(),
                     job.getProvider().getId(),
                     job.getValidFrom()
             );
 
-            existing.setPrice(row.retailPrice());
-
-            if (!toSave.contains(existing)) {
-                toSave.add(existing);
-            }
+            toUpdate.add(
+                    new EditorialPriceUpdateRow(
+                            existing.getId(),
+                            row.retailPrice()
+                    )
+            );
 
             updatedPrices++;
         }
 
-        if (!toSave.isEmpty()) {
-            editorialPriceRepository.saveAll(toSave);
-        }
+        log.info(
+                "Price classification. rows={} inserts={} updates={} unchanged={} skipped={} time={}ms",
+                rows.size(),
+                toInsert.size(),
+                toUpdate.size(),
+                unchangedPrices,
+                skippedRows,
+                (System.nanoTime() - classifyStart) / 1_000_000
+        );
+
+        editorialPriceBatchRepository.insertBatch(
+                job.getProvider().getId(),
+                job.getValidFrom(),
+                toInsert
+        );
+
+        editorialPriceBatchRepository.updateBatch(
+                toUpdate
+        );
 
         int accountedRows =
                 createdPrices
@@ -220,7 +296,12 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             );
         }
 
-        return new PriceImportCounters(createdPrices, updatedPrices, unchangedPrices, skippedRows);
+        return new PriceImportCounters(
+                createdPrices,
+                updatedPrices,
+                unchangedPrices,
+                skippedRows
+        );
     }
 
     @Transactional(readOnly = true)
@@ -242,17 +323,6 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 );
     }
 
-    private EditorialPrice createPrice(Book book, PriceListRow row, PriceListImportJob job) {
-        return EditorialPrice.builder()
-                .book(book)
-                .price(row.retailPrice())
-                .currency("ARS")
-                .provider(job.getProvider())
-                .validFrom(job.getValidFrom())
-                .active(true)
-                .build();
-    }
-
     private void validateOrigin(PriceListImportJob job) {
         if (
                 job.getProvider() == null
@@ -263,6 +333,4 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             );
         }
     }
-
-
 }
