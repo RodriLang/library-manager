@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListBatchResult;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingRow;
 import com.rodrilang.librarymanager.importer.price.factory.ImportContextFactory;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
@@ -25,7 +26,8 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class PriceListImportBatchServiceImpl implements PriceListImportBatchService {
+public class PriceListImportBatchServiceImpl
+        implements PriceListImportBatchService {
 
     private final BookRepository bookRepository;
     private final ImportContextFactory importContextFactory;
@@ -36,20 +38,59 @@ public class PriceListImportBatchServiceImpl implements PriceListImportBatchServ
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public PriceListBatchResult processBatch(List<PriceListRow> rows, Long jobId) {
-        PriceListImportJob job = jobRepository.findWithImportConfigById(jobId)
-                .orElseThrow(() -> new BusinessException("No se encontró el trabajo de importación."));
+    public PriceListBatchResult processBatch(
+            List<PriceListStagingRow> stagingRows,
+            Long jobId
+    ) {
+        if (stagingRows == null || stagingRows.isEmpty()) {
+            return new PriceListBatchResult(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+            );
+        }
 
-        ImportContext context = importContextFactory.create(rows, job.getProvider());
+        PriceListImportJob job = jobRepository
+                .findWithImportConfigById(jobId)
+                .orElseThrow(() ->
+                        new BusinessException(
+                                "No se encontró el trabajo de importación."
+                        )
+                );
 
-        List<Book> books = new ArrayList<>(rows.size());
-        List<Book> newBooks = new ArrayList<>();
-        List<Integer> newBookIndexes = new ArrayList<>();
+        List<PriceListRow> rows = stagingRows.stream()
+                .map(PriceListStagingRow::row)
+                .toList();
+
+        ImportContext context =
+                importContextFactory.create(
+                        rows,
+                        job.getProvider()
+                );
+
+        List<Book> books =
+                new ArrayList<>(rows.size());
+
+        List<Book> newBooks =
+                new ArrayList<>();
+
+        List<Integer> newBookIndexes =
+                new ArrayList<>();
 
         int createdBooks = 0;
 
         for (int i = 0; i < rows.size(); i++) {
-            BookImportResult result = bookUpsertService.findOrCreate(rows.get(i), context);
+            PriceListRow row = rows.get(i);
+
+            BookImportResult result =
+                    bookUpsertService.findOrCreate(
+                            row,
+                            context
+                    );
+
             books.add(result.book());
 
             if (result.created()) {
@@ -60,18 +101,33 @@ public class PriceListImportBatchServiceImpl implements PriceListImportBatchServ
         }
 
         if (!newBooks.isEmpty()) {
-            List<Book> savedBooks = bookRepository.saveAll(newBooks);
+            List<Book> savedBooks =
+                    bookRepository.saveAll(newBooks);
 
             for (int i = 0; i < savedBooks.size(); i++) {
-                books.set(newBookIndexes.get(i), savedBooks.get(i));
+                books.set(
+                        newBookIndexes.get(i),
+                        savedBooks.get(i)
+                );
             }
         }
 
-        providerBookService.registerBatch(job.getProvider(), books, rows);
-        PriceImportCounters counters = editorialPriceService.registerOrUpdateBatchForImport(books, rows, job);
+        providerBookService.registerBatch(
+                job.getProvider(),
+                books,
+                rows
+        );
+
+        PriceImportCounters counters =
+                editorialPriceService
+                        .registerOrUpdateBatchForImport(
+                                books,
+                                rows,
+                                job
+                        );
 
         return new PriceListBatchResult(
-                rows.size(),
+                stagingRows.size(),
                 createdBooks,
                 counters.createdPrices(),
                 counters.updatedPrices(),

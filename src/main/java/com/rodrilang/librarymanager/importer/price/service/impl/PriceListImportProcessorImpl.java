@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.importer.price.dto.internal.ImportStatistics
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListBatchResult;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListImportSafetySummary;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingStatistics;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
@@ -155,7 +156,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
         int skippedRows = 0;
 
         while (true) {
-            List<PriceListRow> batch =
+            List<PriceListStagingRow> batch =
                     stagingRepository.findValidBatch(
                             jobId,
                             afterId,
@@ -165,13 +166,6 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
             if (batch.isEmpty()) {
                 break;
             }
-
-            long nextAfterId =
-                    stagingRepository.findLastIdInBatch(
-                            jobId,
-                            afterId,
-                            properties.batchSize()
-                    );
 
             PriceListBatchResult result =
                     batchService.processBatch(
@@ -186,7 +180,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
             unchangedPrices += result.unchangedPrices();
             skippedRows += result.skippedRows();
 
-            afterId = nextAfterId;
+            afterId = batch.getLast().id();
 
             ImportStatistics statistics =
                     new ImportStatistics(
