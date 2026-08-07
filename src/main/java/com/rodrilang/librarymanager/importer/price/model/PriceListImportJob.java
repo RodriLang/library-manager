@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.importer.price.model;
 
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -13,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
@@ -75,6 +77,14 @@ public class PriceListImportJob {
     @Column(name = "processed_rows", nullable = false)
     private int processedRows;
 
+    @Column(name = "processed_books", nullable = false)
+    @Builder.Default
+    private int processedBooks = 0;
+
+    @Builder.Default
+    @Column(name = "duplicate_book_rows", nullable = false)
+    private int duplicateBookRows = 0;
+
     @Column(name = "created_books", nullable = false)
     private int createdBooks;
 
@@ -86,6 +96,11 @@ public class PriceListImportJob {
 
     @Column(name = "unchanged_prices", nullable = false)
     private int unchangedPrices;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "phase", nullable = false, length = 30)
+    @Builder.Default
+    private PriceListImportPhase phase = PriceListImportPhase.STAGING;
 
     @Builder.Default
     @Column(name = "skipped_rows", nullable = false)
@@ -105,4 +120,20 @@ public class PriceListImportJob {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @PrePersist
+    private void prePersist() {
+
+        if (phase == null) {
+            phase = PriceListImportPhase.STAGING;
+        }
+
+        if (status == null) {
+            status = PriceListImportJobStatus.PENDING;
+        }
+
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }

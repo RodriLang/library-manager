@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.dto.response;
 
+import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatus;
 
 import java.util.List;
@@ -7,8 +8,10 @@ import java.util.List;
 public record PriceListImportJobStatusResponse(
         Long id,
         PriceListImportJobStatus status,
+        PriceListImportPhase phase,
         int totalRows,
         int processedRows,
+        int processedBooks,
         int createdBooks,
         int createdPrices,
         int updatedPrices,

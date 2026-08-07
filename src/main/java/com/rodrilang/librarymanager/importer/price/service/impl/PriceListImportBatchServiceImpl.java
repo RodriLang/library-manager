@@ -4,18 +4,18 @@ import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
-import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListBatchResult;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListResolvedPriceCandidate;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingRow;
 import com.rodrilang.librarymanager.importer.price.factory.ImportContextFactory;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
+import com.rodrilang.librarymanager.importer.price.repository.PriceListImportPriceStagingRepository;
 import com.rodrilang.librarymanager.importer.price.service.PriceListBookUpsertService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportBatchService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.repository.BookRepository;
-import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -33,8 +33,8 @@ public class PriceListImportBatchServiceImpl
     private final ImportContextFactory importContextFactory;
     private final PriceListImportJobRepository jobRepository;
     private final PriceListBookUpsertService bookUpsertService;
-    private final EditorialPriceService editorialPriceService;
     private final ProviderBookService providerBookService;
+    private final PriceListImportPriceStagingRepository priceStagingRepository;
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -44,9 +44,6 @@ public class PriceListImportBatchServiceImpl
     ) {
         if (stagingRows == null || stagingRows.isEmpty()) {
             return new PriceListBatchResult(
-                    0,
-                    0,
-                    0,
                     0,
                     0,
                     0
@@ -118,21 +115,37 @@ public class PriceListImportBatchServiceImpl
                 rows
         );
 
-        PriceImportCounters counters =
-                editorialPriceService
-                        .registerOrUpdateBatchForImport(
-                                books,
-                                rows,
-                                job
-                        );
+        List<PriceListResolvedPriceCandidate> priceCandidates = new ArrayList<>(rows.size());
+
+        for (int i = 0; i < rows.size(); i++) {
+            Book book = books.get(i);
+
+            PriceListRow row = rows.get(i);
+
+            if (book == null || book.getId() == null || row.retailPrice() == null) {
+                continue;
+            }
+
+            priceCandidates.add(
+                    new PriceListResolvedPriceCandidate(
+                            book.getId(),
+                            row.rowNumber(),
+                            row.isbn(),
+                            row.retailPrice()
+                    )
+            );
+        }
+
+        int stagedBooks =
+                priceStagingRepository.registerBatch(
+                        jobId,
+                        priceCandidates
+                );
 
         return new PriceListBatchResult(
                 stagingRows.size(),
                 createdBooks,
-                counters.createdPrices(),
-                counters.updatedPrices(),
-                counters.unchangedPrices(),
-                counters.skippedRows()
+                stagedBooks
         );
     }
 }

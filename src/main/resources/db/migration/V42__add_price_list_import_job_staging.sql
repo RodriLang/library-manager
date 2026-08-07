@@ -1,0 +1,2 @@
+ALTER TABLE price_list_import_jobs
+    ADD COLUMN phase VARCHAR(30) NOT NULL DEFAULT 'STAGING';
