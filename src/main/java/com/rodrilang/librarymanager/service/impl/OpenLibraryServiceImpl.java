@@ -60,7 +60,8 @@ public class OpenLibraryServiceImpl implements OpenLibraryService {
                         .queryParam("jscmd", "data")
                         .build())
                 .retrieve()
-                .body(new ParameterizedTypeReference<>() {});
+                .body(new ParameterizedTypeReference<>() {
+                });
 
         if (response == null || !response.containsKey(key)) {
             return Optional.empty();
@@ -104,7 +105,7 @@ public class OpenLibraryServiceImpl implements OpenLibraryService {
 
         String publisherName = response.publishers().getFirst().name();
 
-        return publisherRepository.findByNameIgnoreCase(publisherName)
+        return publisherRepository.findByNameNormalized(publisherName)
                 .orElseGet(() -> publisherRepository.save(
                         Publisher.builder()
                                 .name(publisherName)
@@ -125,7 +126,7 @@ public class OpenLibraryServiceImpl implements OpenLibraryService {
     }
 
     private Author resolveAuthor(String name) {
-        return authorRepository.findByNameIgnoreCase(name)
+        return authorRepository.findByNameNormalized(name)
                 .orElseGet(() -> authorRepository.save(
                         Author.builder()
                                 .name(name)

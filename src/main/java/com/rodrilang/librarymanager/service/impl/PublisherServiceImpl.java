@@ -8,14 +8,12 @@ import com.rodrilang.librarymanager.mapper.PublisherMapper;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.service.PublisherService;
-import com.rodrilang.librarymanager.util.StringUtils;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -27,18 +25,17 @@ public class PublisherServiceImpl implements PublisherService {
     @Transactional
     @Override
     public PublisherResponse create(PublisherRequest request) {
+        String name = normalizeDisplayName(request.name());
 
-        String name = StringUtils.normalizeName(request.name());
+        String nameNormalized = TextNormalizer.normalizeForMatch(name);
 
-        if (publisherRepository.existsNormalized(name)) {
+        if (publisherRepository.existsByNameNormalized(nameNormalized)) {
             throw new DuplicateResourceException("La editorial ya existe");
         }
 
         Publisher publisher = publisherMapper.toEntity(new PublisherRequest(name));
 
-        return publisherMapper.toResponse(
-                publisherRepository.save(publisher)
-        );
+        return publisherMapper.toResponse(publisherRepository.save(publisher));
     }
 
     @Transactional(readOnly = true)
@@ -55,8 +52,7 @@ public class PublisherServiceImpl implements PublisherService {
     @Override
     public Page<PublisherResponse> findAll(Pageable pageable) {
 
-        return publisherRepository.findAll(pageable)
-                .map(publisherMapper::toResponse);
+        return publisherRepository.findAll(pageable).map(publisherMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -68,6 +64,7 @@ public class PublisherServiceImpl implements PublisherService {
                 .map(publisherMapper::toResponse);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public Publisher getEntityById(Long id) {
 
@@ -83,12 +80,18 @@ public class PublisherServiceImpl implements PublisherService {
             return null;
         }
 
-        return publisherRepository.findByNameIgnoreCase(name.trim())
-                .orElseGet(() -> publisherRepository.save(
-                        Publisher.builder()
-                                .name(name.trim())
-                                .build()
-                ));
+        String displayName = normalizeDisplayName(name);
+
+        String nameNormalized = TextNormalizer.normalizeForMatch(displayName);
+
+        return publisherRepository.findByNameNormalized(nameNormalized)
+                .orElseGet(() -> publisherRepository.save(Publisher.builder().name(displayName).build()));
     }
 
+    private String normalizeDisplayName(String value) {
+        return value == null
+                ? null
+                : value.trim()
+                .replaceAll("\\s+", " ");
+    }
 }

@@ -4,8 +4,6 @@ import com.rodrilang.librarymanager.model.Publisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
@@ -13,35 +11,14 @@ import java.util.Optional;
 
 public interface PublisherRepository extends JpaRepository<Publisher, Long> {
 
-    Optional<Publisher> findByNameIgnoreCase(String name);
+    Optional<Publisher> findByNameNormalized(String nameNormalized);
 
-    Page<Publisher> findByNameContainingIgnoreCase(String name, Pageable pageable);
+    List<Publisher> findByNameNormalizedIn(Collection<String> names);
 
-    @Query("""
-            SELECT p
-            FROM Publisher p
-            WHERE lower(p.name) IN :names
-            """)
-    List<Publisher> findAllNormalizedIn(Collection<String> names);
+    boolean existsByNameNormalized(String nameNormalized);
 
-    @Query("""
-            SELECT COUNT(p) > 0
-            FROM Publisher p
-            WHERE function('unaccent', lower(p.name))
-                =
-                  function('unaccent', lower(:name))
-            """)
-    boolean existsNormalized(String name);
-
-    @Modifying(flushAutomatically = true)
-    @Query(
-            value = """
-                    INSERT INTO publishers (name, created_at, updated_at)
-                    VALUES (:name, NOW(), NOW())
-                    ON CONFLICT (name) DO NOTHING
-                    """,
-            nativeQuery = true
-    )
-    void insertIfAbsent(String name);
-
+    Page<Publisher> findByNameContainingIgnoreCase(
+            String name,
+            Pageable pageable
+    );
 }

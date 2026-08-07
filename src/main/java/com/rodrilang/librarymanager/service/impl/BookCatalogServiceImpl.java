@@ -115,7 +115,7 @@ public class BookCatalogServiceImpl implements BookCatalogService {
 
         String normalizedName = publisherName.trim();
 
-        return publisherRepository.findByNameIgnoreCase(normalizedName)
+        return publisherRepository.findByNameNormalized(normalizedName)
                 .orElseGet(() -> publisherRepository.save(
                         Publisher.builder()
                                 .name(normalizedName)
@@ -136,7 +136,7 @@ public class BookCatalogServiceImpl implements BookCatalogService {
     }
 
     private Author resolveAuthor(String authorName) {
-        return authorRepository.findByNameIgnoreCase(authorName)
+        return authorRepository.findByNameNormalized(authorName)
                 .orElseGet(() -> authorRepository.save(
                         Author.builder()
                                 .name(authorName)

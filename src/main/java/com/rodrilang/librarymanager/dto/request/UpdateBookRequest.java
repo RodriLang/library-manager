@@ -1,5 +1,8 @@
 package com.rodrilang.librarymanager.dto.request;
 
+import jakarta.validation.constraints.Positive;
+
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Set;
 
@@ -13,8 +16,6 @@ public record UpdateBookRequest(
 
         String language,
 
-        Integer pageCount,
-
         LocalDate publicationDate,
 
         String coverUrl,
@@ -25,7 +26,22 @@ public record UpdateBookRequest(
 
         Long publisherId,
 
-        Set<Long> authorIds
+        Set<Long> authorIds,
+
+        @Positive
+        Integer pageCount,
+
+        @Positive
+        BigDecimal weightGrams,
+
+        @Positive
+        BigDecimal widthCm,
+
+        @Positive
+        BigDecimal heightCm,
+
+        @Positive
+        BigDecimal depthCm
 
 ) {
 }
