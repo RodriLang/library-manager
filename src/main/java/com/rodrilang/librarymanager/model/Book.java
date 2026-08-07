@@ -1,7 +1,9 @@
 package com.rodrilang.librarymanager.model;
 
+import com.rodrilang.librarymanager.cover.enums.BookCoverSource;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
+import com.rodrilang.librarymanager.enums.CoverCandidateStatus;
 import com.rodrilang.librarymanager.enums.CoverSearchStatus;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.persistence.Column;
@@ -110,6 +112,35 @@ public class Book extends AuditableEntity {
     @JoinColumn(name = "publisher_id")
     private Publisher publisher;
 
+    @Column(name = "cover_candidate_url", length = 2000)
+    private String coverCandidateUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "cover_candidate_status",
+            length = 30
+    )
+    private CoverCandidateStatus coverCandidateStatus;
+
+    @Column(
+            name = "cover_candidate_attempts",
+            nullable = false
+    )
+    @Builder.Default
+    private Integer coverCandidateAttempts = 0;
+
+    @Column(name = "cover_candidate_next_attempt_at")
+    private Instant coverCandidateNextAttemptAt;
+
+    @Column(
+            name = "cover_candidate_error",
+            columnDefinition = "TEXT"
+    )
+    private String coverCandidateError;
+
+    @Column(name = "cover_candidate_started_at")
+    private Instant coverCandidateStartedAt;
+
     @Builder.Default
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
@@ -148,5 +179,130 @@ public class Book extends AuditableEntity {
     @Transient
     public String getPreferredIsbn() {
         return isbn13 != null ? isbn13 : isbn10;
+    }
+
+    public void updateCover(
+            String coverUrl,
+            String coverSource
+    ) {
+        this.coverUrl = normalizeNullableText(coverUrl);
+        this.coverSource = normalizeNullableText(coverSource);
+
+        if (this.coverUrl != null) {
+            this.coverSearchStatus = CoverSearchStatus.FOUND;
+            this.coverCheckedAt = Instant.now();
+        }
+    }
+
+    public void clearCover() {
+        this.coverUrl = null;
+        this.coverSource = null;
+    }
+
+    private String normalizeNullableText(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return value.trim();
+    }
+
+    public void registerCoverCandidate(String sourceUrl) {
+        if (sourceUrl == null || sourceUrl.isBlank()) {
+            return;
+        }
+
+        String normalized = sourceUrl.trim();
+
+        if (normalized.equals(this.coverCandidateUrl)) {
+            return;
+        }
+
+        this.coverCandidateUrl = normalized;
+        this.coverCandidateStatus = CoverCandidateStatus.PENDING;
+        this.coverCandidateAttempts = 0;
+        this.coverCandidateNextAttemptAt = null;
+        this.coverCandidateError = null;
+    }
+
+    public void registerCoverCandidate(
+            String sourceUrl,
+            String source
+    ) {
+        if (sourceUrl == null || sourceUrl.isBlank()) {
+            return;
+        }
+
+        String normalizedUrl = sourceUrl.trim();
+        String normalizedSource = normalizeNullableText(source);
+
+        if (
+                normalizedUrl.equals(this.coverCandidateUrl)
+                        && this.coverCandidateStatus != CoverCandidateStatus.FAILED
+        ) {
+            return;
+        }
+
+        this.coverCandidateUrl = normalizedUrl;
+        this.coverCandidateStatus = CoverCandidateStatus.PENDING;
+        this.coverCandidateAttempts = 0;
+        this.coverCandidateNextAttemptAt = null;
+        this.coverCandidateError = null;
+    }
+
+    public void markCoverCandidateAsProcessing() {
+        if (coverCandidateUrl == null || coverCandidateUrl.isBlank()) {
+            throw new IllegalStateException(
+                    "El libro no tiene una portada candidata"
+            );
+        }
+
+        this.coverCandidateStatus = CoverCandidateStatus.PROCESSING;
+        this.coverCandidateAttempts++;
+        this.coverCandidateNextAttemptAt = null;
+        this.coverCandidateError = null;
+    }
+
+    public void completeCoverCandidate(
+            String cloudinaryUrl,
+            String coverSource
+    ) {
+        updateCover(cloudinaryUrl, coverSource);
+        clearCoverCandidate();
+    }
+
+    public void clearCoverCandidate() {
+        this.coverCandidateUrl = null;
+        this.coverCandidateStatus = null;
+        this.coverCandidateAttempts = 0;
+        this.coverCandidateNextAttemptAt = null;
+        this.coverCandidateError = null;
+    }
+
+    public void scheduleCoverCandidateRetry(
+            String error,
+            Instant nextAttemptAt
+    ) {
+        this.coverCandidateStatus = CoverCandidateStatus.PENDING;
+        this.coverCandidateError = normalizeNullableText(error);
+        this.coverCandidateNextAttemptAt = nextAttemptAt;
+    }
+
+    public void failCoverCandidate(String error) {
+        this.coverCandidateStatus = CoverCandidateStatus.FAILED;
+        this.coverCandidateError = normalizeNullableText(error);
+        this.coverCandidateNextAttemptAt = null;
+    }
+
+    public boolean hasCoverCandidate() {
+        return coverCandidateUrl != null
+                && !coverCandidateUrl.isBlank();
+    }
+
+    public boolean hasManualCover() {
+        return coverUrl != null
+                && !coverUrl.isBlank()
+                && BookCoverSource.MANUAL_UPLOAD.name()
+                .equalsIgnoreCase(coverSource);
     }
 }

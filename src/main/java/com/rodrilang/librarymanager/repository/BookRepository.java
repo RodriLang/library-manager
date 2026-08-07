@@ -348,4 +348,11 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     @EntityGraph(attributePaths = {"publisher", "authors"})
     @Query("SELECT b FROM Book b WHERE b.isbn10 = :isbn10")
     Optional<Book> findByIsbn10WithDetails(@Param("isbn10") String isbn10);
+
+    @Query("""
+            select book
+            from Book book
+            where book.id = :bookId
+            """)
+    Optional<Book> findCoverCandidateById(@Param("bookId") Long bookId);
 }

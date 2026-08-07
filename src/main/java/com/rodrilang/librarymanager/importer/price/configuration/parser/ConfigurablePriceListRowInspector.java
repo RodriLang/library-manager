@@ -63,7 +63,7 @@ public class ConfigurablePriceListRowInspector {
                 || hasText(metadata.genreName())
                 || hasText(metadata.collectionName())
                 || hasText(metadata.language())
-                || hasText(metadata.coverUrl())
+                || hasText(metadata.sourceCoverUrl())
                 || hasText(metadata.tags())
                 || hasText(metadata.observations())
                 || metadata.externalStock() != null

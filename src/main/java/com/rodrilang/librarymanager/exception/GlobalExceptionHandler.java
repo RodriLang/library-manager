@@ -1,8 +1,13 @@
 package com.rodrilang.librarymanager.exception;
 
 import com.rodrilang.librarymanager.auth.exceptions.InvalidTokenException;
+import com.rodrilang.librarymanager.cover.exception.BookCoverDoesNotBelongToBookException;
+import com.rodrilang.librarymanager.cover.exception.BookCoverNotFoundException;
+import com.rodrilang.librarymanager.cover.exception.DuplicateBookCoverException;
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
+import com.rodrilang.librarymanager.media.exception.ImageStorageException;
+import com.rodrilang.librarymanager.media.exception.InvalidImageException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,6 +21,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -122,6 +128,54 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_GATEWAY,
                 "TIENDANUBE_API_ERROR",
                 ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(InvalidImageException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidImage(
+            InvalidImageException ex,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_IMAGE",
+                ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(ImageStorageException.class)
+    public ResponseEntity<ErrorResponse> handleImageStorage(
+            ImageStorageException ex,
+            HttpServletRequest request
+    ) {
+        log.error(
+                "Error en almacenamiento de imágenes en path={}",
+                request.getRequestURI(),
+                ex
+        );
+
+        return buildError(
+                HttpStatus.BAD_GATEWAY,
+                "IMAGE_STORAGE_ERROR",
+                "No se pudo procesar la imagen en el servicio de almacenamiento.",
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceeded(
+            MaxUploadSizeExceededException ex,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "MAX_UPLOAD_SIZE_EXCEEDED",
+                "El archivo supera el tamaño máximo permitido para la carga.",
                 request.getRequestURI(),
                 null
         );

@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
+import com.rodrilang.librarymanager.enums.CoverCandidateStatus;
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListMetadata;
@@ -92,12 +93,16 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         }
     }
 
-    private Book createBook(PriceListRow row, ImportContext context) {
-        PriceListIdentifier identifier = identifierResolver.resolve(row);
-        PriceListMetadata metadata = row.metadata();
-        String coverUrl = resolveCoverUrl(metadata);
+    private Book createBook(
+            PriceListRow row,
+            ImportContext context
+    ) {
+        PriceListIdentifier identifier =
+                identifierResolver.resolve(row);
 
-        return Book.builder()
+        PriceListMetadata metadata = row.metadata();
+
+        Book book = Book.builder()
                 .isbn10(identifier.isbn10())
                 .isbn13(identifier.isbn13())
                 .title(row.title().trim())
@@ -105,12 +110,12 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
                 .language(resolveLanguage(metadata))
                 .pageCount(resolvePageCount(metadata))
                 .publicationDate(resolvePublicationDate(metadata))
-                .coverUrl(coverUrl)
+                .coverUrl(null)
+                .coverSource(null)
                 .widthCm(metadata != null ? metadata.widthCm() : null)
                 .heightCm(metadata != null ? metadata.heightCm() : null)
                 .depthCm(metadata != null ? metadata.depthCm() : null)
                 .weightGrams(metadata != null ? metadata.weightGrams() : null)
-                .coverSource(resolveCoverSource(context, coverUrl))
                 .source(BookSource.EDITORIAL_PRICE_LIST)
                 .catalogStatus(BookCatalogStatus.VERIFIED)
                 .categoryName(formatNullable(row.categoryName()))
@@ -118,6 +123,13 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
                 .authors(authorResolver.resolve(row, context))
                 .active(true)
                 .build();
+
+
+        if (metadata != null && hasText(metadata.sourceCoverUrl())) {
+            book.registerCoverCandidate(metadata.sourceCoverUrl());
+        }
+
+        return book;
     }
 
     private void completeMissingIsbn(Book book, ParsedIsbn parsedIsbn, ImportContext context) {
@@ -163,37 +175,11 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             book.setAuthors(authorResolver.resolve(row, context));
         }
 
-        updateMetadata(book, row.metadata(), context);
+        updateMetadata(book, row.metadata());
 
-        String coverUrl = resolveCoverUrl(row.metadata());
-
-        if (!hasText(book.getCoverUrl()) && hasText(coverUrl)) {
-            book.setCoverUrl(coverUrl);
-            book.setCoverSource(resolveCoverSource(context, coverUrl));
-        }
     }
 
-    private String resolveCoverUrl(PriceListMetadata metadata) {
-        if (metadata == null || !hasText(metadata.coverUrl())) {
-            return null;
-        }
-
-        return metadata.coverUrl().trim();
-    }
-
-    private String resolveCoverSource(ImportContext context, String coverUrl) {
-        if (!hasText(coverUrl) || context.provider() == null) {
-            return null;
-        }
-
-        return context.provider().getName();
-    }
-
-    private void updateMetadata(
-            Book book,
-            PriceListMetadata metadata,
-            ImportContext context
-    ) {
+    private void updateMetadata(Book book, PriceListMetadata metadata) {
         if (metadata == null) {
             return;
         }
@@ -214,9 +200,8 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             book.setPublicationDate(metadata.publicationDate());
         }
 
-        if (!hasText(book.getCoverUrl()) && hasText(metadata.coverUrl())) {
-            book.setCoverUrl(metadata.coverUrl().trim());
-            book.setCoverSource(context.provider().getName());
+        if (hasText(metadata.sourceCoverUrl()) && !hasText(book.getCoverUrl())) {
+            book.registerCoverCandidate(metadata.sourceCoverUrl());
         }
 
         if (book.getWeightGrams() == null && metadata.weightGrams() != null) {
