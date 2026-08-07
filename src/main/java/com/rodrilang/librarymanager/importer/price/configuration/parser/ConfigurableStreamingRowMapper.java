@@ -74,7 +74,7 @@ public class ConfigurableStreamingRowMapper {
                         date(values, PriceListField.PUBLICATION_DATE)
                 )
                 .language(text(values, PriceListField.LANGUAGE))
-                .coverUrl(text(values, PriceListField.COVER_URL))
+                .sourceCoverUrl(text(values, PriceListField.COVER_URL))
                 .collectionName(text(values, PriceListField.COLLECTION))
                 .widthCm(dimensions.widthCm())
                 .heightCm(dimensions.heightCm())

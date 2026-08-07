@@ -155,7 +155,7 @@ class ConfigurablePriceListParserTest {
             assertEquals("Español", first.metadata().language());
             assertEquals("Cuentos", first.metadata().genreName());
             assertEquals("Cuentos, Literatura Argentina", first.metadata().tags());
-            assertNotNull(first.metadata().coverUrl());
+            assertNotNull(first.metadata().sourceCoverUrl());
             assertFalse(first.metadata().description().isBlank());
         }
     }

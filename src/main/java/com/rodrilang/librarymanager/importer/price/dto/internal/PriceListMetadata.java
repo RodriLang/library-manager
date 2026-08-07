@@ -20,7 +20,7 @@ public record PriceListMetadata(
 
         String language,
 
-        String coverUrl,
+        String sourceCoverUrl,
 
         String collectionName,
 

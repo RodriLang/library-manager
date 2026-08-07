@@ -73,11 +73,6 @@ public class EditorialPriceBatchRepository {
                 )
                 .toArray(MapSqlParameterSource[]::new);
 
-        jdbcTemplate.batchUpdate(
-                sql,
-                parameters
-        );
-
         long startedAt = System.nanoTime();
 
         jdbcTemplate.batchUpdate(

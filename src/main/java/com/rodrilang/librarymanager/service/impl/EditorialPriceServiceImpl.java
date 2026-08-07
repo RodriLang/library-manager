@@ -118,6 +118,18 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 .distinct()
                 .toList();
 
+        log.info(
+                "Loading prices provider={} validFrom={} books={}",
+                job.getProvider().getId(),
+                job.getValidFrom(),
+                bookIds.size()
+        );
+
+        log.info(
+                "First ids={}",
+                bookIds.stream().limit(20).toList()
+        );
+
         long loadStart = System.nanoTime();
 
         Map<Long, EditorialPrice> existingByBookId =
