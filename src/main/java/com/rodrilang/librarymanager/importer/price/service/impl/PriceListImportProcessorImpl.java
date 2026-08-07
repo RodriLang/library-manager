@@ -4,18 +4,21 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.config.PriceListImportProperties;
 import com.rodrilang.librarymanager.importer.price.configuration.parser.StreamingConfigurablePriceListParser;
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportStatistics;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListBatchResult;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListImportSafetySummary;
-import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingStatistics;
+import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
+import com.rodrilang.librarymanager.importer.price.repository.PriceListImportPriceStagingRepository;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportStagingRepository;
 import com.rodrilang.librarymanager.importer.price.resolver.PriceListImportParserResolver;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportBatchService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportJobProgressService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportProcessor;
+import com.rodrilang.librarymanager.importer.price.service.PriceListResolvedPriceProcessor;
 import com.rodrilang.librarymanager.importer.price.staging.PriceListImportStagingService;
 import com.rodrilang.librarymanager.importer.price.storage.PriceListImportFileStorage;
 import com.rodrilang.librarymanager.importer.price.validator.PriceListImportSafetyValidator;
@@ -35,8 +38,10 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
     private final PriceListImportParserResolver parserResolver;
     private final PriceListImportStagingService stagingService;
     private final PriceListImportStagingRepository stagingRepository;
+    private final PriceListImportPriceStagingRepository priceStagingRepository;
     private final PriceListImportSafetyValidator safetyValidator;
     private final PriceListImportBatchService batchService;
+    private final PriceListResolvedPriceProcessor resolvedPriceProcessor;
     private final PriceListImportJobProgressService progressService;
     private final PriceListImportFileStorage fileStorage;
     private final PriceListImportProperties properties;
@@ -48,11 +53,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
             PriceListImportJob job = jobRepository
                     .findWithImportConfigById(jobId)
-                    .orElseThrow(() ->
-                            new BusinessException(
-                                    "No se encontró el trabajo de importación."
-                            )
-                    );
+                    .orElseThrow(() -> new BusinessException("No se encontró el trabajo de importación."));
 
             StreamingConfigurablePriceListParser parser = parserResolver.resolveStreaming(job);
 
@@ -104,7 +105,8 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                             + staging.duplicateRows();
 
             log.info(
-                    "Staging balance. processableRows={} classifiedRows={}",
+                    "Staging balance. "
+                            + "processableRows={} classifiedRows={}",
                     staging.processableRows(),
                     classifiedRows
             );
@@ -113,14 +115,107 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
             progressService.updateTotalRows(
                     jobId,
-                    Math.toIntExact(staging.validRows()),
-                    Math.toIntExact(staging.invalidRows())
+                    Math.toIntExact(
+                            staging.validRows()
+                    ),
+                    Math.toIntExact(
+                            staging.invalidRows()
+                    )
             );
 
-            processStagedRows(
+            progressService.updatePhase(
                     jobId,
-                    staging.validRows(),
-                    staging.invalidRows()
+                    PriceListImportPhase.BOOKS
+            );
+
+            BookProcessingStatistics bookStatistics =
+                    processBookBatches(
+                            jobId,
+                            staging.validRows(),
+                            staging.invalidRows()
+                    );
+
+            log.info(
+                    "Book phase completed. "
+                            + "jobId={} processedRows={} "
+                            + "createdBooks={}",
+                    jobId,
+                    bookStatistics.processedRows(),
+                    bookStatistics.createdBooks()
+            );
+
+            progressService.updatePhase(
+                    jobId,
+                    PriceListImportPhase.PRICES
+            );
+
+            PriceImportCounters priceCounters = resolvedPriceProcessor.process(jobId);
+
+            log.info(
+                    "Resolved price phase completed. "
+                            + "jobId={} createdPrices={} "
+                            + "updatedPrices={} "
+                            + "unchangedPrices={} "
+                            + "skippedRows={}",
+                    jobId,
+                    priceCounters.createdPrices(),
+                    priceCounters.updatedPrices(),
+                    priceCounters.unchangedPrices(),
+                    priceCounters.skippedRows()
+            );
+
+            int duplicateBookRows =
+                    bookStatistics.processedRows()
+                            - bookStatistics.processedBooks();
+
+            ImportStatistics finalStatistics =
+                    new ImportStatistics(
+                            bookStatistics.processedRows(),
+                            bookStatistics.processedBooks(),
+                            duplicateBookRows,
+                            bookStatistics.createdBooks(),
+                            priceCounters.createdPrices(),
+                            priceCounters.updatedPrices(),
+                            priceCounters.unchangedPrices(),
+                            priceCounters.skippedRows(),
+                            Math.toIntExact(staging.invalidRows())
+                    );
+
+            validateFinalStatistics(
+                    jobId,
+                    finalStatistics
+            );
+
+            progressService.updateProgress(
+                    jobId,
+                    finalStatistics
+            );
+
+            progressService.markCompleted(
+                    jobId,
+                    finalStatistics
+            );
+
+            log.info(
+                    "Price list import completed. "
+                            + "jobId={} "
+                            + "processedRows={} "
+                            + "processedBooks={} "
+                            + "createdBooks={} "
+                            + "createdPrices={} "
+                            + "updatedPrices={} "
+                            + "unchangedPrices={} "
+                            + "skippedPrices={} "
+                            + "invalidRows={}",
+                    jobId,
+                    finalStatistics.processedRows(),
+                    finalStatistics.processedBooks(),
+                    finalStatistics.createdBooks(),
+                    finalStatistics.createdPrices(),
+                    finalStatistics.updatedPrices(),
+                    finalStatistics.unchangedPrices(),
+                    finalStatistics.skippedPrices(),
+                    finalStatistics.errors()
             );
 
         } catch (Exception exception) {
@@ -136,24 +231,23 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
             );
 
         } finally {
-            stagingRepository.deleteByJobId(jobId);
+
+            priceStagingRepository.deleteByJobId(jobId);
+
             fileStorage.deleteQuietly(filePath);
         }
     }
 
-    private void processStagedRows(
+    private BookProcessingStatistics processBookBatches(
             Long jobId,
             long totalValidRows,
             long invalidRows
     ) {
-        long afterId = 0;
+        long afterId = 0L;
 
         int processedRows = 0;
+        int processedBooks = 0;
         int createdBooks = 0;
-        int createdPrices = 0;
-        int updatedPrices = 0;
-        int unchangedPrices = 0;
-        int skippedRows = 0;
 
         while (true) {
             List<PriceListStagingRow> batch =
@@ -173,94 +267,60 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                             jobId
                     );
 
-            processedRows += result.processedRows();
-            createdBooks += result.createdBooks();
-            createdPrices += result.createdPrices();
-            updatedPrices += result.updatedPrices();
-            unchangedPrices += result.unchangedPrices();
-            skippedRows += result.skippedRows();
+            processedRows +=
+                    result.processedRows();
 
-            afterId = batch.getLast().id();
+            processedBooks +=
+                    result.stagedBooks();
 
-            ImportStatistics statistics =
+            createdBooks +=
+                    result.createdBooks();
+
+            int duplicateBookRows =
+                    processedRows - processedBooks;
+
+            afterId =
+                    batch.getLast().id();
+
+            ImportStatistics currentStatistics =
                     new ImportStatistics(
                             processedRows,
+                            processedBooks,
+                            duplicateBookRows,
                             createdBooks,
-                            createdPrices,
-                            updatedPrices,
-                            unchangedPrices,
-                            skippedRows,
-                            Math.toIntExact(invalidRows)
+                            0,
+                            0,
+                            0,
+                            0,
+                            Math.toIntExact(
+                                    invalidRows
+                            )
                     );
 
             progressService.updateProgress(
                     jobId,
-                    statistics
+                    currentStatistics
             );
 
             log.info(
-                    "Price import batch completed. "
-                            + "jobId={} processedRows={}/{} "
-                            + "createdPrices={} updatedPrices={} "
-                            + "unchangedPrices={} skippedRows={}",
+                    "Book import batch completed. "
+                            + "jobId={} "
+                            + "processedRows={}/{} "
+                            + "processedBooks={} "
+                            + "createdBooks={}",
                     jobId,
                     processedRows,
                     totalValidRows,
-                    createdPrices,
-                    updatedPrices,
-                    unchangedPrices,
-                    skippedRows
+                    processedBooks,
+                    createdBooks
             );
         }
 
-        ImportStatistics finalStatistics =
-                new ImportStatistics(
-                        processedRows,
-                        createdBooks,
-                        createdPrices,
-                        updatedPrices,
-                        unchangedPrices,
-                        skippedRows,
-                        Math.toIntExact(invalidRows)
-                );
-
-        validateFinalCounters(
-                jobId,
-                finalStatistics
+        return new BookProcessingStatistics(
+                processedRows,
+                processedBooks,
+                createdBooks
         );
-
-        progressService.markCompleted(
-                jobId,
-                finalStatistics
-        );
-    }
-
-    private void validateFinalCounters(
-            Long jobId,
-            ImportStatistics statistics
-    ) {
-        int accountedRows =
-                statistics.createdPrices()
-                        + statistics.updatedPrices()
-                        + statistics.unchangedPrices()
-                        + statistics.skippedRows();
-
-        if (accountedRows != statistics.processedRows()) {
-            log.warn(
-                    "Import counters mismatch. "
-                            + "jobId={} processed={} accounted={} "
-                            + "difference={} created={} updated={} "
-                            + "unchanged={} skipped={}",
-                    jobId,
-                    statistics.processedRows(),
-                    accountedRows,
-                    statistics.processedRows() - accountedRows,
-                    statistics.createdPrices(),
-                    statistics.updatedPrices(),
-                    statistics.unchangedPrices(),
-                    statistics.skippedRows()
-            );
-        }
     }
 
     private String safeMessage(Exception exception) {
@@ -269,5 +329,40 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
         return message == null || message.isBlank()
                 ? "La importación no pudo completarse."
                 : message;
+    }
+
+    private void validateFinalStatistics(
+            Long jobId,
+            ImportStatistics statistics
+    ) {
+        int accountedBooks =
+                statistics.createdPrices()
+                        + statistics.updatedPrices()
+                        + statistics.unchangedPrices()
+                        + statistics.skippedPrices();
+
+        if (accountedBooks != statistics.processedBooks()) {
+            log.warn(
+                    "Price accounting mismatch. "
+                            + "jobId={} "
+                            + "processedBooks={} "
+                            + "accountedBooks={} "
+                            + "(created={} updated={} unchanged={} skipped={})",
+                    jobId,
+                    statistics.processedBooks(),
+                    accountedBooks,
+                    statistics.createdPrices(),
+                    statistics.updatedPrices(),
+                    statistics.unchangedPrices(),
+                    statistics.skippedPrices()
+            );
+        }
+    }
+
+    private record BookProcessingStatistics(
+            int processedRows,
+            int processedBooks,
+            int createdBooks
+    ) {
     }
 }

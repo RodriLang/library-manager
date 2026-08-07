@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.importer.price.configuration.repository.Pric
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobErrorResponse;
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobStatusResponse;
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportStartResponse;
+import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatus;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobErrorRepository;
@@ -62,7 +63,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
         }
 
         PriceListProvider provider = providerRepository.findById(providerId)
-                        .orElseThrow(() -> new BusinessException("No se encontró el proveedor seleccionado."));
+                .orElseThrow(() -> new BusinessException("No se encontró el proveedor seleccionado."));
 
         if (!provider.isActive()) {
             throw new BusinessException("El proveedor seleccionado está inactivo.");
@@ -100,8 +101,10 @@ public class PriceListImportServiceImpl implements PriceListImportService {
         return new PriceListImportJobStatusResponse(
                 job.getId(),
                 job.getStatus(),
+                job.getPhase(),
                 job.getTotalRows(),
                 job.getProcessedRows(),
+                job.getProcessedBooks(),
                 job.getCreatedBooks(),
                 job.getCreatedPrices(),
                 job.getUpdatedPrices(),
@@ -114,20 +117,31 @@ public class PriceListImportServiceImpl implements PriceListImportService {
         );
     }
 
-    private int calculateProgress(PriceListImportJob job) {
+    private int calculateProgress(
+            PriceListImportJob job
+    ) {
         if (job.getStatus() == PriceListImportJobStatus.COMPLETED) {
             return 100;
         }
 
-        if (job.getTotalRows() <= 0) {
-            return 0;
-        }
+        return switch (job.getPhase()) {
 
-        long percentage =
-                ((long) job.getProcessedRows() * 100)
-                        / job.getTotalRows();
+            case STAGING -> 5;
 
-        return (int) Math.min(percentage, 100);
+            case BOOKS -> {
+                if (job.getTotalRows() == 0) {
+                    yield 10;
+                }
+
+                double ratio = (double) job.getProcessedRows() / job.getTotalRows();
+
+                yield 10 + (int) Math.round(ratio * 80);
+            }
+
+            case PRICES -> 90;
+
+            case COMPLETED -> 100;
+        };
     }
 
     private boolean shouldIncludeErrors(
@@ -173,14 +187,21 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                             .provider(provider)
                             .importConfig(importConfig)
                             .validFrom(validFrom)
+
                             .status(PriceListImportJobStatus.PENDING)
+                            .phase(PriceListImportPhase.STAGING)
+
                             .totalRows(0)
                             .processedRows(0)
+                            .processedBooks(0)
+
                             .createdBooks(0)
+
                             .createdPrices(0)
                             .updatedPrices(0)
                             .unchangedPrices(0)
                             .skippedRows(0)
+
                             .errorCount(0)
                             .createdAt(Instant.now())
                             .build();

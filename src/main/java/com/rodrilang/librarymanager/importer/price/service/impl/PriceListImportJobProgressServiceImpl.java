@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportStatistics;
 import com.rodrilang.librarymanager.importer.price.dto.PriceListImportError;
+import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobError;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatus;
@@ -45,11 +46,12 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
     public void updateProgress(Long jobId, ImportStatistics importStatistics) {
         PriceListImportJob job = getJob(jobId);
         job.setProcessedRows(importStatistics.processedRows());
+        job.setProcessedBooks(importStatistics.processedBooks());
         job.setCreatedBooks(importStatistics.createdBooks());
         job.setCreatedPrices(importStatistics.createdPrices());
         job.setUpdatedPrices(importStatistics.updatedPrices());
         job.setUnchangedPrices(importStatistics.unchangedPrices());
-        job.setSkippedRows(importStatistics.skippedRows());
+        job.setSkippedRows(importStatistics.skippedPrices());
         job.setErrorCount(importStatistics.errors());
     }
 
@@ -58,12 +60,14 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
     public void markCompleted(Long jobId, ImportStatistics importStatistics) {
         PriceListImportJob job = getJob(jobId);
         job.setStatus(PriceListImportJobStatus.COMPLETED);
+        job.setPhase(PriceListImportPhase.COMPLETED);
         job.setProcessedRows(importStatistics.processedRows());
+        job.setProcessedBooks(importStatistics.processedBooks());
         job.setCreatedBooks(importStatistics.createdBooks());
         job.setCreatedPrices(importStatistics.createdPrices());
         job.setUpdatedPrices(importStatistics.updatedPrices());
         job.setUnchangedPrices(importStatistics.unchangedPrices());
-        job.setSkippedRows(importStatistics.skippedRows());
+        job.setSkippedRows(importStatistics.skippedPrices());
         job.setErrorCount(importStatistics.errors());
         job.setFinishedAt(Instant.now());
     }
@@ -96,6 +100,13 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
                 .toList();
 
         errorRepository.saveAll(jobErrors);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Override
+    public void updatePhase(Long jobId, PriceListImportPhase phase) {
+        PriceListImportJob job = getJob(jobId);
+        job.setPhase(phase);
     }
 
     private PriceListImportJob getJob(Long jobId) {
