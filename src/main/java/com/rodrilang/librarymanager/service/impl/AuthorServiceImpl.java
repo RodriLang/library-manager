@@ -8,7 +8,7 @@ import com.rodrilang.librarymanager.mapper.AuthorMapper;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.repository.AuthorRepository;
 import com.rodrilang.librarymanager.service.AuthorService;
-import com.rodrilang.librarymanager.util.StringUtils;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,9 +29,11 @@ public class AuthorServiceImpl implements AuthorService {
     @Override
     public AuthorResponse create(AuthorRequest request) {
 
-        String name = StringUtils.normalizeName(request.name());
+        String name = normalizeDisplayName(request.name());
 
-        if (authorRepository.existsNormalized(name)) {
+        String nameNormalized = TextNormalizer.normalizeForMatch(name);
+
+        if (authorRepository.existsByNameNormalized(nameNormalized)) {
             throw new DuplicateResourceException("El autor ya existe");
         }
 
@@ -57,8 +59,8 @@ public class AuthorServiceImpl implements AuthorService {
         return authorRepository.findAll(pageable).map(authorMapper::toResponse);
     }
 
-    @Override
     @Transactional(readOnly = true)
+    @Override
     public Page<AuthorResponse> search(String query, Pageable pageable) {
 
         return authorRepository
@@ -82,12 +84,17 @@ public class AuthorServiceImpl implements AuthorService {
             return null;
         }
 
-        return authorRepository.findByNameIgnoreCase(name.trim())
+        String displayName = normalizeDisplayName(name);
+
+        String nameNormalized = TextNormalizer.normalizeForMatch(displayName);
+
+        return authorRepository.findByNameNormalized(nameNormalized)
                 .orElseGet(() -> authorRepository.save(
-                        Author.builder()
-                                .name(name.trim())
-                                .build()
-                ));
+                                Author.builder()
+                                        .name(displayName)
+                                        .build()
+                        )
+                );
     }
 
     @Transactional(readOnly = true)
@@ -95,5 +102,12 @@ public class AuthorServiceImpl implements AuthorService {
     public Set<Author> getEntitiesByIds(Set<Long> ids) {
 
         return new HashSet<>(authorRepository.findAllById(ids));
+    }
+
+    private String normalizeDisplayName(String value) {
+        return value == null
+                ? null
+                : value.trim()
+                .replaceAll("\\s+", " ");
     }
 }
