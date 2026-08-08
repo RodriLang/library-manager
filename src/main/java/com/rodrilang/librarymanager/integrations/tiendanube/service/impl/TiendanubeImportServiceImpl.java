@@ -39,6 +39,7 @@ import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -349,11 +350,15 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         .get(variant.id());
 
         if (existingLink != null) {
-            Inventory inventory =
-                    existingLink.getInventory();
+            Inventory inventory = existingLink.getInventory();
 
-            Book book =
-                    inventory.getBook();
+            Book book = inventory.getBook();
+
+            log.info(
+                    "Preview book source=LINK bookId={} authorsInitialized={}",
+                    book.getId(),
+                    Hibernate.isInitialized(book.getAuthors())
+            );
 
             PreviewMatch match =
                     new PreviewMatch(
@@ -377,14 +382,17 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             );
         }
 
-        Book exactBook =
-                data.booksByVariantId()
-                        .get(variant.id());
+        Book exactBook = data.booksByVariantId().get(variant.id());
 
         if (exactBook != null) {
-            String isbn =
-                    TiendanubeProductUtils
-                            .resolveRemoteIsbn(variant);
+
+            log.info(
+                    "Preview book source=ISBN bookId={} authorsInitialized={}",
+                    exactBook.getId(),
+                    Hibernate.isInitialized(exactBook.getAuthors())
+            );
+
+            String isbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
 
             return buildBookMatchItem(
                     product,
@@ -418,6 +426,15 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
 
         if (textualCandidates.size() > 1) {
+
+            for (Book candidate : textualCandidates) {
+                log.info(
+                        "Preview book source=TEXT bookId={} authorsInitialized={}",
+                        candidate.getId(),
+                        Hibernate.isInitialized(candidate.getAuthors())
+                );
+            }
+
             List<TiendanubeImportBookCandidateResponse> candidates =
                     textualCandidates.stream()
                             .map(book ->
@@ -442,10 +459,18 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             );
         }
 
+        Book possibleBook = textualCandidates.getFirst();
+
+        log.info(
+                "Preview book source=TEXT_SINGLE bookId={} authorsInitialized={}",
+                possibleBook.getId(),
+                Hibernate.isInitialized(possibleBook.getAuthors())
+        );
+
         return buildPossibleMatchItem(
                 product,
                 variant,
-                textualCandidates.getFirst(),
+                possibleBook,
                 context
         );
     }
@@ -477,6 +502,18 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             Book book,
             PreviewContext context
     ) {
+
+        log.info(
+                "Building Tiendanube candidate. "
+                        + "bookId={} title='{}' "
+                        + "authorsInitialized={} "
+                        + "publisherInitialized={}",
+                book.getId(),
+                book.getTitle(),
+                Hibernate.isInitialized(book.getAuthors()),
+                Hibernate.isInitialized(book.getPublisher())
+        );
+
         String authors =
                 book.getAuthors() == null
                         ? null
