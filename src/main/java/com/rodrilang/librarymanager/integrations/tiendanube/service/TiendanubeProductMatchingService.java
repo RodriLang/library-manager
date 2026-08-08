@@ -21,8 +21,5 @@ public interface TiendanubeProductMatchingService {
             List<TiendanubeProductResponse> products
     );
 
-    List<Book> findBookCandidates(
-            TiendanubeProductResponse product,
-            List<Book> books
-    );
+    List<Book> findBookCandidates(TiendanubeProductResponse product);
 }

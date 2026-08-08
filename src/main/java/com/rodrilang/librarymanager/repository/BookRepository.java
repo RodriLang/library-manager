@@ -355,4 +355,38 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             where book.id = :bookId
             """)
     Optional<Book> findCoverCandidateById(@Param("bookId") Long bookId);
+
+    @Query(
+            value = """
+                SELECT b.id
+                FROM books b
+                WHERE b.active = TRUE
+                  AND similarity(
+                        b.title_sort,
+                        :normalizedTitle
+                      ) > 0.15
+                ORDER BY
+                    similarity(
+                        b.title_sort,
+                        :normalizedTitle
+                    ) DESC
+                LIMIT :limit
+                """,
+            nativeQuery = true
+    )
+    List<Long> findTiendanubeCandidateIds(
+            @Param("normalizedTitle") String normalizedTitle,
+            @Param("limit") int limit
+    );
+
+    @Query("""
+            SELECT DISTINCT b
+            FROM Book b
+            LEFT JOIN FETCH b.authors
+            LEFT JOIN FETCH b.publisher
+            WHERE b.id IN :ids
+            """)
+    List<Book> findAllWithDetailsByIdIn(
+            @Param("ids") Collection<Long> ids
+    );
 }

@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.repository;
 
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -9,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -291,5 +293,29 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             @Param("bookstoreId") Long bookstoreId,
             @Param("query") String query,
             Pageable pageable
+    );
+
+    @Query("""
+        SELECT
+            i.id AS inventoryId,
+            i.book.id AS bookId,
+            CASE
+                WHEN COUNT(link.id) > 0 THEN true
+                ELSE false
+            END AS linked
+        FROM Inventory i
+        LEFT JOIN TiendanubeProductLink link
+            ON link.inventory.id = i.id
+            AND link.active = true
+        WHERE i.bookstore.id = :bookstoreId
+          AND i.condition = com.rodrilang.librarymanager.enums.BookCondition.NEW
+          AND i.book.id IN :bookIds
+        GROUP BY
+            i.id,
+            i.book.id
+        """)
+    List<InventoryTiendanubePreviewProjection> findTiendanubePreviewByBookIds(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("bookIds") Collection<Long> bookIds
     );
 }
