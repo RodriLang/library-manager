@@ -81,6 +81,10 @@ public class PriceListImportJob {
     @Builder.Default
     private int processedBooks = 0;
 
+    @Column(name = "processed_prices",nullable = false)
+    @Builder.Default
+    private int processedPrices = 0;
+
     @Builder.Default
     @Column(name = "duplicate_book_rows", nullable = false)
     private int duplicateBookRows = 0;

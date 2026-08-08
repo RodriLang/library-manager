@@ -14,6 +14,17 @@ public interface PriceListImportJobProgressService {
 
     void updateProgress(Long jobId, ImportStatistics importStatistics);
 
+    void initializePriceProgress(Long jobId);
+
+    void updatePriceProgress(
+            Long jobId,
+            int processedPrices,
+            int createdPrices,
+            int updatedPrices,
+            int unchangedPrices,
+            int skippedPrices
+    );
+
     void markCompleted(Long jobId, ImportStatistics importStatistics);
 
     void markFailed(Long jobId, String errorMessage);
