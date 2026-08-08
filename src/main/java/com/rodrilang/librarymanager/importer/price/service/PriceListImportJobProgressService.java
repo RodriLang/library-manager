@@ -18,6 +18,10 @@ public interface PriceListImportJobProgressService {
 
     void markFailed(Long jobId, String errorMessage);
 
+    void markCancelled(Long jobId);
+
+    boolean isCancellationRequested(Long jobId);
+
     void saveErrors(Long jobId, List<PriceListImportError> errors);
 
     void updatePhase(Long jobId, PriceListImportPhase phase);

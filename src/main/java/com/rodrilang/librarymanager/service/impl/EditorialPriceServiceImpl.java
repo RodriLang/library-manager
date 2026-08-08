@@ -10,6 +10,7 @@ import com.rodrilang.librarymanager.importer.price.repository.EditorialPriceBatc
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
+import com.rodrilang.librarymanager.repository.projection.EditorialPriceImportProjection;
 import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,27 +50,65 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             );
         }
 
+        long startedAt = System.nanoTime();
+
+        log.info(
+                "Resolved price batch started. jobId={} rows={}",
+                jobId,
+                prices.size()
+        );
+
         PriceListImportJob job = jobRepository
                 .findById(jobId)
                 .orElseThrow(() -> new BusinessException("No se encontró el trabajo de importación."));
+
+        log.info(
+                "Resolved price batch job loaded. "
+                        + "jobId={} providerId={} validFrom={}",
+                jobId,
+                job.getProvider().getId(),
+                job.getValidFrom()
+        );
 
         List<Long> bookIds = prices.stream()
                 .map(PriceListResolvedPrice::bookId)
                 .distinct()
                 .toList();
 
-        Map<Long, EditorialPrice> existingByBookId =
-                editorialPriceRepository
-                        .findByBookIdInAndProviderIdAndValidFrom(
-                                bookIds,
-                                job.getProvider().getId(),
-                                job.getValidFrom()
-                        )
-                        .stream()
+        log.info(
+                "Resolved price batch book ids prepared. "
+                        + "jobId={} bookIds={}",
+                jobId,
+                bookIds.size()
+        );
+
+        long loadStartedAt = System.nanoTime();
+
+        List<EditorialPriceImportProjection> existingPrices =
+                editorialPriceRepository.findForImport(
+                        bookIds,
+                        job.getProvider().getId(),
+                        job.getValidFrom()
+                );
+
+        log.info(
+                "Resolved price existing prices loaded. "
+                        + "jobId={} requestedBooks={} "
+                        + "existingPrices={} time={}ms",
+                jobId,
+                bookIds.size(),
+                existingPrices.size(),
+                (System.nanoTime() - loadStartedAt)
+                        / 1_000_000
+        );
+
+        Map<Long, EditorialPriceImportProjection> existingByBookId =
+                existingPrices.stream()
                         .collect(
                                 Collectors.toMap(
-                                        price -> price.getBook().getId(),
-                                        Function.identity()
+                                        EditorialPriceImportProjection::getBookId,
+                                        Function.identity(),
+                                        (existing, repeated) -> existing
                                 )
                         );
 
@@ -79,9 +118,12 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
         int unchanged = 0;
 
+        long classificationStartedAt =
+                System.nanoTime();
+
         for (PriceListResolvedPrice resolved : prices) {
 
-            EditorialPrice existing = existingByBookId.get(resolved.bookId());
+            EditorialPriceImportProjection existing = existingByBookId.get(resolved.bookId());
 
             if (existing == null) {
                 toInsert.add(
@@ -94,7 +136,10 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 continue;
             }
 
-            if (existing.getPrice().compareTo(resolved.selectedPrice()) == 0) {
+            if (
+                    existing.getPrice().compareTo(resolved.selectedPrice()) == 0
+                            && Boolean.TRUE.equals(existing.getActive())
+            ) {
                 unchanged++;
                 continue;
             }
@@ -107,13 +152,80 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
             );
         }
 
+        log.info(
+                "Resolved price batch classified. "
+                        + "jobId={} inserts={} "
+                        + "updates={} unchanged={} time={}ms",
+                jobId,
+                toInsert.size(),
+                toUpdate.size(),
+                unchanged,
+                (System.nanoTime()
+                        - classificationStartedAt)
+                        / 1_000_000
+        );
+
+        long insertStartedAt = System.nanoTime();
+
         batchRepository.insertBatch(
                 job.getProvider().getId(),
                 job.getValidFrom(),
                 toInsert
         );
 
+        log.info(
+                "Resolved price inserts completed. "
+                        + "jobId={} rows={} time={}ms",
+                jobId,
+                toInsert.size(),
+                (System.nanoTime()
+                        - insertStartedAt)
+                        / 1_000_000
+        );
+
+        long updateStartedAt = System.nanoTime();
+
         batchRepository.updateBatch(toUpdate);
+
+        log.info(
+                "Resolved price updates completed. "
+                        + "jobId={} rows={} time={}ms",
+                jobId,
+                toUpdate.size(),
+                (System.nanoTime()
+                        - updateStartedAt)
+                        / 1_000_000
+        );
+
+        int accounted = toInsert.size() + toUpdate.size() + unchanged;
+
+        if (accounted != prices.size()) {
+            log.warn(
+                    "Resolved price batch counters mismatch. "
+                            + "jobId={} rows={} accounted={} "
+                            + "created={} updated={} unchanged={}",
+                    jobId,
+                    prices.size(),
+                    accounted,
+                    toInsert.size(),
+                    toUpdate.size(),
+                    unchanged
+            );
+        }
+
+        log.info(
+                "Resolved price batch completed. "
+                        + "jobId={} rows={} "
+                        + "created={} updated={} unchanged={} "
+                        + "totalTime={}ms",
+                jobId,
+                prices.size(),
+                toInsert.size(),
+                toUpdate.size(),
+                unchanged,
+                (System.nanoTime() - startedAt)
+                        / 1_000_000
+        );
 
         return new PriceImportCounters(
                 toInsert.size(),

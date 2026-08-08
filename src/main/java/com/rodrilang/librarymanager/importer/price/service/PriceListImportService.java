@@ -11,4 +11,6 @@ public interface PriceListImportService {
     PriceListImportStartResponse startImport(Long providerId, MultipartFile file, LocalDate validFrom, String idempotencyKey);
 
     PriceListImportJobStatusResponse getStatus(Long jobId);
+
+    void requestCancel(Long jobId);
 }

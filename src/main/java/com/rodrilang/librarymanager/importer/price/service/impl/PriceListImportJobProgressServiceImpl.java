@@ -47,6 +47,7 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         PriceListImportJob job = getJob(jobId);
         job.setProcessedRows(importStatistics.processedRows());
         job.setProcessedBooks(importStatistics.processedBooks());
+        job.setDuplicateBookRows(importStatistics.duplicateBookRows());
         job.setCreatedBooks(importStatistics.createdBooks());
         job.setCreatedPrices(importStatistics.createdPrices());
         job.setUpdatedPrices(importStatistics.updatedPrices());
@@ -63,6 +64,7 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         job.setPhase(PriceListImportPhase.COMPLETED);
         job.setProcessedRows(importStatistics.processedRows());
         job.setProcessedBooks(importStatistics.processedBooks());
+        job.setDuplicateBookRows(importStatistics.duplicateBookRows());
         job.setCreatedBooks(importStatistics.createdBooks());
         job.setCreatedPrices(importStatistics.createdPrices());
         job.setUpdatedPrices(importStatistics.updatedPrices());
@@ -78,6 +80,27 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         PriceListImportJob job = getJob(jobId);
         job.setStatus(PriceListImportJobStatus.FAILED);
         job.setErrorMessage(errorMessage);
+        job.setFinishedAt(Instant.now());
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Override
+    public boolean isCancellationRequested(Long jobId) {
+        return jobRepository.findById(jobId)
+                .map(job ->
+                        job.getStatus()
+                                == PriceListImportJobStatus.CANCEL_REQUESTED
+                )
+                .orElse(false);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Override
+    public void markCancelled(Long jobId) {
+        PriceListImportJob job = getJob(jobId);
+
+        job.setStatus(PriceListImportJobStatus.CANCELLED);
+
         job.setFinishedAt(Instant.now());
     }
 

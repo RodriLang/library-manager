@@ -49,4 +49,12 @@ public class PriceListImportController {
                 priceListImportService.getStatus(jobId)
         );
     }
+
+    @PostMapping("/imports/{jobId}/cancel")
+    public ResponseEntity<Void> cancel(
+            @PathVariable Long jobId
+    ) {
+        priceListImportService.requestCancel(jobId);
+        return ResponseEntity.noContent().build();
+    }
 }
