@@ -16,20 +16,16 @@ public interface TiendanubeProductLinkRepository extends JpaRepository<Tiendanub
             Long tiendanubeStoreId
     );
 
-    Optional<TiendanubeProductLink> findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
-            Long tiendanubeStoreId,
-            Long tiendanubeVariantId
-    );
-
     @EntityGraph(attributePaths = {
             "inventory",
             "inventory.book",
             "inventory.book.authors",
             "inventory.book.publisher"
     })
-    Optional<TiendanubeProductLink> findWithInventoryDetailsByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
-            Long storeId,
-            Long variantId
+    Optional<TiendanubeProductLink>
+    findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
+            Long tiendanubeStoreId,
+            Long tiendanubeVariantId
     );
 
     @EntityGraph(attributePaths = {
@@ -37,12 +33,4 @@ public interface TiendanubeProductLinkRepository extends JpaRepository<Tiendanub
             "inventory.book"
     })
     Optional<TiendanubeProductLink> findWithInventoryBookByInventoryIdAndActiveTrue(Long inventoryId);
-
-    @EntityGraph(attributePaths = {
-            "inventory",
-            "inventory.book",
-            "inventory.book.authors",
-            "inventory.book.publisher"
-    })
-    List<TiendanubeProductLink> findAllByTiendanubeStoreIdAndActiveTrue(Long storeId);
 }

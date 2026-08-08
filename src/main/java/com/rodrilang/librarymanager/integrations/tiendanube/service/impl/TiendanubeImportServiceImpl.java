@@ -565,7 +565,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
 
         if (parsedIsbn.isbn13() != null) {
-            Optional<Book> byIsbn13 = bookRepository.findByIsbn13(parsedIsbn.isbn13());
+            Optional<Book> byIsbn13 = bookRepository.findByIsbn13WithDetails(parsedIsbn.isbn13());
 
             if (byIsbn13.isPresent()) {
                 return byIsbn13.get();
@@ -573,7 +573,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
 
         if (parsedIsbn.isbn10() != null) {
-            Optional<Book> byIsbn10 = bookRepository.findByIsbn10(parsedIsbn.isbn10());
+            Optional<Book> byIsbn10 = bookRepository.findByIsbn10WithDetails(parsedIsbn.isbn10());
 
             if (byIsbn10.isPresent()) {
                 return byIsbn10.get();
@@ -597,7 +597,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
 
         if (parsedIsbn.isbn13() != null) {
             Optional<Book> byIsbn13 =
-                    bookRepository.findByIsbn13(
+                    bookRepository.findByIsbn13WithDetails(
                             parsedIsbn.isbn13()
                     );
 
@@ -607,7 +607,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
 
         if (parsedIsbn.isbn10() != null) {
-            return bookRepository.findByIsbn10(
+            return bookRepository.findByIsbn10WithDetails(
                     parsedIsbn.isbn10()
             );
         }
@@ -787,14 +787,11 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             TiendanubeProductResponse product,
             Long storeId
     ) {
-        Map<Long, TiendanubeProductLink> linksByVariantId =
-                new HashMap<>();
+        Map<Long, TiendanubeProductLink> linksByVariantId = new HashMap<>();
 
-        Map<Long, Book> booksByVariantId =
-                new HashMap<>();
+        Map<Long, Book> booksByVariantId = new HashMap<>();
 
-        Map<Long, List<Book>> candidatesByVariantId =
-                new HashMap<>();
+        Map<Long, List<Book>> candidatesByVariantId = new HashMap<>();
 
         if (product.variants() == null) {
             return new ProductPreviewData(
@@ -817,26 +814,16 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                             );
 
             if (existingLink.isPresent()) {
-                TiendanubeProductLink link =
-                        existingLink.get();
+                TiendanubeProductLink link = existingLink.get();
 
-                linksByVariantId.put(
-                        variant.id(),
-                        link
-                );
+                linksByVariantId.put(variant.id(), link);
 
-                booksByVariantId.put(
-                        variant.id(),
-                        link.getInventory()
-                                .getBook()
-                );
+                booksByVariantId.put(variant.id(), link.getInventory().getBook());
 
                 continue;
             }
 
-            String isbn =
-                    TiendanubeProductUtils
-                            .resolveRemoteIsbn(variant);
+            String isbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
 
             if (isbn != null) {
                 Optional<Book> book =
@@ -853,11 +840,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             }
 
             if (textualCandidates == null) {
-                textualCandidates =
-                        matchingService
-                                .findBookCandidates(
-                                        product
-                                );
+                textualCandidates = matchingService.findBookCandidates(product);
             }
 
             candidatesByVariantId.put(
