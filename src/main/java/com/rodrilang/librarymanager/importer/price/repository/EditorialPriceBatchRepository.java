@@ -124,9 +124,22 @@ public class EditorialPriceBatchRepository {
                 )
                 .toArray(MapSqlParameterSource[]::new);
 
+        long startedAt = System.nanoTime();
+
         jdbcTemplate.batchUpdate(
                 sql,
                 parameters
+        );
+
+        long elapsedMs =
+                (System.nanoTime() - startedAt)
+                        / 1_000_000;
+
+        log.info(
+                "Editorial price update batch completed. "
+                        + "rows={} time={}ms",
+                rows.size(),
+                elapsedMs
         );
     }
 }

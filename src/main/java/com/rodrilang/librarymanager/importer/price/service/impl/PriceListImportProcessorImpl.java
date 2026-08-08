@@ -10,6 +10,7 @@ import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListImportS
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListStagingStatistics;
 import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
+import com.rodrilang.librarymanager.importer.price.exception.PriceListImportCancelledException;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportPriceStagingRepository;
@@ -218,6 +219,15 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                     finalStatistics.errors()
             );
 
+        } catch (PriceListImportCancelledException exception) {
+
+            progressService.markCancelled(jobId);
+
+            log.info(
+                    "Price list import cancelled. jobId={}",
+                    jobId
+            );
+
         } catch (Exception exception) {
             log.error(
                     "Price list import failed. jobId={}",
@@ -250,6 +260,11 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
         int createdBooks = 0;
 
         while (true) {
+
+            if (progressService.isCancellationRequested(jobId)) {
+                throw new PriceListImportCancelledException();
+            }
+
             List<PriceListStagingRow> batch =
                     stagingRepository.findValidBatch(
                             jobId,

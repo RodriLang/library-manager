@@ -184,9 +184,9 @@ public class PriceListImportPriceStagingRepository {
                 params,
                 (rs, rowNum) ->
                         new PriceListResolvedPrice(
+                                rs.getLong("id"),
                                 rs.getLong("book_id"),
 
-                                rs.getLong("id"),
                                 rs.getInt("selected_row_number"),
                                 rs.getString("selected_isbn"),
                                 rs.getBigDecimal("selected_price"),

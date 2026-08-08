@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.repository;
 
 import com.rodrilang.librarymanager.model.EditorialPrice;
+import com.rodrilang.librarymanager.repository.projection.EditorialPriceImportProjection;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -58,5 +59,22 @@ public interface EditorialPriceRepository
     List<EditorialPrice> findByProviderIdAndBookIdInForUpdate(
             @Param("providerId") Long providerId,
             @Param("bookIds") Collection<Long> bookIds
+    );
+
+    @Query("""
+            SELECT
+                ep.id AS id,
+                ep.book.id AS bookId,
+                ep.price AS price,
+                ep.active AS active
+            FROM EditorialPrice ep
+            WHERE ep.book.id IN :bookIds
+              AND ep.provider.id = :providerId
+              AND ep.validFrom = :validFrom
+            """)
+    List<EditorialPriceImportProjection> findForImport(
+            Collection<Long> bookIds,
+            Long providerId,
+            LocalDate validFrom
     );
 }

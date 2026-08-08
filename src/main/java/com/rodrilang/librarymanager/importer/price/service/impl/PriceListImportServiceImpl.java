@@ -105,6 +105,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 job.getTotalRows(),
                 job.getProcessedRows(),
                 job.getProcessedBooks(),
+                job.getDuplicateBookRows(),
                 job.getCreatedBooks(),
                 job.getCreatedPrices(),
                 job.getUpdatedPrices(),
@@ -117,9 +118,27 @@ public class PriceListImportServiceImpl implements PriceListImportService {
         );
     }
 
-    private int calculateProgress(
-            PriceListImportJob job
-    ) {
+    @Override
+    @Transactional
+    public void requestCancel(Long jobId) {
+        PriceListImportJob job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new BusinessException("No se encontró la importación solicitada."));
+
+        switch (job.getStatus()) {
+
+            case PENDING, PROCESSING -> job.setStatus(PriceListImportJobStatus.CANCEL_REQUESTED);
+
+            case CANCEL_REQUESTED, CANCELLED -> {
+                // idempotente: no hacemos nada
+            }
+
+            case COMPLETED -> throw new BusinessException("La importación ya fue completada.");
+
+            case FAILED -> throw new BusinessException("La importación ya se encuentra finalizada.");
+        }
+    }
+
+    private int calculateProgress(PriceListImportJob job) {
         if (job.getStatus() == PriceListImportJobStatus.COMPLETED) {
             return 100;
         }
@@ -147,8 +166,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
     private boolean shouldIncludeErrors(
             PriceListImportJobStatus status
     ) {
-        return status == PriceListImportJobStatus.COMPLETED
-                || status == PriceListImportJobStatus.FAILED;
+        return status == PriceListImportJobStatus.COMPLETED || status == PriceListImportJobStatus.FAILED;
     }
 
     private List<PriceListImportJobErrorResponse> loadErrors(Long jobId) {
@@ -206,8 +224,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                             .createdAt(Instant.now())
                             .build();
 
-            PriceListImportJob savedJob =
-                    jobRepository.save(job);
+            PriceListImportJob savedJob = jobRepository.save(job);
 
             startProcessingAfterCommit(
                     savedJob.getId(),
@@ -255,10 +272,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
 
                     @Override
                     public void afterCompletion(int status) {
-                        if (
-                                status != TransactionSynchronization
-                                        .STATUS_COMMITTED
-                        ) {
+                        if (status != TransactionSynchronization.STATUS_COMMITTED) {
                             fileStorage.deleteQuietly(filePath);
                         }
                     }
