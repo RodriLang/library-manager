@@ -11,6 +11,8 @@ import com.rodrilang.librarymanager.auth.services.RoleService;
 import com.rodrilang.librarymanager.auth.services.UserService;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ public class UserServiceImpl implements UserService {
     private final RoleService roleService;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final BookstoreService bookstoreService;
 
     @Override
     @Transactional
@@ -38,12 +41,14 @@ public class UserServiceImpl implements UserService {
         validateEmail(normalizedEmail);
 
         User user = userMapper.toEntity(request);
+        Bookstore bookstore = bookstoreService.getEntityById(request.bookstoreId());
 
         user.setUsername(normalizedUsername);
         user.setEmail(normalizedEmail);
         user.setFirstName(request.firstName().trim());
         user.setLastName(request.lastName().trim());
         user.setPassword(passwordEncoder.encode(request.password()));
+        user.setBookstore(bookstore);
 
         Role role = roleService.findByName(RoleType.BOOKSTORE_ADMIN);
         user.setRoles(Set.of(role));
