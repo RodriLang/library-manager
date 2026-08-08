@@ -3,7 +3,6 @@ package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.PreviewContext;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.PreviewMatch;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.TiendanubeImportCommand;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeBulkImportRequest;
@@ -37,17 +36,19 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -71,7 +72,8 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             int page,
             int size
     ) {
-        TiendanubeStore store = getActiveStore(bookstoreId);
+        TiendanubeStore store =
+                getActiveStore(bookstoreId);
 
         TiendanubeProductsPage productsPage =
                 client.fetchProductsPage(
@@ -80,17 +82,43 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         size
                 );
 
-        PreviewContext context =
-                buildPreviewContext(
+        List<ProductPreviewData> previewData =
+                productsPage.products()
+                        .stream()
+                        .map(product ->
+                                prepareProductPreview(
+                                        product,
+                                        store.getStoreId()
+                                )
+                        )
+                        .toList();
+
+        List<Long> bookIds =
+                previewData.stream()
+                        .flatMap(data ->
+                                data.bookIds().stream()
+                        )
+                        .distinct()
+                        .toList();
+
+        Map<Long, InventoryPreviewInfo> inventoryInfo =
+                loadInventoryPreviewInfo(
                         bookstoreId,
-                        store.getStoreId()
+                        bookIds
+                );
+
+        PreviewContext context =
+                new PreviewContext(
+                        inventoryInfo
                 );
 
         List<TiendanubeImportPreviewItemResponse> items =
-                productsPage.products()
-                        .stream()
-                        .flatMap(product ->
-                                buildPreviewItems(product, context).stream()
+                previewData.stream()
+                        .flatMap(data ->
+                                buildPreviewItems(
+                                        data,
+                                        context
+                                ).stream()
                         )
                         .toList();
 
@@ -181,65 +209,6 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 linked,
                 failed,
                 results
-        );
-    }
-
-    private PreviewContext buildPreviewContext(Long bookstoreId, Long storeId) {
-
-        List<TiendanubeProductLink> activeLinks =
-                productLinkRepository.findAllByTiendanubeStoreIdAndActiveTrue(storeId);
-
-        Map<Long, TiendanubeProductLink> linksByVariantId = activeLinks.stream()
-                .collect(Collectors.toMap(
-                        TiendanubeProductLink::getTiendanubeVariantId,
-                        Function.identity()
-                ));
-
-        Map<Long, TiendanubeProductLink> linksByInventoryId = activeLinks.stream()
-                .collect(Collectors.toMap(
-                        link -> link.getInventory().getId(),
-                        Function.identity(),
-                        (first, second) -> first
-                ));
-
-        // TODO: Reemplazar Map<bookId, Inventory> cuando Tiendanube soporte importación por condición (NEW/USED).
-        Map<Long, Inventory> inventoriesByBookId =
-                inventoryRepository.findAllByBookstoreId(bookstoreId)
-                        .stream()
-                        .filter(inventory ->
-                                inventory.getCondition() == BookCondition.NEW
-                        )
-                        .collect(Collectors.toMap(
-                                inventory -> inventory.getBook().getId(),
-                                Function.identity()
-                        ));
-
-        List<Book> books = bookRepository.findAllByActiveTrue();
-
-        Map<String, Book> booksByIsbn = new HashMap<>();
-
-        for (Book book : books) {
-            if (book.getIsbn13() != null) {
-                booksByIsbn.putIfAbsent(
-                        TiendanubeProductUtils.normalizeIdentifier(book.getIsbn13()),
-                        book
-                );
-            }
-
-            if (book.getIsbn10() != null) {
-                booksByIsbn.putIfAbsent(
-                        TiendanubeProductUtils.normalizeIdentifier(book.getIsbn10()),
-                        book
-                );
-            }
-        }
-
-        return new PreviewContext(
-                linksByVariantId,
-                linksByInventoryId,
-                inventoriesByBookId,
-                booksByIsbn,
-                books
         );
     }
 
@@ -344,167 +313,141 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     private List<TiendanubeImportPreviewItemResponse> buildPreviewItems(
-            TiendanubeProductResponse product,
+            ProductPreviewData data,
             PreviewContext context
     ) {
-        if (product.variants() == null || product.variants().isEmpty()) {
+        TiendanubeProductResponse product =
+                data.product();
+
+        if (product.variants() == null
+                || product.variants().isEmpty()) {
             return List.of();
         }
 
-        return product.variants().stream()
-                .map(variant -> buildPreviewItem(product, variant, context))
+        return product.variants()
+                .stream()
+                .map(variant ->
+                        buildPreviewItem(
+                                data,
+                                variant,
+                                context
+                        )
+                )
                 .toList();
     }
 
     private TiendanubeImportPreviewItemResponse buildPreviewItem(
-            TiendanubeProductResponse product,
+            ProductPreviewData data,
             TiendanubeVariantResponse variant,
             PreviewContext context
     ) {
-        TiendanubeProductLink existingLink = context.linksByVariantId().get(variant.id());
+        TiendanubeProductResponse product =
+                data.product();
+
+        TiendanubeProductLink existingLink =
+                data.linksByVariantId()
+                        .get(variant.id());
 
         if (existingLink != null) {
-            Inventory inventory = existingLink.getInventory();
+            Inventory inventory =
+                    existingLink.getInventory();
 
-            PreviewMatch match = new PreviewMatch(
-                    TiendanubeImportMatchType.ALREADY_LINKED,
-                    inventory.getBook().getId(),
-                    inventory.getId(),
-                    false,
-                    false,
-                    List.of(toCandidate(inventory.getBook(), context))
+            Book book =
+                    inventory.getBook();
+
+            PreviewMatch match =
+                    new PreviewMatch(
+                            TiendanubeImportMatchType.ALREADY_LINKED,
+                            book.getId(),
+                            inventory.getId(),
+                            false,
+                            false,
+                            List.of(
+                                    toCandidate(
+                                            book,
+                                            context
+                                    )
+                            )
+                    );
+
+            return buildItem(
+                    product,
+                    variant,
+                    match
             );
-
-            return buildItem(product, variant, match);
         }
 
-        String isbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
+        Book exactBook =
+                data.booksByVariantId()
+                        .get(variant.id());
 
-        if (isbn != null) {
-            Book book = context.booksByIsbn().get(isbn);
+        if (exactBook != null) {
+            String isbn =
+                    TiendanubeProductUtils
+                            .resolveRemoteIsbn(variant);
 
-            if (book != null) {
-                return buildBookMatchItem(product, variant, book, isbn, context);
-            }
+            return buildBookMatchItem(
+                    product,
+                    variant,
+                    exactBook,
+                    isbn,
+                    context
+            );
         }
 
-        List<Book> textualCandidates = matchingService.findBookCandidates(
-                product,
-                context.books()
-        );
+        List<Book> textualCandidates =
+                data.candidatesByVariantId()
+                        .getOrDefault(
+                                variant.id(),
+                                List.of()
+                        );
 
         if (textualCandidates.isEmpty()) {
-            PreviewMatch match = new PreviewMatch(
-                    TiendanubeImportMatchType.BOOK_NOT_FOUND,
-                    null,
-                    null,
-                    false,
-                    true,
-                    List.of()
+            return buildItem(
+                    product,
+                    variant,
+                    new PreviewMatch(
+                            TiendanubeImportMatchType.BOOK_NOT_FOUND,
+                            null,
+                            null,
+                            false,
+                            true,
+                            List.of()
+                    )
             );
-
-            return buildItem(product, variant, match);
         }
 
         if (textualCandidates.size() > 1) {
-            PreviewMatch match = new PreviewMatch(
-                    TiendanubeImportMatchType.MULTIPLE_MATCHES,
-                    null,
-                    null,
-                    false,
-                    true,
-                    textualCandidates.stream().map((Book book) -> toCandidate(book, context)).toList()
+            List<TiendanubeImportBookCandidateResponse> candidates =
+                    textualCandidates.stream()
+                            .map(book ->
+                                    toCandidate(
+                                            book,
+                                            context
+                                    )
+                            )
+                            .toList();
+
+            return buildItem(
+                    product,
+                    variant,
+                    new PreviewMatch(
+                            TiendanubeImportMatchType.MULTIPLE_MATCHES,
+                            null,
+                            null,
+                            false,
+                            true,
+                            candidates
+                    )
             );
-
-            return buildItem(product, variant, match);
         }
 
-        Book book = textualCandidates.getFirst();
-        Inventory inventory = context.inventoriesByBookId().get(book.getId());
-
-        if (inventory != null) {
-            TiendanubeProductLink inventoryLink =
-                    context.linksByInventoryId().get(inventory.getId());
-
-            if (inventoryLink != null) {
-                PreviewMatch match = new PreviewMatch(
-                        TiendanubeImportMatchType.INVENTORY_ALREADY_LINKED,
-                        book.getId(),
-                        inventory.getId(),
-                        false,
-                        true,
-                        List.of(toCandidate(book, context))
-                );
-
-                return buildItem(product, variant, match);
-            }
-        }
-
-        PreviewMatch match = new PreviewMatch(
-                TiendanubeImportMatchType.POSSIBLE_MATCH,
-                book.getId(),
-                inventory != null ? inventory.getId() : null,
-                false,
-                true,
-                List.of(toCandidate(book, context))
+        return buildPossibleMatchItem(
+                product,
+                variant,
+                textualCandidates.getFirst(),
+                context
         );
-
-        return buildItem(product, variant, match);
-    }
-
-    private TiendanubeImportPreviewItemResponse buildBookMatchItem(
-            TiendanubeProductResponse product,
-            TiendanubeVariantResponse variant,
-            Book book,
-            String isbn,
-            PreviewContext context
-    ) {
-        Inventory inventory = context.inventoriesByBookId().get(book.getId());
-
-        if (inventory != null) {
-
-            TiendanubeProductLink inventoryLink =
-                    context.linksByInventoryId().get(inventory.getId());
-
-            if (inventoryLink != null) {
-                PreviewMatch match = new PreviewMatch(
-                        TiendanubeImportMatchType.INVENTORY_ALREADY_LINKED,
-                        book.getId(),
-                        inventory.getId(),
-                        false,
-                        true,
-                        List.of(toCandidate(book, context))
-                );
-
-                return buildItem(product, variant, match);
-            }
-
-            PreviewMatch match = new PreviewMatch(
-                    TiendanubeImportMatchType.INVENTORY_EXISTS,
-                    book.getId(),
-                    inventory.getId(),
-                    true,
-                    false,
-                    List.of(toCandidate(book, context))
-            );
-
-            return buildItem(product, variant, match);
-        }
-
-        TiendanubeImportMatchType matchType = isbn.equals(TiendanubeProductUtils.normalizeIdentifier(variant.barcode()))
-                ? TiendanubeImportMatchType.EXACT_BARCODE
-                : TiendanubeImportMatchType.EXACT_SKU;
-
-        PreviewMatch match = new PreviewMatch(
-                matchType,
-                book.getId(),
-                null,
-                true,
-                false,
-                List.of(toCandidate(book, context))
-        );
-
-        return buildItem(product, variant, match);
     }
 
     private TiendanubeImportPreviewItemResponse buildItem(
@@ -534,28 +477,27 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             Book book,
             PreviewContext context
     ) {
-        String authors = book.getAuthors() == null
-                ? null
-                : book.getAuthors().stream()
-                .map(Author::getName)
-                .sorted()
-                .reduce((a, b) -> a + ", " + b)
-                .orElse(null);
+        String authors =
+                book.getAuthors() == null
+                        ? null
+                        : book.getAuthors()
+                        .stream()
+                        .map(Author::getName)
+                        .sorted()
+                        .collect(
+                                Collectors.joining(", ")
+                        );
 
-        String publisher = book.getPublisher() == null
-                ? null
-                : book.getPublisher().getName();
+        String publisher =
+                book.getPublisher() == null
+                        ? null
+                        : book.getPublisher().getName();
 
-        Inventory inventory = context.inventoriesByBookId()
-                .get(book.getId());
-
-        Long inventoryId = inventory != null
-                ? inventory.getId()
-                : null;
-
-        boolean inventoryLinked = inventory != null
-                && context.linksByInventoryId()
-                .containsKey(inventory.getId());
+        InventoryPreviewInfo inventory =
+                inventoryInfo(
+                        book,
+                        context
+                );
 
         return new TiendanubeImportBookCandidateResponse(
                 book.getId(),
@@ -563,8 +505,11 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 book.getTitle(),
                 authors,
                 publisher,
-                inventoryId,
-                inventoryLinked
+                inventory != null
+                        ? inventory.inventoryId()
+                        : null,
+                inventory != null
+                        && inventory.linked()
         );
     }
 
@@ -640,6 +585,162 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         );
     }
 
+    private Optional<Book> findOptionalBookByIsbn(
+            String value
+    ) {
+        ParsedIsbn parsedIsbn =
+                isbnService.parse(value);
+
+        if (!parsedIsbn.valid()) {
+            return Optional.empty();
+        }
+
+        if (parsedIsbn.isbn13() != null) {
+            Optional<Book> byIsbn13 =
+                    bookRepository.findByIsbn13(
+                            parsedIsbn.isbn13()
+                    );
+
+            if (byIsbn13.isPresent()) {
+                return byIsbn13;
+            }
+        }
+
+        if (parsedIsbn.isbn10() != null) {
+            return bookRepository.findByIsbn10(
+                    parsedIsbn.isbn10()
+            );
+        }
+
+        return Optional.empty();
+    }
+
+    private TiendanubeImportPreviewItemResponse buildBookMatchItem(
+            TiendanubeProductResponse product,
+            TiendanubeVariantResponse variant,
+            Book book,
+            String isbn,
+            PreviewContext context
+    ) {
+        InventoryPreviewInfo inventory =
+                inventoryInfo(
+                        book,
+                        context
+                );
+
+        TiendanubeImportBookCandidateResponse candidate =
+                toCandidate(
+                        book,
+                        context
+                );
+
+        if (inventory != null) {
+
+            if (inventory.linked()) {
+                return buildItem(
+                        product,
+                        variant,
+                        new PreviewMatch(
+                                TiendanubeImportMatchType.INVENTORY_ALREADY_LINKED,
+                                book.getId(),
+                                inventory.inventoryId(),
+                                false,
+                                true,
+                                List.of(candidate)
+                        )
+                );
+            }
+
+            return buildItem(
+                    product,
+                    variant,
+                    new PreviewMatch(
+                            TiendanubeImportMatchType.INVENTORY_EXISTS,
+                            book.getId(),
+                            inventory.inventoryId(),
+                            true,
+                            false,
+                            List.of(candidate)
+                    )
+            );
+        }
+
+        TiendanubeImportMatchType matchType =
+                isbn != null
+                        && isbn.equals(
+                        TiendanubeProductUtils
+                                .normalizeIdentifier(
+                                        variant.barcode()
+                                )
+                )
+                        ? TiendanubeImportMatchType.EXACT_BARCODE
+                        : TiendanubeImportMatchType.EXACT_SKU;
+
+        return buildItem(
+                product,
+                variant,
+                new PreviewMatch(
+                        matchType,
+                        book.getId(),
+                        null,
+                        true,
+                        false,
+                        List.of(candidate)
+                )
+        );
+    }
+
+    private TiendanubeImportPreviewItemResponse buildPossibleMatchItem(
+            TiendanubeProductResponse product,
+            TiendanubeVariantResponse variant,
+            Book book,
+            PreviewContext context
+    ) {
+        InventoryPreviewInfo inventory =
+                inventoryInfo(
+                        book,
+                        context
+                );
+
+        TiendanubeImportBookCandidateResponse candidate =
+                toCandidate(
+                        book,
+                        context
+                );
+
+        if (inventory != null
+                && inventory.linked()) {
+
+            return buildItem(
+                    product,
+                    variant,
+                    new PreviewMatch(
+                            TiendanubeImportMatchType.INVENTORY_ALREADY_LINKED,
+                            book.getId(),
+                            inventory.inventoryId(),
+                            false,
+                            true,
+                            List.of(candidate)
+                    )
+            );
+        }
+
+        return buildItem(
+                product,
+                variant,
+                new PreviewMatch(
+                        TiendanubeImportMatchType.POSSIBLE_MATCH,
+                        book.getId(),
+                        inventory != null
+                                ? inventory.inventoryId()
+                                : null,
+                        false,
+                        true,
+                        List.of(candidate)
+                )
+        );
+    }
+
     private TiendanubeStore getActiveStore(Long bookstoreId) {
         return storeRepository.findByBookstoreIdAndActiveTrue(bookstoreId)
                 .orElseThrow(() -> new BusinessException("La librería no tiene una cuenta Tiendanube vinculada"));
@@ -651,5 +752,163 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
 
     private String getMainImageUrl(TiendanubeProductResponse product) {
         return product.images() == null || product.images().isEmpty() ? null : product.images().getFirst().src();
+    }
+
+    private Map<Long, InventoryPreviewInfo> loadInventoryPreviewInfo(
+            Long bookstoreId,
+            Collection<Long> bookIds
+    ) {
+        if (bookIds == null || bookIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return inventoryRepository
+                .findTiendanubePreviewByBookIds(
+                        bookstoreId,
+                        bookIds
+                )
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                InventoryTiendanubePreviewProjection::getBookId,
+                                projection ->
+                                        new InventoryPreviewInfo(
+                                                projection.getInventoryId(),
+                                                Boolean.TRUE.equals(
+                                                        projection.getLinked()
+                                                )
+                                        ),
+                                (first, second) -> first
+                        )
+                );
+    }
+
+    private ProductPreviewData prepareProductPreview(
+            TiendanubeProductResponse product,
+            Long storeId
+    ) {
+        Map<Long, TiendanubeProductLink> linksByVariantId =
+                new HashMap<>();
+
+        Map<Long, Book> booksByVariantId =
+                new HashMap<>();
+
+        Map<Long, List<Book>> candidatesByVariantId =
+                new HashMap<>();
+
+        if (product.variants() == null) {
+            return new ProductPreviewData(
+                    product,
+                    linksByVariantId,
+                    booksByVariantId,
+                    candidatesByVariantId
+            );
+        }
+
+        List<Book> textualCandidates = null;
+
+        for (TiendanubeVariantResponse variant : product.variants()) {
+
+            Optional<TiendanubeProductLink> existingLink =
+                    productLinkRepository
+                            .findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
+                                    storeId,
+                                    variant.id()
+                            );
+
+            if (existingLink.isPresent()) {
+                TiendanubeProductLink link =
+                        existingLink.get();
+
+                linksByVariantId.put(
+                        variant.id(),
+                        link
+                );
+
+                booksByVariantId.put(
+                        variant.id(),
+                        link.getInventory()
+                                .getBook()
+                );
+
+                continue;
+            }
+
+            String isbn =
+                    TiendanubeProductUtils
+                            .resolveRemoteIsbn(variant);
+
+            if (isbn != null) {
+                Optional<Book> book =
+                        findOptionalBookByIsbn(isbn);
+
+                if (book.isPresent()) {
+                    booksByVariantId.put(
+                            variant.id(),
+                            book.get()
+                    );
+
+                    continue;
+                }
+            }
+
+            if (textualCandidates == null) {
+                textualCandidates =
+                        matchingService
+                                .findBookCandidates(
+                                        product
+                                );
+            }
+
+            candidatesByVariantId.put(
+                    variant.id(),
+                    textualCandidates
+            );
+        }
+
+        return new ProductPreviewData(
+                product,
+                linksByVariantId,
+                booksByVariantId,
+                candidatesByVariantId
+        );
+    }
+
+    private InventoryPreviewInfo inventoryInfo(
+            Book book,
+            PreviewContext context
+    ) {
+        return context.inventoryInfo()
+                .get(book.getId());
+    }
+
+    private record PreviewContext(
+            Map<Long, InventoryPreviewInfo> inventoryInfo
+    ) {
+    }
+
+    private record InventoryPreviewInfo(
+            Long inventoryId,
+            boolean linked
+    ) {
+    }
+
+    private record ProductPreviewData(
+            TiendanubeProductResponse product,
+            Map<Long, TiendanubeProductLink> linksByVariantId,
+            Map<Long, Book> booksByVariantId,
+            Map<Long, List<Book>> candidatesByVariantId
+    ) {
+        List<Long> bookIds() {
+            return Stream.concat(
+                            booksByVariantId.values().stream(),
+                            candidatesByVariantId.values()
+                                    .stream()
+                                    .flatMap(List::stream)
+                    )
+                    .map(Book::getId)
+                    .distinct()
+                    .toList();
+        }
     }
 }

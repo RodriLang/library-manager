@@ -16,12 +16,16 @@ import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 @Service
@@ -29,6 +33,7 @@ import java.util.stream.Stream;
 public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMatchingService {
 
     private final InventoryRepository inventoryRepository;
+    private final BookRepository bookRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final IsbnService isbnService;
 
@@ -79,28 +84,81 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
 
     @Override
     public List<Book> findBookCandidates(
-            TiendanubeProductResponse product,
-            List<Book> books
+            TiendanubeProductResponse product
     ) {
-        String remoteName = TextNormalizer.normalizeForMatch(getProductName(product));
+        String remoteName =
+                TextNormalizer.normalizeForMatch(
+                        getProductName(product)
+                );
 
         if (remoteName.isBlank()) {
             return List.of();
         }
 
-        List<Book> titleCandidates = books.stream()
-                .filter(book -> matchesTitle(remoteName, book))
-                .toList();
+        List<Long> candidateIds =
+                bookRepository.findTiendanubeCandidateIds(
+                        remoteName,
+                        50
+                );
+
+        if (candidateIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Integer> positionById =
+                new HashMap<>();
+
+        for (int i = 0; i < candidateIds.size(); i++) {
+            positionById.put(
+                    candidateIds.get(i),
+                    i
+            );
+        }
+
+        List<Book> candidates =
+                bookRepository
+                        .findAllWithDetailsByIdIn(
+                                candidateIds
+                        )
+                        .stream()
+                        .sorted(
+                                Comparator.comparingInt(
+                                        book ->
+                                                positionById.getOrDefault(
+                                                        book.getId(),
+                                                        Integer.MAX_VALUE
+                                                )
+                                )
+                        )
+                        .toList();
+
+        List<Book> titleCandidates =
+                candidates.stream()
+                        .filter(book ->
+                                matchesTitle(
+                                        remoteName,
+                                        book
+                                )
+                        )
+                        .toList();
 
         if (titleCandidates.size() <= 1) {
             return titleCandidates;
         }
 
-        List<Book> authorCandidates = titleCandidates.stream()
-                .filter(book -> matchesAuthor(remoteName, book))
-                .toList();
+        List<Book> authorCandidates =
+                titleCandidates.stream()
+                        .filter(book ->
+                                matchesAuthor(
+                                        remoteName,
+                                        book
+                                )
+                        )
+                        .toList();
 
-        return authorCandidates.isEmpty() ? titleCandidates : authorCandidates;
+        return authorCandidates.isEmpty()
+                ? titleCandidates
+                : authorCandidates;
     }
 
     private TiendanubeRemoteVariantResponse analyzeVariant(
