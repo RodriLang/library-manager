@@ -57,6 +57,36 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void initializePriceProgress(Long jobId) {
+        PriceListImportJob job = getJob(jobId);
+
+        job.setProcessedPrices(0);
+        job.setCreatedPrices(0);
+        job.setUpdatedPrices(0);
+        job.setUnchangedPrices(0);
+        job.setSkippedRows(0);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Override
+    public void updatePriceProgress(
+            Long jobId,
+            int processedPrices,
+            int createdPrices,
+            int updatedPrices,
+            int unchangedPrices,
+            int skippedPrices
+    ) {
+        PriceListImportJob job = getJob(jobId);
+
+        job.setProcessedPrices(processedPrices);
+        job.setCreatedPrices(createdPrices);
+        job.setUpdatedPrices(updatedPrices);
+        job.setUnchangedPrices(unchangedPrices);
+        job.setSkippedRows(skippedPrices);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public void markCompleted(Long jobId, ImportStatistics importStatistics) {
         PriceListImportJob job = getJob(jobId);

@@ -106,6 +106,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 job.getProcessedRows(),
                 job.getProcessedBooks(),
                 job.getDuplicateBookRows(),
+                job.getProcessedPrices(),
                 job.getCreatedBooks(),
                 job.getCreatedPrices(),
                 job.getUpdatedPrices(),
@@ -147,17 +148,9 @@ public class PriceListImportServiceImpl implements PriceListImportService {
 
             case STAGING -> 5;
 
-            case BOOKS -> {
-                if (job.getTotalRows() == 0) {
-                    yield 10;
-                }
+            case BOOKS ->  calculateBooksProgress(job);
 
-                double ratio = (double) job.getProcessedRows() / job.getTotalRows();
-
-                yield 10 + (int) Math.round(ratio * 80);
-            }
-
-            case PRICES -> 90;
+            case PRICES -> calculatePricesProgress(job);
 
             case COMPLETED -> 100;
         };
@@ -287,6 +280,44 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 job.getId(),
                 job.getStatus(),
                 "La importación ya había sido iniciada."
+        );
+    }
+
+    private int calculateBooksProgress(
+            PriceListImportJob job
+    ) {
+        if (job.getTotalRows() <= 0) {
+            return 10;
+        }
+
+        double progress =
+                (double) job.getProcessedRows()
+                        / job.getTotalRows();
+
+        return Math.min(
+                80,
+                10 + (int) Math.round(
+                        progress * 70
+                )
+        );
+    }
+
+    private int calculatePricesProgress(
+            PriceListImportJob job
+    ) {
+        if (job.getProcessedBooks() <= 0) {
+            return 80;
+        }
+
+        double progress =
+                (double) job.getProcessedPrices()
+                        / job.getProcessedBooks();
+
+        return Math.min(
+                99,
+                80 + (int) Math.floor(
+                        progress * 19
+                )
         );
     }
 }

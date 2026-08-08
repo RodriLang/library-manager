@@ -13,6 +13,7 @@ public record PriceListImportJobStatusResponse(
         int processedRows,
         int processedBooks,
         int duplicateBookRows,
+        int processedPrices,
         int createdBooks,
         int createdPrices,
         int updatedPrices,

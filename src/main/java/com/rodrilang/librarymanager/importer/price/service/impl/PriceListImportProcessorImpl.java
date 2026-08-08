@@ -150,6 +150,8 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                     PriceListImportPhase.PRICES
             );
 
+            progressService.initializePriceProgress(jobId);
+
             PriceImportCounters priceCounters = resolvedPriceProcessor.process(jobId);
 
             log.info(

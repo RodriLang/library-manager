@@ -78,6 +78,8 @@ public class PriceListResolvedPriceProcessorImpl
                                     prices
                             );
 
+            processed += prices.size();
+
             created +=
                     counters.createdPrices();
 
@@ -90,16 +92,20 @@ public class PriceListResolvedPriceProcessorImpl
             skipped +=
                     counters.skippedRows();
 
-            processed +=
-                    prices.size();
+            afterId = lastId;
 
-            afterId =
-                    lastId;
+            progressService.updatePriceProgress(
+                    jobId,
+                    processed,
+                    created,
+                    updated,
+                    unchanged,
+                    skipped
+            );
 
             log.info(
                     "Resolved price batch completed. "
-                            + "jobId={} processed={} "
-                            + "afterId={} "
+                            + "jobId={} processed={} afterId={} "
                             + "created={} updated={} "
                             + "unchanged={} skipped={}",
                     jobId,
