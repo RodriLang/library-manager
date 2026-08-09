@@ -53,8 +53,10 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             "book.publisher",
             "book.authors"
     })
-    @Query("SELECT i FROM Inventory i WHERE i.active = true")
-    Page<Inventory> findAllWithBookDetails(Pageable pageable);
+    Page<Inventory> findAllByBookstoreIdAndActiveTrue(
+            Long bookstoreId,
+            Pageable pageable
+    );
 
 
     @EntityGraph(attributePaths = {
@@ -296,24 +298,24 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     );
 
     @Query("""
-        SELECT
-            i.id AS inventoryId,
-            i.book.id AS bookId,
-            CASE
-                WHEN COUNT(link.id) > 0 THEN true
-                ELSE false
-            END AS linked
-        FROM Inventory i
-        LEFT JOIN TiendanubeProductLink link
-            ON link.inventory.id = i.id
-            AND link.active = true
-        WHERE i.bookstore.id = :bookstoreId
-          AND i.condition = com.rodrilang.librarymanager.enums.BookCondition.NEW
-          AND i.book.id IN :bookIds
-        GROUP BY
-            i.id,
-            i.book.id
-        """)
+            SELECT
+                i.id AS inventoryId,
+                i.book.id AS bookId,
+                CASE
+                    WHEN COUNT(link.id) > 0 THEN true
+                    ELSE false
+                END AS linked
+            FROM Inventory i
+            LEFT JOIN TiendanubeProductLink link
+                ON link.inventory.id = i.id
+                AND link.active = true
+            WHERE i.bookstore.id = :bookstoreId
+              AND i.condition = com.rodrilang.librarymanager.enums.BookCondition.NEW
+              AND i.book.id IN :bookIds
+            GROUP BY
+                i.id,
+                i.book.id
+            """)
     List<InventoryTiendanubePreviewProjection> findTiendanubePreviewByBookIds(
             @Param("bookstoreId") Long bookstoreId,
             @Param("bookIds") Collection<Long> bookIds
