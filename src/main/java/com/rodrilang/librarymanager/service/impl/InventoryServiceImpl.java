@@ -212,7 +212,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         pageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
 
-        return inventoryRepository.findAllWithBookDetails(pageable)
+        return inventoryRepository.findAllByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId(), pageable)
                 .map(this::toSummaryResponse);
     }
 
@@ -226,7 +226,7 @@ public class InventoryServiceImpl implements InventoryService {
             );
 
             return inventoryRepository
-                    .findAllWithBookDetails(normalizedPageable)
+                    .findAllByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId(), normalizedPageable)
                     .map(this::toSummaryResponse);
         }
 
