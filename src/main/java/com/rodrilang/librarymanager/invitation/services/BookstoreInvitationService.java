@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.invitation.dto.CreateBookstoreInvitationResp
 import com.rodrilang.librarymanager.invitation.dto.InvitationValidationResponse;
 import com.rodrilang.librarymanager.invitation.event.BookstoreInvitationCreatedEvent;
 import com.rodrilang.librarymanager.invitation.model.BookstoreInvitation;
+import com.rodrilang.librarymanager.invitation.model.InvitationStatus;
 import com.rodrilang.librarymanager.invitation.repository.BookstoreInvitationRepository;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.service.BookstoreService;
@@ -89,16 +90,12 @@ public class BookstoreInvitationService {
     @Transactional(readOnly = true)
     public InvitationValidationResponse validate(String token) {
 
-        BookstoreInvitation invitation =
-                findAndValidate(token);
+        String tokenHash = tokenGenerator.hash(token);
 
-        return new InvitationValidationResponse(
-                true,
-                invitation.getBookstore().getId(),
-                invitation.getBookstore().getName(),
-                invitation.getEmail(),
-                invitation.getExpiresAt()
-        );
+        return invitationRepository
+                .findByTokenHash(tokenHash)
+                .map(this::toValidationResponse)
+                .orElseGet(this::invalidResponse);
     }
 
     @Transactional
@@ -120,21 +117,46 @@ public class BookstoreInvitationService {
         return invitation;
     }
 
-    private BookstoreInvitation findAndValidate(String token) {
+    private InvitationValidationResponse toValidationResponse(
+            BookstoreInvitation invitation) {
 
-        String tokenHash = tokenGenerator.hash(token);
+        InvitationStatus status = resolveStatus(invitation);
 
-        BookstoreInvitation invitation = invitationRepository
-                .findByTokenHash(tokenHash)
-                .orElseThrow(() ->
-                        new BusinessException(
-                                "La invitación no es válida"
-                        )
-                );
+        return new InvitationValidationResponse(
+                status,
+                invitation.getBookstore().getId(),
+                invitation.getBookstore().getName(),
+                invitation.getEmail(),
+                invitation.getExpiresAt()
+        );
+    }
 
-        validateInvitation(invitation);
+    private InvitationValidationResponse invalidResponse() {
+        return new InvitationValidationResponse(
+                InvitationStatus.INVALID,
+                null,
+                null,
+                null,
+                null
+        );
+    }
 
-        return invitation;
+    private InvitationStatus resolveStatus(
+            BookstoreInvitation invitation) {
+
+        if (invitation.isRevoked()) {
+            return InvitationStatus.REVOKED;
+        }
+
+        if (invitation.isUsed()) {
+            return InvitationStatus.USED;
+        }
+
+        if (invitation.isExpired()) {
+            return InvitationStatus.EXPIRED;
+        }
+
+        return InvitationStatus.VALID;
     }
 
     private void validateInvitation(

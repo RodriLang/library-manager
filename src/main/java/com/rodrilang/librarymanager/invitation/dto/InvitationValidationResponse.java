@@ -1,11 +1,13 @@
 
 package com.rodrilang.librarymanager.invitation.dto;
 
+import com.rodrilang.librarymanager.invitation.model.InvitationStatus;
+
 import java.time.Instant;
 
 public record InvitationValidationResponse(
 
-        boolean valid,
+        InvitationStatus status,
 
         Long bookstoreId,
 
