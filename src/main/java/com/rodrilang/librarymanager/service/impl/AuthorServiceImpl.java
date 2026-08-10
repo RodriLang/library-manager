@@ -64,7 +64,7 @@ public class AuthorServiceImpl implements AuthorService {
     public Page<AuthorResponse> search(String query, Pageable pageable) {
 
         return authorRepository
-                .findByNameContainingIgnoreCase(query, pageable)
+                .searchByName(query, pageable)
                 .map(authorMapper::toResponse);
     }
 

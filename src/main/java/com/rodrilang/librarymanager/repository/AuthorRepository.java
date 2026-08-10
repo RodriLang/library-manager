@@ -25,7 +25,30 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
             String nameNormalized
     );
 
-    Page<Author> findByNameContainingIgnoreCase(
+    @Query(
+            value = """
+                    SELECT a.*
+                    FROM authors a
+                    WHERE immutable_unaccent(lower(a.name))
+                        LIKE CONCAT(
+                            '%',
+                            immutable_unaccent(lower(:name)),
+                            '%'
+                        )
+                    """,
+            countQuery = """
+                    SELECT COUNT(*)
+                    FROM authors a
+                    WHERE immutable_unaccent(lower(a.name))
+                        LIKE CONCAT(
+                            '%',
+                            immutable_unaccent(lower(:name)),
+                            '%'
+                        )
+                    """,
+            nativeQuery = true
+    )
+    Page<Author> searchByName(
             String name,
             Pageable pageable
     );
