@@ -11,6 +11,7 @@ import com.rodrilang.librarymanager.auth.services.RoleService;
 import com.rodrilang.librarymanager.auth.services.UserService;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.invitation.dto.InvitationRegisterRequest;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,36 @@ public class UserServiceImpl implements UserService {
         user.setBookstore(bookstore);
 
         Role role = roleService.findByName(RoleType.BOOKSTORE_ADMIN);
+        user.setRoles(Set.of(role));
+
+        User savedUser = userRepository.save(user);
+
+        return userMapper.toDto(savedUser);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse createUserFromInvitation(
+            InvitationRegisterRequest request,
+            Bookstore bookstore,
+            RoleType roleType) {
+
+        String normalizedUsername = normalize(request.username());
+        String normalizedEmail = normalize(request.email());
+
+        validateUsername(normalizedUsername);
+        validateEmail(normalizedEmail);
+
+        User user = new User();
+
+        user.setUsername(normalizedUsername);
+        user.setEmail(normalizedEmail);
+        user.setFirstName(request.firstName().trim());
+        user.setLastName(request.lastName().trim());
+        user.setPassword(passwordEncoder.encode(request.password()));
+        user.setBookstore(bookstore);
+
+        Role role = roleService.findByName(roleType);
         user.setRoles(Set.of(role));
 
         User savedUser = userRepository.save(user);
