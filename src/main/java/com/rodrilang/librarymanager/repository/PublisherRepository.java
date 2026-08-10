@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.model.Publisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
@@ -17,7 +18,30 @@ public interface PublisherRepository extends JpaRepository<Publisher, Long> {
 
     boolean existsByNameNormalized(String nameNormalized);
 
-    Page<Publisher> findByNameContainingIgnoreCase(
+    @Query(
+            value = """
+                    SELECT p.*
+                    FROM publishers p
+                    WHERE immutable_unaccent(lower(p.name))
+                        LIKE CONCAT(
+                            '%',
+                            immutable_unaccent(lower(:name)),
+                            '%'
+                        )
+                    """,
+            countQuery = """
+                    SELECT COUNT(*)
+                    FROM publishers p
+                    WHERE immutable_unaccent(lower(p.name))
+                        LIKE CONCAT(
+                            '%',
+                            immutable_unaccent(lower(:name)),
+                            '%'
+                        )
+                    """,
+            nativeQuery = true
+    )
+    Page<Publisher> searchByName(
             String name,
             Pageable pageable
     );

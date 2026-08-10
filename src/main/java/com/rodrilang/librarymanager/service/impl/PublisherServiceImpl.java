@@ -60,7 +60,7 @@ public class PublisherServiceImpl implements PublisherService {
     public Page<PublisherResponse> search(String query, Pageable pageable) {
 
         return publisherRepository
-                .findByNameContainingIgnoreCase(query, pageable)
+                .searchByName(query, pageable)
                 .map(publisherMapper::toResponse);
     }
 

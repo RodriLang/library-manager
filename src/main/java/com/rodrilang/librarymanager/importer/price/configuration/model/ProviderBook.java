@@ -14,10 +14,6 @@ import java.time.Instant;
                 @UniqueConstraint(
                         name = "uk_provider_books_provider_book",
                         columnNames = {"provider_id", "book_id"}
-                ),
-                @UniqueConstraint(
-                        name = "uk_provider_books_external_code",
-                        columnNames = {"provider_id", "external_code"}
                 )
         }
 )
