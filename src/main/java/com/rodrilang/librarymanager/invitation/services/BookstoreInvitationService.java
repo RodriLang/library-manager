@@ -1,15 +1,16 @@
 package com.rodrilang.librarymanager.invitation.services;
 
-import com.rodrilang.librarymanager.auth.enums.RoleType;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.invitation.dto.CreateBookstoreInvitationRequest;
 import com.rodrilang.librarymanager.invitation.dto.CreateBookstoreInvitationResponse;
 import com.rodrilang.librarymanager.invitation.dto.InvitationValidationResponse;
+import com.rodrilang.librarymanager.invitation.event.BookstoreInvitationCreatedEvent;
 import com.rodrilang.librarymanager.invitation.model.BookstoreInvitation;
 import com.rodrilang.librarymanager.invitation.repository.BookstoreInvitationRepository;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,8 @@ public class BookstoreInvitationService {
     private final InvitationTokenGenerator tokenGenerator;
     private final BookstoreService bookstoreService;
 
+    private final ApplicationEventPublisher eventPublisher;
+
     @Transactional
     public CreateBookstoreInvitationResponse create(
             CreateBookstoreInvitationRequest request) {
@@ -42,16 +45,11 @@ public class BookstoreInvitationService {
                         ? request.expirationHours()
                         : DEFAULT_EXPIRATION_HOURS;
 
-        RoleType role =
-                request.role() != null
-                        ? request.role()
-                        : RoleType.BOOKSTORE_USER;
-
         BookstoreInvitation invitation =
                 BookstoreInvitation.builder()
                         .bookstore(bookstore)
                         .email(normalizeEmail(request.email()))
-                        .role(role)
+                        .role(request.role())
                         .tokenHash(tokenHash)
                         .expiresAt(
                                 Instant.now().plus(
@@ -61,8 +59,21 @@ public class BookstoreInvitationService {
                         )
                         .build();
 
-        BookstoreInvitation saved =
-                invitationRepository.save(invitation);
+        BookstoreInvitation saved = invitationRepository.save(invitation);
+
+
+        if (saved.getEmail() != null) {
+
+            eventPublisher.publishEvent(
+                    new BookstoreInvitationCreatedEvent(
+                            saved.getId(),
+                            saved.getEmail(),
+                            bookstore.getName(),
+                            token,
+                            saved.getExpiresAt()
+                    )
+            );
+        }
 
         return new CreateBookstoreInvitationResponse(
                 saved.getId(),
