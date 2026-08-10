@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.service.impl;
 
+import com.rodrilang.librarymanager.dto.internal.InventoryEditorialPriceSyncResult;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceInsertRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceUpdateRow;
@@ -8,21 +9,26 @@ import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListResolve
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.EditorialPriceBatchRepository;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePriceSyncRequestedEvent;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
+import com.rodrilang.librarymanager.repository.InventoryEditorialPriceSyncRepository;
 import com.rodrilang.librarymanager.repository.projection.EditorialPriceImportProjection;
 import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -34,6 +40,8 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     private final EditorialPriceRepository editorialPriceRepository;
     private final EditorialPriceBatchRepository batchRepository;
     private final PriceListImportJobRepository jobRepository;
+    private final InventoryEditorialPriceSyncRepository inventoryEditorialPriceSyncRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -116,6 +124,8 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
         List<EditorialPriceUpdateRow> toUpdate = new ArrayList<>();
 
+        Set<Long> changedPriceBookIds = new LinkedHashSet<>();
+
         int unchanged = 0;
 
         long classificationStartedAt =
@@ -132,6 +142,8 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                                 resolved.selectedPrice()
                         )
                 );
+
+                changedPriceBookIds.add(resolved.bookId());
 
                 continue;
             }
@@ -150,6 +162,8 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                             resolved.selectedPrice()
                     )
             );
+
+            changedPriceBookIds.add(resolved.bookId());
         }
 
         log.info(
@@ -196,6 +210,39 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         - updateStartedAt)
                         / 1_000_000
         );
+
+        long inventorySyncStartedAt = System.nanoTime();
+
+        InventoryEditorialPriceSyncResult inventorySyncResult =
+                inventoryEditorialPriceSyncRepository.syncCurrentPrices(
+                        changedPriceBookIds,
+                        LocalDate.now(ZoneId.systemDefault())
+                );
+
+        log.info(
+                "Resolved price inventory sync completed. "
+                        + "jobId={} changedBooks={} "
+                        + "updatedInventories={} "
+                        + "tiendanubeSyncRequested={}",
+                jobId,
+                changedPriceBookIds.size(),
+                inventorySyncResult.updatedInventories(),
+                inventorySyncResult
+                        .tiendanubeSyncInventoryIds()
+                        .size()
+        );
+
+        if (!inventorySyncResult
+                .tiendanubeSyncInventoryIds()
+                .isEmpty()) {
+
+            eventPublisher.publishEvent(
+                    new TiendanubePriceSyncRequestedEvent(
+                            inventorySyncResult
+                                    .tiendanubeSyncInventoryIds()
+                    )
+            );
+        }
 
         int accounted = toInsert.size() + toUpdate.size() + unchanged;
 
