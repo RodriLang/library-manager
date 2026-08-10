@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.invitation.dto.InvitationRegisterRequest;
 import com.rodrilang.librarymanager.invitation.dto.InvitationValidationResponse;
 import com.rodrilang.librarymanager.invitation.services.BookstoreInvitationService;
 import com.rodrilang.librarymanager.invitation.services.InvitationRegistrationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,6 +15,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(
+        name = "Invitation Registration",
+        description = "Validación de invitaciones y registro de usuarios mediante un código de acceso"
+)
 @RestController
 @RequestMapping("/api/auth/invitations")
 @RequiredArgsConstructor
