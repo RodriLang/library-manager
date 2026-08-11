@@ -1,25 +1,26 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.entity;
 
 import com.rodrilang.librarymanager.model.Inventory;
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.Instant;
 
 @Entity
-@Table(
-        name = "tiendanube_product_links",
-        uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uk_tiendanube_store_variant",
-                        columnNames = {"tiendanube_store_id", "tiendanube_variant_id"}
-                ),
-                @UniqueConstraint(
-                        name = "uk_tiendanube_store_inventory",
-                        columnNames = {"tiendanube_store_id", "inventory_id"}
-                )
-        }
-)
+@Table(name = "tiendanube_product_links")
 @Getter
 @Setter
 @NoArgsConstructor
