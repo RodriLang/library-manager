@@ -7,12 +7,21 @@ public record EditorialPriceResponse(
 
         BigDecimal price,
 
-        LocalDate validFrom
+        LocalDate validFrom,
+
+        Long providerId,
+
+        String providerName,
+
+        String providerCode
 
 ) {
 
     public static EditorialPriceResponse empty() {
         return new EditorialPriceResponse(
+                null,
+                null,
+                null,
                 null,
                 null
         );

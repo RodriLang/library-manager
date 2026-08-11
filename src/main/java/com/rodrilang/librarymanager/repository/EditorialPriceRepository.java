@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.repository;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.projection.EditorialPriceImportProjection;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -18,10 +19,11 @@ public interface EditorialPriceRepository
 
     boolean existsByBookId(Long bookId);
 
+    @EntityGraph(attributePaths = "provider")
     Optional<EditorialPrice>
     findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
             Long bookId,
-            LocalDate date
+            LocalDate validFrom
     );
 
     Optional<EditorialPrice> findByBookIdAndProviderIdAndValidFrom(
