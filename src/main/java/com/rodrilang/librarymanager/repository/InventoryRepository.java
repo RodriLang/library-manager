@@ -71,6 +71,22 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             BookCondition condition
     );
 
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.publisher",
+            "book.authors",
+            "book.coverUrl",
+            "bookstore"
+    })
+    @Query("""
+            SELECT i
+            FROM Inventory i
+            WHERE i.id = :inventoryId
+            """)
+    Optional<Inventory> findByIdForTiendanubePublish(
+            @Param("inventoryId") Long inventoryId
+    );
+
     @Query(
             value = """
                     SELECT i.*

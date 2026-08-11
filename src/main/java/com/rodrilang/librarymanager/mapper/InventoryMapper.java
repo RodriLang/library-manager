@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.mapper;
 
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
+import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.model.Author;
@@ -30,15 +31,30 @@ public abstract class InventoryMapper {
     @Mapping(target = "active", source = "inventory.active")
     @Mapping(target = "createdAt", source = "inventory.createdAt")
     @Mapping(target = "updatedAt", source = "inventory.updatedAt")
-    @Mapping(target = "book", expression = "java(toBookDetailResponse(inventory, editorialPrice))")
-    public abstract InventoryDetailResponse toDetailResponse(Inventory inventory, EditorialPrice editorialPrice);
+    @Mapping(
+            target = "book",
+            expression = "java(toBookDetailResponse(inventory, editorialPrice, providers))"
+    )
+    public abstract InventoryDetailResponse toDetailResponse(
+            Inventory inventory,
+            EditorialPrice editorialPrice,
+            List<BookProviderResponse> providers
+    );
 
-    protected BookDetailResponse toBookDetailResponse(Inventory inventory, EditorialPrice editorialPrice) {
+    protected BookDetailResponse toBookDetailResponse(
+            Inventory inventory,
+            EditorialPrice editorialPrice,
+            List<BookProviderResponse> providers
+    ) {
         if (inventory == null || inventory.getBook() == null) {
             return null;
         }
 
-        return bookMapper.toDetailResponse(inventory.getBook(), editorialPrice);
+        return bookMapper.toDetailResponse(
+                inventory.getBook(),
+                editorialPrice,
+                providers
+        );
     }
 
     @Mapping(target = "id", source = "inventory.id")

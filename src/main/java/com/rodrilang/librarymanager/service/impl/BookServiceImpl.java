@@ -4,12 +4,14 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
+import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.mapper.BookMapper;
@@ -34,6 +36,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -53,6 +56,7 @@ public class BookServiceImpl implements BookService {
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
     private final IsbnService isbnService;
+    private final ProviderBookService providerBookService;
 
     @Transactional
     @Override
@@ -287,6 +291,13 @@ public class BookServiceImpl implements BookService {
 
     private BookDetailResponse toDetailResponse(Book book) {
         EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId()).orElse(null);
-        return bookMapper.toDetailResponse(book, editorialPrice);
+
+        List<BookProviderResponse> providers =
+                providerBookService
+                        .findActiveProvidersByBookId(
+                                book.getId()
+                        );
+
+        return bookMapper.toDetailResponse(book, editorialPrice, providers);
     }
 }

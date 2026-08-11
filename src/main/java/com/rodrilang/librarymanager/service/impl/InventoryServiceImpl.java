@@ -5,12 +5,14 @@ import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
+import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
@@ -34,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -48,6 +51,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final TiendanubeVariantSyncService tiendanubeVariantSyncService;
     private final EditorialPriceService editorialPriceService;
     private final BookstoreService bookstoreService;
+    private final ProviderBookService providerBookService;
     private final BookstoreContext bookstoreContext;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -369,7 +373,13 @@ public class InventoryServiceImpl implements InventoryService {
         EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(inventory.getBook().getId())
                 .orElse(null);
 
-        return inventoryMapper.toDetailResponse(inventory, editorialPrice);
+        List<BookProviderResponse> providers =
+                providerBookService
+                        .getProvidersForBook(
+                                inventory.getBook().getId()
+                        );
+
+        return inventoryMapper.toDetailResponse(inventory, editorialPrice, providers);
     }
 
     private InventoryDetailResponse saveAndSyncStock(Inventory inventory) {

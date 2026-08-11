@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.configuration.repository;
 
+import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -28,6 +29,26 @@ public interface ProviderBookRepository extends JpaRepository<ProviderBook, Long
     List<ProviderBook> findByBookIdAndActiveTrue(Long bookId);
 
     List<ProviderBook> findByProviderIdAndReportedIsbn(Long providerId, String reportedIsbn);
+
+    @Query("""
+            SELECT new com.rodrilang.librarymanager.dto.response.BookProviderResponse(
+                pb.provider.id,
+                pb.provider.name,
+                pb.provider.code,
+                pb.externalCode,
+                pb.reportedIsbn,
+                pb.identifierStatus,
+                pb.active,
+                pb.lastSeenAt
+            )
+            FROM ProviderBook pb
+            WHERE pb.book.id = :bookId
+              AND pb.active = true
+            ORDER BY pb.provider.name
+            """)
+    List<BookProviderResponse> findActiveProvidersByBookId(
+            @Param("bookId") Long bookId
+    );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = {
