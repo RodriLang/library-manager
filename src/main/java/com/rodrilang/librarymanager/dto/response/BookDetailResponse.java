@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.enums.BookSource;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 
 public record BookDetailResponse(
@@ -53,6 +54,8 @@ public record BookDetailResponse(
         Set<AuthorResponse> authors,
 
         EditorialPriceResponse editorialPrice,
+
+        List<BookProviderResponse> providers,
 
         Instant createdAt,
 

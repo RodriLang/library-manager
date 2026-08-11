@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.configuration.service.impl;
 
+import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookRegistrationResult;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
@@ -75,6 +76,20 @@ public class ProviderBookServiceImpl implements ProviderBookService {
                 saved.getExternalCode(),
                 created
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookProviderResponse> findActiveProvidersByBookId(
+            Long bookId
+    ) {
+        return providerBookRepository.findActiveProvidersByBookId(bookId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookProviderResponse> getProvidersForBook(Long bookId) {
+        return providerBookRepository.findActiveProvidersByBookId(bookId);
     }
 
     @Override

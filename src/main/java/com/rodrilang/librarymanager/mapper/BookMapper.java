@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.mapper;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
+import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.EditorialPrice;
@@ -11,6 +12,8 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
+
+import java.util.List;
 
 @Mapper(componentModel = "spring", uses = {AuthorMapper.class, PublisherMapper.class, EditorialPriceMapper.class})
 public interface BookMapper {
@@ -22,7 +25,12 @@ public interface BookMapper {
     @Mapping(target = "createdAt", source = "book.createdAt")
     @Mapping(target = "updatedAt", source = "book.updatedAt")
     @Mapping(target = "editorialPrice", source = "editorialPrice")
-    BookDetailResponse toDetailResponse(Book book, EditorialPrice editorialPrice);
+    @Mapping(target = "providers", source = "providers")
+    BookDetailResponse toDetailResponse(
+            Book book,
+            EditorialPrice editorialPrice,
+            List<BookProviderResponse> providers
+    );
 
     @Mapping(target = "isbn", expression = "java(book.getPreferredIsbn())")
     @Mapping(target = "id", source = "book.id")

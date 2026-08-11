@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.RemoteInventoryMatch;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateImageRequest;
@@ -54,8 +55,15 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     private final BookstoreContext bookstoreContext;
 
     @Override
+    @Transactional
     public TiendanubePublishResultResponse publishInventory(Long inventoryId) {
-        Inventory inventory = getInventory(inventoryId);
+        Inventory inventory = inventoryRepository
+                .findByIdForTiendanubePublish(inventoryId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "No se encontró el inventario."
+                        )
+                );
         TiendanubeStore store = getActiveStore(inventory.getBookstore().getId());
 
         validateCanPublish(inventory, store.getStoreId());
