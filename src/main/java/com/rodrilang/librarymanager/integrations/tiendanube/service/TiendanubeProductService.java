@@ -12,11 +12,15 @@ public interface TiendanubeProductService {
 
     TiendanubePublishResultResponse publishInventory(Long inventoryId);
 
-    List<TiendanubeRemoteProductResponse> getRemoteProducts(Long bookstoreId);
+    List<TiendanubeRemoteProductResponse> getRemoteProducts();
 
     TiendanubeProductLinkResponse linkExistingProduct(Long inventoryId, Long productId, Long variantId);
 
     TiendanubeRetryResponse retry(Long inventoryId);
 
     TiendanubeInventoryStatusResponse getInventoryStatus(Long inventoryId);
+
+    void unlinkInventory(Long inventoryId);
+
+    void deletePublication(Long inventoryId);
 }

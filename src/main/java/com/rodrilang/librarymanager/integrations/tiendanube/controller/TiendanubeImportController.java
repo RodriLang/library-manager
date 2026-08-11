@@ -24,28 +24,25 @@ public class TiendanubeImportController {
 
     @GetMapping("/preview")
     public TiendanubeImportPreviewResponse preview(
-            @RequestParam Long bookstoreId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return importService.preview(bookstoreId, page, size);
+        return importService.preview(page, size);
     }
 
     @PostMapping("/products/{productId}/variants/{variantId}")
     @ResponseStatus(HttpStatus.CREATED)
     public TiendanubeImportResultResponse importProduct(
-            @RequestParam Long bookstoreId,
             @PathVariable Long productId,
             @PathVariable Long variantId
     ) {
-        return importService.importProduct(bookstoreId, productId, variantId);
+        return importService.importProduct(productId, variantId);
     }
 
     @PostMapping
     public TiendanubeBulkImportResponse importProducts(
-            @RequestParam Long bookstoreId,
             @Valid @RequestBody TiendanubeBulkImportRequest request
     ) {
-        return importService.importProducts(bookstoreId, request);
+        return importService.importProducts(request);
     }
 }

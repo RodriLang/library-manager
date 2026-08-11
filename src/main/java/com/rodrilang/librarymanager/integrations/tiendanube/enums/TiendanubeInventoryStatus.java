@@ -2,7 +2,9 @@ package com.rodrilang.librarymanager.integrations.tiendanube.enums;
 
 public enum TiendanubeInventoryStatus {
 
-    DISABLED,
+    NOT_CONNECTED,
+
+    NOT_PUBLISHED,
 
     PENDING_PUBLICATION,
 

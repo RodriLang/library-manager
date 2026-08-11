@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.config.TiendanubeProperties;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeAuthorizationResponse;
@@ -117,6 +118,30 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
                                 null
                         )
                 );
+    }
+
+    @Override
+    @Transactional
+    public void disconnect() {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        TiendanubeStore store =
+                storeRepository
+                        .findByBookstoreIdAndActiveTrue(bookstoreId)
+                        .orElseThrow(() ->
+                                new BusinessException(
+                                        "La librería no tiene una cuenta de Tiendanube conectada."
+                                )
+                        );
+
+        store.setActive(false);
+
+        log.info(
+                "Tiendanube disconnected. bookstoreId={} storeId={}",
+                bookstoreId,
+                store.getStoreId()
+        );
     }
 
     private void validateCode(String code) {

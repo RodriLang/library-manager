@@ -10,4 +10,6 @@ public interface TiendanubeOAuthService {
     void handleCallback(String code, String state);
 
     TiendanubeConnectionStatusResponse getStatus();
+
+    void disconnect();
 }

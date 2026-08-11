@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -55,9 +56,8 @@ public class TiendanubeProductController {
     }
 
     @GetMapping("/products")
-    public List<TiendanubeRemoteProductResponse> getRemoteProducts(@RequestParam Long bookstoreId) {
-        // TODO remover bookstoreId cuando haya autenticación
-        return productService.getRemoteProducts(bookstoreId);
+    public List<TiendanubeRemoteProductResponse> getRemoteProducts() {
+        return productService.getRemoteProducts();
     }
 
     @PostMapping("/products/link")
@@ -69,5 +69,21 @@ public class TiendanubeProductController {
                 request.productId(),
                 request.variantId()
         );
+    }
+
+    @DeleteMapping("/inventories/{inventoryId}/link")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unlinkInventory(
+            @PathVariable Long inventoryId
+    ) {
+        productService.unlinkInventory(inventoryId);
+    }
+
+    @DeleteMapping("/inventories/{inventoryId}/publication")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePublication(
+            @PathVariable Long inventoryId
+    ) {
+        productService.deletePublication(inventoryId);
     }
 }

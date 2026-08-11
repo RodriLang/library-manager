@@ -190,6 +190,39 @@ public class TiendanubeClient {
         }
     }
 
+    public void deleteProduct(
+            Long storeId,
+            Long productId
+    ) {
+        TiendanubeStore store = getActiveStore(storeId);
+
+        try {
+            tiendanubeRestClient
+                    .delete()
+                    .uri(
+                            properties.apiUrl()
+                                    + "/{storeId}/products/{productId}",
+                            storeId,
+                            productId
+                    )
+                    .header(
+                            HttpHeaders.AUTHORIZATION,
+                            buildAuthorizationHeader(store)
+                    )
+                    .header(
+                            HttpHeaders.USER_AGENT,
+                            USER_AGENT_VALUE
+                    )
+                    .retrieve()
+                    .toBodilessEntity();
+
+        } catch (RestClientResponseException exception) {
+            throw buildApiException(
+                    "eliminar publicación",
+                    exception
+            );
+        }
+    }
 
     private long parseTotalCount(ResponseEntity<?> response) {
         String value = response.getHeaders().getFirst("x-total-count");
