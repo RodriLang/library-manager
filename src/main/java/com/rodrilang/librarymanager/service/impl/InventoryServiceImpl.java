@@ -76,7 +76,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         TiendanubeInventoryStatus tiendanubeStatus = Boolean.TRUE.equals(request.publishOnTiendanube())
                 ? TiendanubeInventoryStatus.PENDING_PUBLICATION
-                : TiendanubeInventoryStatus.DISABLED;
+                : TiendanubeInventoryStatus.NOT_PUBLISHED;
 
         boolean editorialPriceSyncEnabled =
                 condition == BookCondition.NEW
@@ -157,7 +157,7 @@ public class InventoryServiceImpl implements InventoryService {
         );
         inventory.setTiendanubePriceSyncEnabled(Boolean.TRUE.equals(request.tiendanubePriceSyncEnabled()));
 
-        if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.DISABLED
+        if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.NOT_PUBLISHED
                 && Boolean.TRUE.equals(request.publishOnTiendanube())) {
             inventory.setTiendanubeStatus(TiendanubeInventoryStatus.PENDING_PUBLICATION);
         }

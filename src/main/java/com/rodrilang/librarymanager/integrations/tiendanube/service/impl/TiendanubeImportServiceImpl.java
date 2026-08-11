@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
@@ -66,13 +67,16 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     private final TiendanubeProductMatchingService matchingService;
     private final TiendanubeProductSyncService productSyncService;
     private final IsbnService isbnService;
+    private final BookstoreContext bookstoreContext;
 
     @Override
     public TiendanubeImportPreviewResponse preview(
-            Long bookstoreId,
             int page,
             int size
     ) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
         TiendanubeStore store =
                 getActiveStore(bookstoreId);
 
@@ -130,7 +134,10 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     @Override
-    public TiendanubeImportResultResponse importProduct(Long bookstoreId, Long productId, Long variantId) {
+    public TiendanubeImportResultResponse importProduct(Long productId, Long variantId) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
         TiendanubeStore store = getActiveStore(bookstoreId);
 
         validateVariantNotLinked(store.getStoreId(), variantId);
@@ -184,7 +191,9 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     @Override
-    public TiendanubeBulkImportResponse importProducts(Long bookstoreId, TiendanubeBulkImportRequest request) {
+    public TiendanubeBulkImportResponse importProducts(TiendanubeBulkImportRequest request) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
         TiendanubeStore store = getActiveStore(bookstoreId);
         List<TiendanubeImportItemResultResponse> results = new ArrayList<>();
 

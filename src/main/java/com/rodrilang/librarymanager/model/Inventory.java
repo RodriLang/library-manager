@@ -70,7 +70,7 @@ public class Inventory extends AuditableEntity {
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "tiendanube_status", nullable = false, length = 40)
-    private TiendanubeInventoryStatus tiendanubeStatus = TiendanubeInventoryStatus.DISABLED;
+    private TiendanubeInventoryStatus tiendanubeStatus = TiendanubeInventoryStatus.NOT_PUBLISHED;
 
     @Builder.Default
     @Column(name = "tiendanube_price_sync_enabled", nullable = false)

@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.RemoteInventoryMatch;
@@ -13,6 +14,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRemoteProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRetryResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
@@ -49,6 +51,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     private final TiendanubeProductLinkPersistenceService linkPersistenceService;
     private final TiendanubeProductLinkService productLinkService;
     private final TiendanubeProductMatchingService matchingService;
+    private final BookstoreContext bookstoreContext;
 
     @Override
     public TiendanubePublishResultResponse publishInventory(Long inventoryId) {
@@ -119,7 +122,9 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TiendanubeRemoteProductResponse> getRemoteProducts(Long bookstoreId) {
+    public List<TiendanubeRemoteProductResponse> getRemoteProducts() {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
         TiendanubeStore store = getActiveStore(bookstoreId);
 
         return client.getProducts(store.getStoreId()).stream()
@@ -168,25 +173,124 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     public TiendanubeInventoryStatusResponse getInventoryStatus(Long inventoryId) {
         Inventory inventory = getInventory(inventoryId);
 
-        return productLinkRepository.findByInventoryIdAndActiveTrue(inventoryId)
-                .map(link -> new TiendanubeInventoryStatusResponse(
-                        inventoryId,
-                        inventory.getTiendanubeStatus(),
-                        link.getTiendanubeProductId(),
-                        link.getTiendanubeVariantId(),
-                        link.getSku(),
-                        link.getLastSyncedAt(),
-                        link.getLastError()
-                ))
-                .orElseGet(() -> new TiendanubeInventoryStatusResponse(
-                        inventoryId,
-                        inventory.getTiendanubeStatus(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null
-                ));
+        Long bookstoreId = inventory.getBookstore().getId();
+
+        boolean tiendanubeConnected =
+                storeRepository
+                        .findByBookstoreIdAndActiveTrue(bookstoreId)
+                        .isPresent();
+
+        if (!tiendanubeConnected) {
+            return new TiendanubeInventoryStatusResponse(
+                    inventoryId,
+                    TiendanubeInventoryStatus.NOT_CONNECTED,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+        }
+
+        return productLinkRepository
+                .findByInventoryIdAndActiveTrue(inventoryId)
+                .map(link ->
+                        new TiendanubeInventoryStatusResponse(
+                                inventoryId,
+                                inventory.getTiendanubeStatus(),
+                                link.getTiendanubeProductId(),
+                                link.getTiendanubeVariantId(),
+                                link.getSku(),
+                                link.getLastSyncedAt(),
+                                link.getLastError()
+                        )
+                )
+                .orElseGet(() ->
+                        new TiendanubeInventoryStatusResponse(
+                                inventoryId,
+                                resolveUnlinkedStatus(inventory),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null
+                        )
+                );
+    }
+
+    @Override
+    @Transactional
+    public void unlinkInventory(Long inventoryId) {
+
+        Inventory inventory = getInventory(inventoryId);
+
+        TiendanubeProductLink link =
+                productLinkRepository
+                        .findByInventoryIdAndActiveTrue(inventoryId)
+                        .orElseThrow(() ->
+                                new BusinessException(
+                                        "El inventario no tiene una publicación de Tiendanube vinculada."
+                                )
+                        );
+
+        link.setActive(false);
+        link.setLastError(null);
+
+        inventory.setTiendanubeStatus(
+                TiendanubeInventoryStatus.NOT_PUBLISHED
+        );
+
+        inventory.setTiendanubePriceSyncEnabled(false);
+
+        log.info(
+                "Inventario desvinculado de Tiendanube. "
+                        + "inventoryId={} productId={} variantId={}",
+                inventoryId,
+                link.getTiendanubeProductId(),
+                link.getTiendanubeVariantId()
+        );
+    }
+
+    @Override
+    @Transactional
+    public void deletePublication(Long inventoryId) {
+
+        Inventory inventory = getInventory(inventoryId);
+
+        TiendanubeProductLink link =
+                productLinkRepository
+                        .findByInventoryIdAndActiveTrue(inventoryId)
+                        .orElseThrow(() ->
+                                new BusinessException(
+                                        "El inventario no tiene una publicación de Tiendanube vinculada."
+                                )
+                        );
+
+        TiendanubeStore store =
+                getActiveStore(
+                        inventory.getBookstore().getId()
+                );
+
+        client.deleteProduct(
+                store.getStoreId(),
+                link.getTiendanubeProductId()
+        );
+
+        link.setActive(false);
+        link.setLastError(null);
+
+        inventory.setTiendanubeStatus(
+                TiendanubeInventoryStatus.NOT_PUBLISHED
+        );
+
+        inventory.setTiendanubePriceSyncEnabled(false);
+
+        log.info(
+                "Publicación eliminada de Tiendanube. "
+                        + "inventoryId={} productId={}",
+                inventoryId,
+                link.getTiendanubeProductId()
+        );
     }
 
     private void validateCanPublish(Inventory inventory, Long storeId) {
@@ -291,5 +395,24 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         }
 
         return product.variants().getFirst();
+    }
+
+    private TiendanubeInventoryStatus resolveUnlinkedStatus(
+            Inventory inventory
+    ) {
+        TiendanubeInventoryStatus status =
+                inventory.getTiendanubeStatus();
+
+        if (
+                status == TiendanubeInventoryStatus.PENDING_PUBLICATION
+                        || status == TiendanubeInventoryStatus.PUBLISHING
+                        || status == TiendanubeInventoryStatus.LINK_REQUIRED
+                        || status == TiendanubeInventoryStatus.SYNC_ERROR
+                        || status == TiendanubeInventoryStatus.REMOTE_PRODUCT_NOT_FOUND
+        ) {
+            return status;
+        }
+
+        return TiendanubeInventoryStatus.NOT_PUBLISHED;
     }
 }
