@@ -41,7 +41,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse login(LoginRequestDto request) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                        request.username(),
+                        request.identifier(),
                         request.password()
                 )
         );
