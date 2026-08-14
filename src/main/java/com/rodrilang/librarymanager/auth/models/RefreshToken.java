@@ -53,8 +53,8 @@ public class RefreshToken {
     private Instant createdAt = Instant.now();
 
     @Setter
-    @Column(name = "used_at")
-    private Instant usedAt;
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
 
     @Setter
     @Builder.Default

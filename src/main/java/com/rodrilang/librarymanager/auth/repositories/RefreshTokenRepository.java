@@ -20,7 +20,7 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     @Query("""
             UPDATE RefreshToken rt
             SET rt.revoked = true,
-                rt.usedAt = :revokedAt
+                rt.revokedAt = :revokedAt
             WHERE rt.user.id = :userId
               AND rt.revoked = false
             """)

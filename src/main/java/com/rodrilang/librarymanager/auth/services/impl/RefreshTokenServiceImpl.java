@@ -61,13 +61,11 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
                 .orElseThrow(() -> new InvalidTokenException("El refresh token es inválido o fue revocado."));
 
         if (!currentToken.getExpiresAt().isAfter(now)) {
-            currentToken.setUsedAt(now);
-            currentToken.setRevoked(true);
 
             throw new InvalidTokenException("El refresh token ha vencido.");
         }
 
-        currentToken.setUsedAt(now);
+        currentToken.setRevokedAt(now);
         currentToken.setRevoked(true);
 
         User user = currentToken.getUser();
@@ -85,10 +83,14 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         }
 
         String tokenHash = secureTokenService.hash(rawToken);
+        Instant now = Instant.now();
 
         refreshTokenRepository
                 .findByTokenHashAndRevokedFalse(tokenHash)
-                .ifPresent(refreshToken -> refreshToken.setRevoked(true));
+                .ifPresent(refreshToken -> {
+                    refreshToken.setRevoked(true);
+                    refreshToken.setRevokedAt(now);
+                });
 
         log.debug("Refresh token revoked");
     }
