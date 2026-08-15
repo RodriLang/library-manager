@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.auth.services.impl;
 
+import com.rodrilang.librarymanager.auth.dtos.request.UpdateProfileRequest;
 import com.rodrilang.librarymanager.auth.dtos.request.UserRequestDto;
 import com.rodrilang.librarymanager.auth.dtos.response.UserResponse;
 import com.rodrilang.librarymanager.auth.enums.RoleType;
@@ -31,6 +32,8 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final BookstoreService bookstoreService;
+
+    private static final String USER_NOT_FOUND_MESSAGE = "No se encontró el usuario autenticado.";
 
     @Override
     @Transactional
@@ -91,9 +94,36 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    public UserResponse findByUsername(String username) {
-        User user = userRepository.findByUsername(normalize(username))
-                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el usuario autenticado."));
+    public UserResponse findById(Long userId) {
+        User user = userRepository
+                .findByIdAndEnabledTrueAndAccountLockedFalse(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND_MESSAGE));
+
+        return userMapper.toDto(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserResponse findByUsername(String identifier) {
+        String normalized = normalize(identifier);
+
+        User user = userRepository.findByUsernameOrEmail(normalized)
+                .orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND_MESSAGE));
+
+        return userMapper.toDto(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateProfile(
+            Long userId,
+            UpdateProfileRequest request
+    ) {
+        User user = userRepository.findByIdAndEnabledTrueAndAccountLockedFalse(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND_MESSAGE));
+
+        user.setFirstName(request.firstName().trim());
+        user.setLastName(request.lastName().trim());
 
         return userMapper.toDto(user);
     }

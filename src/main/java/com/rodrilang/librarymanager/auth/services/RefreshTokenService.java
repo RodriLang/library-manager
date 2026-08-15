@@ -4,11 +4,15 @@ import com.rodrilang.librarymanager.auth.dtos.internal.RefreshTokenRotationResul
 
 public interface RefreshTokenService {
 
-    String generateRefreshToken(String username);
+    String generateRefreshToken(String identifier);
 
     RefreshTokenRotationResult rotate(String rawToken);
 
     void revokeToken(String rawToken);
+
+    void revokeAllForUser(Long userId);
+
+    void revokeAllForBookstore(Long bookstoreId);
 
     void cleanupExpiredTokens();
 }

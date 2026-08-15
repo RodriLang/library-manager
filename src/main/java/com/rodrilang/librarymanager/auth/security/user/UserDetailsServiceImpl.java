@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -20,8 +21,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     @Transactional(readOnly = true)
-    public AuthenticatedUser loadUserByUsername(String username) {
-        User user = userRepository.findByUsername(username)
+    public AuthenticatedUser loadUserByUsername(String identifier) {
+        String normalizedIdentifier = normalize(identifier);
+
+        User user = userRepository.findByUsernameOrEmail(normalizedIdentifier)
                 .orElseThrow(() ->
                         new UsernameNotFoundException(
                                 "El usuario o la contraseña son incorrectos."
@@ -56,5 +59,9 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 user.isEnabled(),
                 user.isAccountLocked()
         );
+    }
+
+    private String normalize(String value) {
+        return value.trim().toLowerCase(Locale.ROOT);
     }
 }
