@@ -32,12 +32,6 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public UserResponse register(UserRequestDto request) {
-        return userService.createUser(request);
-    }
-
-    @Override
-    @Transactional
     public AuthResponse login(LoginRequestDto request) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(

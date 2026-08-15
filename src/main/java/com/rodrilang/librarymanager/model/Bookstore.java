@@ -25,8 +25,17 @@ public class Bookstore extends AuditableEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 150)
     private String name;
+
+    @Column(length = 150)
+    private String email;
+
+    @Column(length = 50)
+    private String phone;
+
+    @Column(length = 200)
+    private String address;
 
     @Builder.Default
     @Column(nullable = false)

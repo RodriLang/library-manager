@@ -108,6 +108,21 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     }
 
     @Override
+    public void revokeAllForBookstore(Long bookstoreId) {
+        int revokedTokens =
+                refreshTokenRepository.revokeAllByBookstoreId(
+                        bookstoreId,
+                        Instant.now()
+                );
+
+        log.debug(
+                "All refresh tokens revoked for bookstoreId={}. count={}",
+                bookstoreId,
+                revokedTokens
+        );
+    }
+
+    @Override
     @Scheduled(cron = "0 0 2 * * *")
     public void cleanupExpiredTokens() {
         int deletedTokens = refreshTokenRepository.deleteByExpiresAtBefore(Instant.now());

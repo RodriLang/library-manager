@@ -1,9 +1,8 @@
 package com.rodrilang.librarymanager.exception;
 
+import com.rodrilang.librarymanager.auth.exceptions.ExpiredPasswordResetTokenException;
+import com.rodrilang.librarymanager.auth.exceptions.InvalidPasswordResetTokenException;
 import com.rodrilang.librarymanager.auth.exceptions.InvalidTokenException;
-import com.rodrilang.librarymanager.cover.exception.BookCoverDoesNotBelongToBookException;
-import com.rodrilang.librarymanager.cover.exception.BookCoverNotFoundException;
-import com.rodrilang.librarymanager.cover.exception.DuplicateBookCoverException;
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
 import com.rodrilang.librarymanager.media.exception.ImageStorageException;
@@ -16,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -248,6 +248,48 @@ public class GlobalExceptionHandler {
                 HttpStatus.UNAUTHORIZED,
                 "INVALID_TOKEN",
                 exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPasswordResetToken(
+            InvalidPasswordResetTokenException exception,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_PASSWORD_RESET_TOKEN",
+                exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(ExpiredPasswordResetTokenException.class)
+    public ResponseEntity<ErrorResponse> handleExpiredPasswordResetToken(
+            ExpiredPasswordResetTokenException exception,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "EXPIRED_PASSWORD_RESET_TOKEN",
+                exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAuthorizationDenied(
+            AuthorizationDeniedException exception,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.FORBIDDEN,
+                "ACCESS_DENIED",
+                "No tenés permisos para realizar esta operación.",
                 request.getRequestURI(),
                 null
         );

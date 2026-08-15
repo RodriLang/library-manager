@@ -42,4 +42,17 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     );
 
     int deleteByExpiresAtBefore(Instant now);
+
+    @Modifying
+    @Query("""
+            UPDATE RefreshToken rt
+            SET rt.revoked = true,
+                rt.revokedAt = :revokedAt
+            WHERE rt.user.bookstore.id = :bookstoreId
+              AND rt.revoked = false
+            """)
+    int revokeAllByBookstoreId(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("revokedAt") Instant revokedAt
+    );
 }

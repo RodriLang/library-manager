@@ -1,0 +1,7 @@
+ALTER TABLE bookstores
+    ALTER COLUMN name TYPE VARCHAR(150);
+
+ALTER TABLE bookstores
+    ADD COLUMN email   VARCHAR(150),
+    ADD COLUMN phone   VARCHAR(50),
+    ADD COLUMN address VARCHAR(200);

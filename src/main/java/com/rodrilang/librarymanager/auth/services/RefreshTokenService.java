@@ -12,5 +12,7 @@ public interface RefreshTokenService {
 
     void revokeAllForUser(Long userId);
 
+    void revokeAllForBookstore(Long bookstoreId);
+
     void cleanupExpiredTokens();
 }
