@@ -6,12 +6,12 @@ import com.rodrilang.librarymanager.admin.bookstore.dto.request.AdminUpdateBooks
 import com.rodrilang.librarymanager.admin.bookstore.dto.response.AdminBookstoreResponse;
 import com.rodrilang.librarymanager.admin.bookstore.service.AdminBookstoreService;
 import com.rodrilang.librarymanager.admin.user.dto.AdminUserResponse;
+import com.rodrilang.librarymanager.dto.response.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -83,7 +83,7 @@ public class AdminBookstoreController {
 
     @Operation(summary = "Listar librerías")
     @GetMapping
-    public ResponseEntity<Page<AdminBookstoreResponse>> findAll(
+    public ResponseEntity<PageResponse<AdminBookstoreResponse>> findAll(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean active,
             @ParameterObject
@@ -94,12 +94,14 @@ public class AdminBookstoreController {
             )
             Pageable pageable
     ) {
-        return ResponseEntity.ok(
-                adminBookstoreService.findAll(
-                        search,
-                        active,
-                        pageable
+        return ResponseEntity.ok(PageResponse.of(
+                        adminBookstoreService.findAll(
+                                search,
+                                active,
+                                pageable
+                        )
                 )
+
         );
     }
 
@@ -131,20 +133,21 @@ public class AdminBookstoreController {
 
     @Operation(summary = "Listar usuarios de una librería")
     @GetMapping("/{bookstoreId}/users")
-    public ResponseEntity<Page<AdminUserResponse>> findUsers(
+    public ResponseEntity<PageResponse<AdminUserResponse>> findUsers(
             @PathVariable Long bookstoreId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) Boolean locked,
             Pageable pageable
     ) {
-        return ResponseEntity.ok(
-                adminBookstoreService.findUsers(
-                        bookstoreId,
-                        search,
-                        enabled,
-                        locked,
-                        pageable
+        return ResponseEntity.ok(PageResponse.of(
+                        adminBookstoreService.findUsers(
+                                bookstoreId,
+                                search,
+                                enabled,
+                                locked,
+                                pageable
+                        )
                 )
         );
     }

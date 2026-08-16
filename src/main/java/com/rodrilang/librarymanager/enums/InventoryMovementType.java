@@ -4,6 +4,10 @@ public enum InventoryMovementType {
 
     INITIAL_STOCK,
     ENTRY,
+    PURCHASE,
     SALE,
-    ADJUSTMENT
+    RETURN,
+    ADJUSTMENT,
+    DAMAGE,
+    LOSS
 }

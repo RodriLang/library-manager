@@ -21,15 +21,17 @@ public interface InventoryService {
 
     InventoryDetailResponse update(Long bookId, UpdateInventoryRequest request);
 
+    InventoryDetailResponse getById(Long bookId);
+
     InventoryDetailResponse getByBookId(Long bookId);
 
     Page<InventorySummaryResponse> getAll(Pageable pageable);
 
     Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable);
 
-    void removeBook(Long bookId);
+    void deactivate(Long bookId);
 
-    void decreaseStockFromTiendanube(Long inventoryId, Integer quantity);
+    void recordTiendanubeSale(Long inventoryId, Integer quantity, String orderId);
 
-    void increaseStockFromTiendanube(Long inventoryId, Integer quantity);
+    void restoreTiendanubeCancelledOrderStock(Long inventoryId, Integer quantity, String orderId);
 }
