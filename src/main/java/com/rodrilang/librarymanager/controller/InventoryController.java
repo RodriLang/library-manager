@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.controller;
 
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
+import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
@@ -57,7 +58,7 @@ public class InventoryController {
     @PostMapping("/{inventoryId}/sales")
     public ResponseEntity<InventoryDetailResponse> recordSale(
             @PathVariable Long inventoryId,
-            @Valid @RequestBody InventoryQuantityRequest request
+            @Valid @RequestBody InventorySaleRequest request
     ) {
         return ResponseEntity.ok(
                 inventoryService.recordSale(inventoryId, request)

@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.service;
 
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
+import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
@@ -15,7 +16,7 @@ public interface InventoryService {
 
     InventoryDetailResponse addStock(Long bookId, InventoryQuantityRequest request);
 
-    InventoryDetailResponse recordSale(Long bookId, InventoryQuantityRequest request);
+    InventoryDetailResponse recordSale(Long bookId, InventorySaleRequest request);
 
     InventoryDetailResponse reactivate(Long bookId, ReactivateInventoryRequest request);
 

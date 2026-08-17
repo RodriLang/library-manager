@@ -1,8 +1,10 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
+import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
@@ -27,6 +29,9 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
+import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
+import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
@@ -58,6 +63,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final TiendanubeVariantSyncService tiendanubeVariantSyncService;
     private final EditorialPriceService editorialPriceService;
     private final InventoryStockService inventoryStockService;
+    private final PurchaseRequirementService purchaseRequirementService;
     private final BookstoreService bookstoreService;
     private final ProviderBookService providerBookService;
     private final BookstoreContext bookstoreContext;
@@ -111,17 +117,20 @@ public class InventoryServiceImpl implements InventoryService {
 
         if (request.initialStock() > 0) {
 
-            saved = inventoryStockService.changeStock(
-                    saved.getId(),
-                    new InventoryStockChangeCommand(
-                            request.initialStock(),
-                            InventoryMovementType.INITIAL_STOCK,
-                            InventoryMovementSource.MANUAL,
-                            null,
-                            null,
-                            "Stock informado al agregar el libro al inventario"
-                    )
-            );
+            InventoryStockChangeResult result =
+                    inventoryStockService.changeStock(
+                            saved.getId(),
+                            new InventoryStockChangeCommand(
+                                    request.initialStock(),
+                                    InventoryMovementType.INITIAL_STOCK,
+                                    InventoryMovementSource.MANUAL,
+                                    null,
+                                    null,
+                                    "Stock informado al agregar el libro al inventario"
+                            )
+                    );
+
+            saved = result.inventory();
         }
 
         if (saved.getTiendanubeStatus() == TiendanubeInventoryStatus.PENDING_PUBLICATION) {
@@ -146,45 +155,69 @@ public class InventoryServiceImpl implements InventoryService {
             );
         }
 
-        Inventory updated = inventoryStockService.changeStock(
-                inventory.getId(),
-                new InventoryStockChangeCommand(
-                        request.quantity(),
-                        InventoryMovementType.ENTRY,
-                        InventoryMovementSource.MANUAL,
-                        null,
-                        null,
-                        null
-                )
-        );
+        InventoryStockChangeResult result =
+                inventoryStockService.changeStock(
+                        inventory.getId(),
+                        new InventoryStockChangeCommand(
+                                request.quantity(),
+                                InventoryMovementType.ENTRY,
+                                InventoryMovementSource.MANUAL,
+                                null,
+                                null,
+                                null
+                        )
+                );
 
-        return syncStockAndMap(updated);
+        return syncStockAndMap(
+                result.inventory()
+        );
     }
 
     @Transactional
     @Override
-    public InventoryDetailResponse recordSale(Long inventoryId, InventoryQuantityRequest request) {
+    public InventoryDetailResponse recordSale(
+            Long inventoryId,
+            InventorySaleRequest request
+    ) {
+
         Inventory inventory = getEntityById(inventoryId);
 
         if (!Boolean.TRUE.equals(inventory.getActive())) {
-            throw new BusinessException("El libro se encuentra inactivo en el inventario.");
+            throw new BusinessException(
+                    "El libro se encuentra inactivo en el inventario."
+            );
         }
 
-        Inventory updated = inventoryStockService.changeStock(
-                inventory.getId(),
-                new InventoryStockChangeCommand(
-                        -request.quantity(),
-                        InventoryMovementType.SALE,
-                        InventoryMovementSource.MANUAL,
-                        null,
-                        null,
-                        null
-                )
+        InventoryStockChangeResult result =
+                inventoryStockService.changeStock(
+                        inventory.getId(),
+                        new InventoryStockChangeCommand(
+                                -request.quantity(),
+                                InventoryMovementType.SALE,
+                                InventoryMovementSource.MANUAL,
+                                null,
+                                null,
+                                null
+                        )
+                );
+
+        if (Boolean.TRUE.equals(request.replenish())) {
+
+            purchaseRequirementService.addRequirement(
+                    new AddPurchaseRequirementCommand(
+                            inventory.getBook().getId(),
+                            request.quantity(),
+                            PurchaseRequirementSourceType.SALE,
+                            result.movement().getId().toString(),
+                            null
+                    )
+            );
+        }
+
+        return syncStockAndMap(
+                result.inventory()
         );
-
-        return syncStockAndMap(updated);
     }
-
 
     @Override
     @Transactional
