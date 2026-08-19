@@ -69,6 +69,29 @@ public interface PurchaseRequirementRepository
             @Param("status") PurchaseRequirementStatus status
     );
 
+    @EntityGraph(attributePaths = {
+            "book",
+            "preferredProvider"
+    })
+    Optional<PurchaseRequirement>
+    findByBookstoreIdAndBookIdAndStatus(
+            Long bookstoreId,
+            Long bookId,
+            PurchaseRequirementStatus status
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT requirement
+            FROM PurchaseRequirement requirement
+            WHERE requirement.id = :requirementId
+              AND requirement.bookstore.id = :bookstoreId
+            """)
+    Optional<PurchaseRequirement> findByIdAndBookstoreIdForUpdate(
+            @Param("requirementId") Long requirementId,
+            @Param("bookstoreId") Long bookstoreId
+    );
+
     @Override
     @EntityGraph(attributePaths = {
             "book",
@@ -93,5 +116,41 @@ public interface PurchaseRequirementRepository
             @Param("bookstoreId") Long bookstoreId,
             @Param("bookIds") Collection<Long> bookIds,
             @Param("status") PurchaseRequirementStatus status
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {
+            "book",
+            "preferredProvider",
+            "bookstore"
+    })
+    @Query("""
+            SELECT requirement
+            FROM PurchaseRequirement requirement
+            WHERE requirement.id IN :ids
+              AND requirement.bookstore.id = :bookstoreId
+            """)
+    List<PurchaseRequirement> findAllByIdsForUpdate(
+            @Param("ids") Collection<Long> ids,
+            @Param("bookstoreId") Long bookstoreId
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {
+            "book",
+            "preferredProvider",
+            "bookstore"
+    })
+    @Query("""
+            SELECT requirement
+            FROM PurchaseRequirement requirement
+            WHERE requirement.id IN :requirementIds
+              AND requirement.bookstore.id = :bookstoreId
+            """)
+    List<PurchaseRequirement> findAllByIdsAndBookstoreIdForUpdate(
+            @Param("requirementIds")
+            Collection<Long> requirementIds,
+            @Param("bookstoreId")
+            Long bookstoreId
     );
 }

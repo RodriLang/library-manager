@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.purchasing.requirement.service;
 
 import com.rodrilang.librarymanager.purchasing.requirement.dto.PurchaseRequirementFilter;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.AddPurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementSummaryResponse;
 import org.springframework.data.domain.Page;
@@ -9,9 +10,13 @@ import org.springframework.data.domain.Pageable;
 
 public interface PurchaseRequirementService {
 
-    PurchaseRequirementResponse addManualRequirement(AddPurchaseRequirementCommand command);
+    AddPurchaseRequirementResponse addManualRequirement(AddPurchaseRequirementCommand command);
 
     PurchaseRequirementResponse addRequirement(AddPurchaseRequirementCommand command);
+
+    AddPurchaseRequirementResponse undoSource(Long requirementId, Long sourceId);
+
+    PurchaseRequirementResponse reactivate(Long requirementId);
 
     PurchaseRequirementResponse adjust(Long requirementId, Integer quantity);
 

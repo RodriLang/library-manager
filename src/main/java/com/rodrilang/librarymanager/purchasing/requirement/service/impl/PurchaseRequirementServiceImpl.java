@@ -10,8 +10,12 @@ import com.rodrilang.librarymanager.importer.price.configuration.repository.Prov
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.purchasing.order.repository.PurchaseOrderItemRepository;
+import com.rodrilang.librarymanager.purchasing.order.repository.projection.PurchaseRequirementOrderedQuantityProjection;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.PurchaseRequirementFilter;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.AddPurchaseRequirementResponse;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementProviderResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementReasonResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementSummaryResponse;
@@ -23,6 +27,7 @@ import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequire
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementSourceRepository;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementSpecifications;
+import com.rodrilang.librarymanager.purchasing.requirement.repository.projection.PurchaseRequirementProviderProjection;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.projection.PurchaseRequirementReasonProjection;
 import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
@@ -46,6 +51,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     private final PurchaseRequirementRepository requirementRepository;
     private final PurchaseRequirementSourceRepository sourceRepository;
+    private final PurchaseOrderItemRepository purchaseOrderItemRepository;
 
     private final ProviderBookRepository providerBookRepository;
     private final PriceListProviderRepository providerRepository;
@@ -60,12 +66,18 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     @Transactional
     @Override
-    public PurchaseRequirementResponse addManualRequirement(AddPurchaseRequirementCommand command) {
+    public AddPurchaseRequirementResponse addManualRequirement(AddPurchaseRequirementCommand command) {
 
         validateAdd(command);
         validateManualSource(command.source());
 
-        return createOrAccumulateRequirement(command);
+        RequirementAddResult result = createOrAccumulateRequirement(command);
+
+        PurchaseRequirement requirement = result.requirement();
+
+        PurchaseRequirementSource source = result.source();
+
+        return toAddResponse(requirement, source, result.previousQuantity(), command.quantity());
     }
 
     @Transactional
@@ -74,7 +86,111 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         validateAdd(command);
 
-        return createOrAccumulateRequirement(command);
+        RequirementAddResult result = createOrAccumulateRequirement(command);
+
+        return mapper.toResponse(result.requirement());
+    }
+
+    @Transactional
+    @Override
+    public AddPurchaseRequirementResponse undoSource(Long requirementId, Long sourceId) {
+
+        PurchaseRequirement requirement = getPendingRequirementForUpdate(requirementId);
+
+        PurchaseRequirementSource source = sourceRepository.findByIdAndRequirementId(sourceId, requirementId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "No se encontró la acción de reposición indicada."
+                        )
+                );
+
+        validateUndoSource(source);
+
+        int previousQuantity = requirement.getQuantity();
+
+        int newQuantity = previousQuantity - source.getQuantity();
+
+        if (newQuantity < 0) {
+            throw new BusinessException("La acción no puede deshacerse porque dejaría una cantidad inválida.");
+        }
+
+        PurchaseRequirementSource reversal =
+                PurchaseRequirementSource.builder()
+                        .requirement(requirement)
+                        .type(
+                                PurchaseRequirementSourceType.REVERSAL
+                        )
+                        .quantity(
+                                -source.getQuantity()
+                        )
+                        .reversedSource(source)
+                        .build();
+
+        sourceRepository.save(reversal);
+
+        if (newQuantity == 0) {
+
+            requirement.setStatus(PurchaseRequirementStatus.CANCELLED);
+
+        } else {
+
+            requirement.setQuantity(newQuantity);
+        }
+
+        return new AddPurchaseRequirementResponse(
+                requirement.getId(),
+
+                requirement.getBook().getId(),
+                requirement.getBook().getPreferredIsbn(),
+                requirement.getBook().getTitle(),
+                requirement.getBook().getCoverUrl(),
+
+                previousQuantity,
+
+                -source.getQuantity(),
+
+                newQuantity,
+
+                reversal.getId(),
+                PurchaseRequirementSourceType.REVERSAL,
+
+                requirement.getPreferredProvider() != null
+                        ? requirement.getPreferredProvider().getId()
+                        : null,
+
+                requirement.getPreferredProvider() != null
+                        ? requirement.getPreferredProvider().getName()
+                        : null,
+
+                newQuantity > 0
+                        ? getEffectiveReasons(requirement.getId())
+                        : List.of()
+        );
+    }
+
+    @Transactional
+    @Override
+    public PurchaseRequirementResponse reactivate(Long requirementId) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        PurchaseRequirement requirement =
+                requirementRepository
+                        .findByIdAndBookstoreIdForUpdate(
+                                requirementId,
+                                bookstoreId
+                        )
+                        .orElseThrow(() -> new BusinessException(
+                                "No se encontró la necesidad de compra solicitada.")
+                        );
+
+        if (requirement.getStatus() != PurchaseRequirementStatus.CANCELLED) {
+            throw new BusinessException("Solo se puede reactivar una necesidad de compra cancelada.");
+        }
+
+        requirement.setStatus(PurchaseRequirementStatus.PENDING);
+
+        return mapper.toResponse(requirement);
     }
 
     @Transactional
@@ -140,16 +256,21 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
     @Override
     public void cancel(Long requirementId) {
 
-        PurchaseRequirement requirement = getPendingRequirementForUpdate(requirementId);
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
-        PurchaseRequirementSource adjustment =
-                PurchaseRequirementSource.builder()
-                        .requirement(requirement)
-                        .type(PurchaseRequirementSourceType.ADJUSTMENT)
-                        .quantity(-requirement.getQuantity())
-                        .build();
+        PurchaseRequirement requirement =
+                requirementRepository
+                        .findByIdAndBookstoreIdForUpdate(
+                                requirementId,
+                                bookstoreId
+                        )
+                        .orElseThrow(() -> new BusinessException(
+                                "No se encontró la necesidad de compra solicitada.")
+                        );
 
-        sourceRepository.save(adjustment);
+        if (requirement.getStatus() == PurchaseRequirementStatus.CANCELLED) {
+            throw new BusinessException("La necesidad de compra ya se encuentra cancelada.");
+        }
 
         requirement.setStatus(PurchaseRequirementStatus.CANCELLED);
     }
@@ -176,13 +297,9 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     @Transactional(readOnly = true)
     @Override
-    public Page<PurchaseRequirementSummaryResponse> findAll(
-            PurchaseRequirementFilter filter,
-            Pageable pageable
-    ) {
+    public Page<PurchaseRequirementSummaryResponse> findAll(PurchaseRequirementFilter filter, Pageable pageable) {
 
-        Long bookstoreId =
-                bookstoreContext.getCurrentBookstoreId();
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
         Specification<PurchaseRequirement> specification =
                 Specification.allOf(
@@ -198,18 +315,17 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return Page.empty(pageable);
         }
 
-        List<PurchaseRequirement> requirements =
-                page.getContent();
+        List<PurchaseRequirement> requirements = page.getContent();
 
         List<Long> bookIds =
                 requirements.stream()
                         .map(requirement -> requirement.getBook().getId())
+                        .distinct()
                         .toList();
 
-        List<Long> requirementIds =
-                requirements.stream()
-                        .map(PurchaseRequirement::getId)
-                        .toList();
+        List<Long> requirementIds = requirements.stream()
+                .map(PurchaseRequirement::getId)
+                .toList();
 
         Map<Long, Inventory> inventoryByBookId =
                 inventoryRepository
@@ -248,9 +364,49 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                                 )
                         );
 
+        Map<Long, Integer> orderedQuantityByRequirementId =
+                purchaseOrderItemRepository
+                        .findOrderedQuantitiesByRequirementIds(
+                                requirementIds
+                        )
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        PurchaseRequirementOrderedQuantityProjection::getRequirementId,
+                                        projection ->
+                                                Math.toIntExact(
+                                                        projection.getOrderedQuantity()
+                                                )
+                                )
+                        );
+
+        Map<Long, List<PurchaseRequirementProviderResponse>>
+                availableProvidersByBookId =
+                providerBookRepository
+                        .findAvailableProvidersByBookIds(bookIds)
+                        .stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        PurchaseRequirementProviderProjection::getBookId,
+                                        Collectors.mapping(
+                                                provider ->
+                                                        new PurchaseRequirementProviderResponse(
+                                                                provider.getProviderId(),
+                                                                provider.getProviderName(),
+                                                                provider.getPrice()
+                                                        ),
+                                                Collectors.toList()
+                                        )
+                                )
+                        );
+
         return page.map(requirement -> {
 
-            Inventory inventory = inventoryByBookId.get(requirement.getBook().getId());
+            Long bookId =
+                    requirement.getBook().getId();
+
+            Inventory inventory =
+                    inventoryByBookId.get(bookId);
 
             List<PurchaseRequirementReasonResponse> reasons =
                     reasonsByRequirementId.getOrDefault(
@@ -258,11 +414,61 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                             List.of()
                     );
 
-            return mapper.toSummaryResponse(requirement, inventory, reasons);
+            int orderedQuantity =
+                    orderedQuantityByRequirementId.getOrDefault(
+                            requirement.getId(),
+                            0
+                    );
+
+            List<PurchaseRequirementProviderResponse> availableProviders =
+                    availableProvidersByBookId.getOrDefault(
+                            bookId,
+                            List.of()
+                    );
+
+            return mapper.toSummaryResponse(
+                    requirement,
+                    inventory,
+                    reasons,
+                    availableProviders,
+                    orderedQuantity
+            );
         });
     }
 
-    private PurchaseRequirementResponse createOrAccumulateRequirement(AddPurchaseRequirementCommand command) {
+    private AddPurchaseRequirementResponse toAddResponse(
+            PurchaseRequirement requirement,
+            PurchaseRequirementSource source,
+            int previousQuantity,
+            int addedQuantity
+    ) {
+
+        PriceListProvider preferredProvider = requirement.getPreferredProvider();
+
+        return new AddPurchaseRequirementResponse(
+                requirement.getId(),
+
+                requirement.getBook().getId(),
+                requirement.getBook().getPreferredIsbn(),
+                requirement.getBook().getTitle(),
+                requirement.getBook().getCoverUrl(),
+
+                previousQuantity,
+                addedQuantity,
+                requirement.getQuantity(),
+
+                source.getId(),
+                source.getType(),
+
+                preferredProvider != null ? preferredProvider.getId() : null,
+
+                preferredProvider != null ? preferredProvider.getName() : null,
+
+                getEffectiveReasons(requirement.getId())
+        );
+    }
+
+    private RequirementAddResult createOrAccumulateRequirement(AddPurchaseRequirementCommand command) {
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
@@ -288,7 +494,9 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                                         .build()
                         );
 
-        requirement.setQuantity(requirement.getQuantity() + command.quantity());
+        int previousQuantity = requirement.getQuantity();
+
+        requirement.setQuantity(previousQuantity + command.quantity());
 
         if (requirement.getPreferredProvider() == null && provider != null) {
             requirement.setPreferredProvider(provider);
@@ -305,9 +513,29 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                         .provider(provider)
                         .build();
 
-        sourceRepository.save(source);
+        source = sourceRepository.save(source);
 
-        return mapper.toResponse(requirement);
+        return new RequirementAddResult(requirement, source, previousQuantity);
+    }
+
+    private List<PurchaseRequirementReasonResponse> getEffectiveReasons(
+            Long requirementId
+    ) {
+
+        return sourceRepository
+                .findEffectiveGroupedReasons(
+                        List.of(requirementId)
+                )
+                .stream()
+                .map(reason ->
+                        new PurchaseRequirementReasonResponse(
+                                reason.getType(),
+                                Math.toIntExact(
+                                        reason.getQuantity()
+                                )
+                        )
+                )
+                .toList();
     }
 
     private PurchaseRequirement getPendingRequirementForUpdate(Long requirementId) {
@@ -395,5 +623,30 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         ) {
             throw new BusinessException("El origen informado no puede utilizarse manualmente.");
         }
+    }
+
+    private void validateUndoSource(PurchaseRequirementSource source) {
+
+        if (
+                source.getType()
+                        != PurchaseRequirementSourceType.INVENTORY
+                        && source.getType()
+                        != PurchaseRequirementSourceType.CATALOG
+                        && source.getType()
+                        != PurchaseRequirementSourceType.MANUAL
+        ) {
+            throw new BusinessException("Esta acción no puede deshacerse manualmente.");
+        }
+
+        if (sourceRepository.existsByReversedSourceId(source.getId())) {
+            throw new BusinessException("La acción ya fue deshecha.");
+        }
+    }
+
+    private record RequirementAddResult(
+            PurchaseRequirement requirement,
+            PurchaseRequirementSource source,
+            int previousQuantity
+    ) {
     }
 }

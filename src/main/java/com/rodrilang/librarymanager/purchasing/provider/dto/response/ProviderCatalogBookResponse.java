@@ -10,6 +10,8 @@ public record ProviderCatalogBookResponse(
         Long bookId,
         String isbn,
         String title,
+        List<String> authors,
+        String publisher,
         String coverUrl,
 
         String externalCode,

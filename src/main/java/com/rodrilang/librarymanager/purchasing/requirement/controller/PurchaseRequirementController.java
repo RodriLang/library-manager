@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurch
 import com.rodrilang.librarymanager.purchasing.requirement.dto.request.AddPurchaseRequirementRequest;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.request.AdjustPurchaseRequirementRequest;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.request.AssignPurchaseRequirementProviderRequest;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.AddPurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementSummaryResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
@@ -38,12 +39,12 @@ public class PurchaseRequirementController {
     private final PurchaseRequirementService service;
 
     @PostMapping
-    public ResponseEntity<PurchaseRequirementResponse> add(
+    public ResponseEntity<AddPurchaseRequirementResponse> add(
             @Valid
             @RequestBody AddPurchaseRequirementRequest request
     ) {
 
-        PurchaseRequirementResponse response =
+        AddPurchaseRequirementResponse response =
                 service.addManualRequirement(
                         new AddPurchaseRequirementCommand(
                                 request.bookId(),
@@ -57,6 +58,30 @@ public class PurchaseRequirementController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
+    }
+
+    @PostMapping("/{requirementId}/sources/{sourceId}/undo")
+    public ResponseEntity<AddPurchaseRequirementResponse> undo(
+            @PathVariable Long requirementId,
+            @PathVariable Long sourceId
+    ) {
+
+        return ResponseEntity.ok(
+                service.undoSource(
+                        requirementId,
+                        sourceId
+                )
+        );
+    }
+
+    @PostMapping("/{requirementId}/reactivate")
+    public ResponseEntity<PurchaseRequirementResponse> reactivate(
+            @PathVariable Long requirementId
+    ) {
+
+        return ResponseEntity.ok(
+                service.reactivate(requirementId)
+        );
     }
 
     @PatchMapping("/{requirementId}/quantity")

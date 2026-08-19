@@ -74,4 +74,8 @@ public class PurchaseRequirementSource extends AuditableEntity {
             )
     )
     private PriceListProvider provider;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reversed_source_id")
+    private PurchaseRequirementSource reversedSource;
 }

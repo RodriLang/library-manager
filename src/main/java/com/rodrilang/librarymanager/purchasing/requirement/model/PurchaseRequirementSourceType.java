@@ -7,5 +7,6 @@ public enum PurchaseRequirementSourceType {
     CATALOG,
     LOW_STOCK,
     MANUAL,
-    ADJUSTMENT
+    ADJUSTMENT,
+    REVERSAL
 }

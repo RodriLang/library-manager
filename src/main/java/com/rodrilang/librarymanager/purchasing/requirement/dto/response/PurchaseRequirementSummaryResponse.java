@@ -15,10 +15,15 @@ public record PurchaseRequirementSummaryResponse(
 
         Integer quantity,
 
+        Integer orderedQuantity,
+        Integer remainingQuantity,
+
         PurchaseRequirementInventoryResponse inventory,
 
         Long preferredProviderId,
         String preferredProviderName,
+
+        List<PurchaseRequirementProviderResponse> availableProviders,
 
         List<PurchaseRequirementReasonResponse> reasons,
 

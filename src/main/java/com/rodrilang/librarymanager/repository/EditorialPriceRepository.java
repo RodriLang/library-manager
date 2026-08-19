@@ -26,14 +26,9 @@ public interface EditorialPriceRepository
             LocalDate validFrom
     );
 
-    Optional<EditorialPrice> findByBookIdAndProviderIdAndValidFrom(
+    Optional<EditorialPrice>
+    findFirstByBookIdAndProviderIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
             Long bookId,
-            Long providerId,
-            LocalDate validFrom
-    );
-
-    List<EditorialPrice> findByBookIdInAndProviderIdAndValidFrom(
-            List<Long> bookIds,
             Long providerId,
             LocalDate validFrom
     );

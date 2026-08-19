@@ -18,8 +18,10 @@ import com.rodrilang.librarymanager.purchasing.provider.service.ProviderCatalogS
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirement;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
+import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.repository.projection.BookAuthorNameProjection;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,7 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -42,6 +46,7 @@ public class ProviderCatalogServiceImpl
 
     private final ProviderBookRepository providerBookRepository;
     private final PriceListProviderRepository providerRepository;
+    private final BookRepository bookRepository;
 
     private final EditorialPriceRepository editorialPriceRepository;
     private final InventoryRepository inventoryRepository;
@@ -112,13 +117,28 @@ public class ProviderCatalogServiceImpl
                         bookIds
                 );
 
+        Map<Long, List<String>> authorsByBookId =
+                bookRepository
+                        .findAuthorNamesByBookIds(bookIds)
+                        .stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        BookAuthorNameProjection::getBookId,
+                                        Collectors.mapping(
+                                                BookAuthorNameProjection::getAuthorName,
+                                                Collectors.toList()
+                                        )
+                                )
+                        );
+
         return page.map(providerBook ->
                 toResponse(
                         providerBook,
                         priceByBookId,
                         inventoryByBookId,
                         requirementByBookId,
-                        alternativesByBookId
+                        alternativesByBookId,
+                        authorsByBookId
                 )
         );
     }
@@ -253,7 +273,8 @@ public class ProviderCatalogServiceImpl
             Map<Long, EditorialPrice> priceByBookId,
             Map<Long, Inventory> inventoryByBookId,
             Map<Long, PurchaseRequirement> requirementByBookId,
-            Map<Long, List<ProviderCatalogAlternativeResponse>> alternativesByBookId
+            Map<Long, List<ProviderCatalogAlternativeResponse>> alternativesByBookId,
+            Map<Long, List<String>> authorsByBookId
     ) {
 
         var book = providerBook.getBook();
@@ -271,6 +292,17 @@ public class ProviderCatalogServiceImpl
                 bookId,
                 book.getPreferredIsbn(),
                 book.getTitle(),
+
+
+                authorsByBookId.getOrDefault(
+                        bookId,
+                        List.of()
+                ),
+
+                book.getPublisher() != null
+                        ? book.getPublisher().getName()
+                        : null,
+
                 book.getCoverUrl(),
 
                 providerBook.getExternalCode(),

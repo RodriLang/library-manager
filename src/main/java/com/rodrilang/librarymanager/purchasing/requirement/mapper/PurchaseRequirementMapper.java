@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.purchasing.requirement.mapper;
 
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementInventoryResponse;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementProviderResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementReasonResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementSummaryResponse;
@@ -27,13 +28,13 @@ public interface PurchaseRequirementMapper {
     default PurchaseRequirementSummaryResponse toSummaryResponse(
             PurchaseRequirement requirement,
             Inventory inventory,
-            List<PurchaseRequirementReasonResponse> reasons
+            List<PurchaseRequirementReasonResponse> reasons,
+            List<PurchaseRequirementProviderResponse> availableProviders,
+            int orderedQuantity
     ) {
 
         var book = requirement.getBook();
-
-        var provider =
-                requirement.getPreferredProvider();
+        var provider = requirement.getPreferredProvider();
 
         PurchaseRequirementInventoryResponse inventoryResponse =
                 inventory != null
@@ -50,17 +51,37 @@ public interface PurchaseRequirementMapper {
                         null
                 );
 
+        int remainingQuantity =
+                Math.max(
+                        requirement.getQuantity() - orderedQuantity,
+                        0
+                );
+
         return new PurchaseRequirementSummaryResponse(
                 requirement.getId(),
                 book.getId(),
                 book.getPreferredIsbn(),
                 book.getTitle(),
                 book.getCoverUrl(),
+
                 requirement.getQuantity(),
+                orderedQuantity,
+                remainingQuantity,
+
                 inventoryResponse,
-                provider != null ? provider.getId() : null,
-                provider != null ? provider.getName() : null,
+
+                provider != null
+                        ? provider.getId()
+                        : null,
+
+                provider != null
+                        ? provider.getName()
+                        : null,
+
+                availableProviders,
+
                 reasons,
+
                 requirement.getStatus()
         );
     }
