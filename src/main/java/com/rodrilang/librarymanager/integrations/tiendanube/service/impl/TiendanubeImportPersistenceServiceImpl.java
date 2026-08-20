@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
+import com.rodrilang.librarymanager.enums.InventoryMovementSource;
+import com.rodrilang.librarymanager.enums.InventoryMovementType;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.TiendanubeImportCommand;
@@ -11,6 +13,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInve
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeImportPersistenceService;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
+import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -31,6 +35,7 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
     private final BookstoreRepository bookstoreRepository;
     private final InventoryRepository inventoryRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
+    private final InventoryStockService inventoryStockService;
 
     @Override
     @Transactional
@@ -51,7 +56,7 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
                 .book(book)
                 .bookstore(bookstore)
                 .condition(command.condition())
-                .stock(command.stock())
+                .stock(0)
                 .minimumStock(0)
                 .salePrice(command.salePrice())
                 .tiendanubeStatus(TiendanubeInventoryStatus.LINKED)
@@ -60,7 +65,21 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
                 .active(true)
                 .build();
 
-        inventoryRepository.save(inventory);
+        inventory = inventoryRepository.save(inventory);
+
+        if (command.stock() > 0) {
+            inventoryStockService.changeStock(
+                    inventory.getId(),
+                    new InventoryStockChangeCommand(
+                            command.stock(),
+                            InventoryMovementType.INITIAL_STOCK,
+                            InventoryMovementSource.TIENDANUBE,
+                            null,
+                            null,
+                            "Stock inicial importado desde Tiendanube"
+                    )
+            );
+        }
 
         String sku = variant.sku();
 
