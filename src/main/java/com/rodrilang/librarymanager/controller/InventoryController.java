@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.controller;
 
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
+import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
@@ -44,32 +45,32 @@ public class InventoryController {
                 .body(inventoryService.addToInventory(bookId, request));
     }
 
-    @PostMapping("/books/{bookId}/entries")
+    @PostMapping("/{inventoryId}/entries")
     public ResponseEntity<InventoryDetailResponse> recordStockEntry(
-            @PathVariable Long bookId,
+            @PathVariable Long inventoryId,
             @Valid @RequestBody InventoryQuantityRequest request
     ) {
         return ResponseEntity.ok(
-                inventoryService.addStock(bookId, request)
+                inventoryService.addStock(inventoryId, request)
         );
     }
 
-    @PostMapping("/books/{bookId}/sales")
+    @PostMapping("/{inventoryId}/sales")
     public ResponseEntity<InventoryDetailResponse> recordSale(
-            @PathVariable Long bookId,
-            @Valid @RequestBody InventoryQuantityRequest request
+            @PathVariable Long inventoryId,
+            @Valid @RequestBody InventorySaleRequest request
     ) {
         return ResponseEntity.ok(
-                inventoryService.recordSale(bookId, request)
+                inventoryService.recordSale(inventoryId, request)
         );
     }
 
-    @PostMapping("/books/{bookId}/reactivate")
+    @PostMapping("/{inventoryId}/reactivate")
     public InventoryDetailResponse reactivate(
-            @PathVariable Long bookId,
+            @PathVariable Long inventoryId,
             @Valid @RequestBody ReactivateInventoryRequest request
     ) {
-        return inventoryService.reactivate(bookId, request);
+        return inventoryService.reactivate(inventoryId, request);
     }
 
     @GetMapping
@@ -83,7 +84,16 @@ public class InventoryController {
         );
     }
 
-    @GetMapping("/{bookId}")
+    @GetMapping("/{inventoryId}")
+    public ResponseEntity<InventoryDetailResponse> getById(
+            @PathVariable Long inventoryId
+    ) {
+        return ResponseEntity.ok(
+                inventoryService.getById(inventoryId)
+        );
+    }
+
+    @GetMapping("/by-book/{bookId}")
     public ResponseEntity<InventoryDetailResponse> getByBookId(
             @PathVariable Long bookId
     ) {
@@ -105,21 +115,21 @@ public class InventoryController {
         );
     }
 
-    @PutMapping("/books/{bookId}")
+    @PutMapping("/{inventoryId}")
     public ResponseEntity<InventoryDetailResponse> update(
-            @PathVariable Long bookId,
+            @PathVariable Long inventoryId,
             @Valid @RequestBody UpdateInventoryRequest request
     ) {
         return ResponseEntity.ok(
-                inventoryService.update(bookId, request)
+                inventoryService.update(inventoryId, request)
         );
     }
 
-    @DeleteMapping("/books/{bookId}")
-    public ResponseEntity<Void> removeBook(
-            @PathVariable Long bookId
+    @DeleteMapping("/{inventoryId}")
+    public ResponseEntity<Void> deactivate(
+            @PathVariable Long inventoryId
     ) {
-        inventoryService.removeBook(bookId);
+        inventoryService.deactivate(inventoryId);
         return ResponseEntity.noContent().build();
     }
 }

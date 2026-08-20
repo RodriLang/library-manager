@@ -108,7 +108,11 @@ public class TiendanubeProductLinkServiceImpl implements TiendanubeProductLinkSe
                 barcode,
                 inventory.getSalePrice(),
                 inventory.getStock(),
-                true
+                true,
+                inventory.getBook().getWeightGrams(),
+                inventory.getBook().getWidthCm(),
+                inventory.getBook().getHeightCm(),
+                inventory.getBook().getDepthCm()
         );
 
         client.updateVariant(storeId, productId, remoteVariant.id(), request);

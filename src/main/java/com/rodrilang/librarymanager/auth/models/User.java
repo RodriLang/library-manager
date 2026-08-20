@@ -72,6 +72,12 @@ public class User {
     @Builder.Default
     private boolean accountLocked = false;
 
+    @Column(name = "password_reset_token")
+    private String passwordResetToken;
+
+    @Column(name = "password_reset_token_expiration")
+    private Instant passwordResetTokenExpiration;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.auth.services;
 
+import com.rodrilang.librarymanager.auth.dtos.request.UpdateProfileRequest;
 import com.rodrilang.librarymanager.auth.dtos.request.UserRequestDto;
 import com.rodrilang.librarymanager.auth.dtos.response.UserResponse;
 import com.rodrilang.librarymanager.auth.enums.RoleType;
@@ -17,5 +18,12 @@ public interface UserService {
             RoleType roleType
     );
 
-    UserResponse findByUsername(String username);
+    UserResponse findById(Long userId);
+
+    UserResponse findByUsername(String identifier);
+
+    UserResponse updateProfile(
+            Long userId,
+            UpdateProfileRequest request
+    );
 }

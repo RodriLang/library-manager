@@ -26,14 +26,9 @@ public interface EditorialPriceRepository
             LocalDate validFrom
     );
 
-    Optional<EditorialPrice> findByBookIdAndProviderIdAndValidFrom(
+    Optional<EditorialPrice>
+    findFirstByBookIdAndProviderIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
             Long bookId,
-            Long providerId,
-            LocalDate validFrom
-    );
-
-    List<EditorialPrice> findByBookIdInAndProviderIdAndValidFrom(
-            List<Long> bookIds,
             Long providerId,
             LocalDate validFrom
     );
@@ -61,6 +56,50 @@ public interface EditorialPriceRepository
     List<EditorialPrice> findByProviderIdAndBookIdInForUpdate(
             @Param("providerId") Long providerId,
             @Param("bookIds") Collection<Long> bookIds
+    );
+
+    @Query("""
+            SELECT ep
+            FROM EditorialPrice ep
+            WHERE ep.provider.id = :providerId
+              AND ep.book.id IN :bookIds
+              AND ep.active = true
+              AND ep.validFrom <= :date
+              AND ep.validFrom = (
+                  SELECT MAX(ep2.validFrom)
+                  FROM EditorialPrice ep2
+                  WHERE ep2.provider.id = ep.provider.id
+                    AND ep2.book.id = ep.book.id
+                    AND ep2.active = true
+                    AND ep2.validFrom <= :date
+              )
+            """)
+    List<EditorialPrice> findCurrentByProviderAndBookIds(
+            @Param("providerId") Long providerId,
+            @Param("bookIds") Collection<Long> bookIds,
+            @Param("date") LocalDate date
+    );
+
+    @Query("""
+            SELECT ep
+            FROM EditorialPrice ep
+            WHERE ep.book.id IN :bookIds
+              AND ep.provider.id IN :providerIds
+              AND ep.active = true
+              AND ep.validFrom <= :date
+              AND ep.validFrom = (
+                  SELECT MAX(ep2.validFrom)
+                  FROM EditorialPrice ep2
+                  WHERE ep2.book.id = ep.book.id
+                    AND ep2.provider.id = ep.provider.id
+                    AND ep2.active = true
+                    AND ep2.validFrom <= :date
+              )
+            """)
+    List<EditorialPrice> findCurrentByBooksAndProviders(
+            @Param("bookIds") Collection<Long> bookIds,
+            @Param("providerIds") Collection<Long> providerIds,
+            @Param("date") LocalDate date
     );
 
     @Query("""

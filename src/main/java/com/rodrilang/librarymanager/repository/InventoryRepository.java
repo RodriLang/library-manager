@@ -3,10 +3,12 @@ package com.rodrilang.librarymanager.repository;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -49,6 +51,15 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     );
 
     @EntityGraph(attributePaths = {
+            "book"
+    })
+    List<Inventory> findAllByBookstoreIdAndBookIdInAndConditionAndActiveTrue(
+            Long bookstoreId,
+            Collection<Long> bookIds,
+            BookCondition condition
+    );
+
+    @EntityGraph(attributePaths = {
             "book",
             "book.publisher",
             "book.authors"
@@ -85,6 +96,24 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             """)
     Optional<Inventory> findByIdForTiendanubePublish(
             @Param("inventoryId") Long inventoryId
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select i
+            from Inventory i
+            where i.id = :id
+            """)
+    Optional<Inventory> findByIdForUpdate(@Param("id") Long id);
+
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.authors",
+            "book.publisher"
+    })
+    Optional<Inventory> findByIdAndBookstoreId(
+            Long id,
+            Long bookstoreId
     );
 
     @Query(

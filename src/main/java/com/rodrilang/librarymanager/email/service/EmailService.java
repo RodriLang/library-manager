@@ -18,16 +18,15 @@ public class EmailService {
     public void sendBookstoreInvitation(
             String toEmail,
             String bookstoreName,
-            String token) {
-
+            String token
+    ) {
         validateInvitationParameters(
                 toEmail,
                 bookstoreName,
                 token
         );
 
-        String invitationUrl =
-                buildInvitationUrl(token);
+        String invitationUrl = buildInvitationUrl(token);
 
         String htmlBody =
                 templateBuilder.buildBookstoreInvitationTemplate(
@@ -52,8 +51,40 @@ public class EmailService {
         deliveryService.send(message);
     }
 
-    private String buildInvitationUrl(String token) {
+    public void sendPasswordReset(
+            String toEmail,
+            String token
+    ) {
+        validatePasswordResetParameters(
+                toEmail,
+                token
+        );
 
+        String resetPasswordUrl =
+                buildPasswordResetUrl(token);
+
+        String htmlBody =
+                templateBuilder.buildPasswordResetTemplate(
+                        resetPasswordUrl
+                );
+
+        String plainTextBody =
+                templateBuilder.buildPasswordResetPlainText(
+                        resetPasswordUrl
+                );
+
+        EmailMessage message =
+                EmailMessage.builder()
+                        .to(toEmail)
+                        .subject("Restablecer tu contraseña de Anaquel")
+                        .htmlBody(htmlBody)
+                        .plainTextBody(plainTextBody)
+                        .build();
+
+        deliveryService.send(message);
+    }
+
+    private String buildInvitationUrl(String token) {
         return UriComponentsBuilder
                 .fromUriString(properties.frontendUrl())
                 .path(properties.invitationPath())
@@ -63,11 +94,21 @@ public class EmailService {
                 .toUriString();
     }
 
+    private String buildPasswordResetUrl(String token) {
+        return UriComponentsBuilder
+                .fromUriString(properties.frontendUrl())
+                .path(properties.passwordResetPath())
+                .queryParam("token", token)
+                .build()
+                .encode()
+                .toUriString();
+    }
+
     private void validateInvitationParameters(
             String email,
             String bookstoreName,
-            String token) {
-
+            String token
+    ) {
         if (email == null || email.isBlank()) {
             throw new IllegalArgumentException(
                     "El correo electrónico es obligatorio"
@@ -83,6 +124,23 @@ public class EmailService {
         if (token == null || token.isBlank()) {
             throw new IllegalArgumentException(
                     "El token de invitación es obligatorio"
+            );
+        }
+    }
+
+    private void validatePasswordResetParameters(
+            String email,
+            String token
+    ) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException(
+                    "El correo electrónico es obligatorio"
+            );
+        }
+
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException(
+                    "El token de recuperación es obligatorio"
             );
         }
     }

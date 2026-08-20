@@ -5,9 +5,7 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.RemoteInventoryMatch;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateImageRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeInventoryStatusResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductLinkResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
@@ -18,6 +16,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.integrations.tiendanube.factory.TiendanubeProductRequestFactory;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeInventoryStateService;
@@ -26,8 +25,6 @@ import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubePr
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductMatchingService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
-import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
-import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +33,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -46,6 +42,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     private final InventoryRepository inventoryRepository;
     private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
+    private final TiendanubeProductRequestFactory productRequestFactory;
     private final TiendanubeClient client;
     private final TiendanubeVariantSyncService variantSyncService;
     private final TiendanubeInventoryStateService inventoryStateService;
@@ -100,7 +97,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         inventoryStateService.updateStatus(inventoryId, TiendanubeInventoryStatus.PUBLISHING);
 
         try {
-            TiendanubeCreateProductRequest request = buildCreateProductRequest(inventory);
+            TiendanubeCreateProductRequest request = productRequestFactory.createProduct(inventory);
             TiendanubeProductResponse remoteProduct = client.createProduct(store.getStoreId(), request);
             TiendanubeVariantResponse remoteVariant = getMainVariant(remoteProduct);
 
@@ -337,62 +334,6 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
         return storeRepository
                 .findByBookstoreIdAndActiveTrue(bookstoreId)
                 .orElseThrow(() -> new BusinessException("La librería no tiene una cuenta Tiendanube vinculada"));
-    }
-
-    private TiendanubeCreateProductRequest buildCreateProductRequest(Inventory inventory) {
-        Book book = inventory.getBook();
-
-        String sku = buildSku(inventory);
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(book.getPreferredIsbn());
-
-        TiendanubeCreateVariantRequest variant = new TiendanubeCreateVariantRequest(
-                inventory.getSalePrice(),
-                inventory.getStock(),
-                sku,
-                isbn,
-                book.getWeightGrams(),
-                book.getWidthCm(),
-                book.getHeightCm(),
-                book.getDepthCm()
-        );
-
-        List<TiendanubeCreateImageRequest> images =
-                book.getCoverUrl() == null || book.getCoverUrl().isBlank()
-                        ? List.of()
-                        : List.of(new TiendanubeCreateImageRequest(book.getCoverUrl()));
-
-        return new TiendanubeCreateProductRequest(
-                Map.of("es", book.getTitle()),
-                buildDescription(book),
-                List.of(variant),
-                images,
-                true
-        );
-    }
-
-    private String buildSku(Inventory inventory) {
-
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
-
-        if (isbn != null) {
-            return isbn;
-        }
-
-        return "LM-" + inventory.getId();
-    }
-
-    private Map<String, String> buildDescription(Book book) {
-
-        if (book.getDescription() == null
-                || book.getDescription().isBlank()) {
-
-            return Map.of();
-        }
-
-        return Map.of(
-                "es",
-                book.getDescription()
-        );
     }
 
     private TiendanubeVariantResponse getMainVariant(TiendanubeProductResponse product) {

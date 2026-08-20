@@ -9,6 +9,7 @@ public record EmailProperties(
         String from,
         String fromName,
         String frontendUrl,
-        String invitationPath
+        String invitationPath,
+        String passwordResetPath
 ) {
 }

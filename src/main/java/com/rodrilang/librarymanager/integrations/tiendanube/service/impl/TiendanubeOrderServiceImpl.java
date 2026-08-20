@@ -31,21 +31,35 @@ public class TiendanubeOrderServiceImpl implements TiendanubeOrderService {
 
     @Override
     @Transactional
-    public void handleOrderPaid(TiendanubeWebhookRequest request) {
+    public void handleOrderPaid(
+            TiendanubeWebhookRequest request
+    ) {
         processOrder(
                 request,
                 "pagada",
-                inventoryService::decreaseStockFromTiendanube
+                (inventoryId, quantity) ->
+                        inventoryService.recordTiendanubeSale(
+                                inventoryId,
+                                quantity,
+                                String.valueOf(request.id())
+                        )
         );
     }
 
     @Override
     @Transactional
-    public void handleOrderCancelled(TiendanubeWebhookRequest request) {
+    public void handleOrderCancelled(
+            TiendanubeWebhookRequest request
+    ) {
         processOrder(
                 request,
                 "cancelada",
-                inventoryService::increaseStockFromTiendanube
+                (inventoryId, quantity) ->
+                        inventoryService.restoreTiendanubeCancelledOrderStock(
+                                inventoryId,
+                                quantity,
+                                String.valueOf(request.id())
+                        )
         );
     }
 

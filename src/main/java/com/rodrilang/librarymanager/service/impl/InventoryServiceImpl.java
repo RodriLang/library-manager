@@ -1,14 +1,22 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductSyncService;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
+import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.enums.BookCondition;
+import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
+import com.rodrilang.librarymanager.enums.InventoryMovementSource;
+import com.rodrilang.librarymanager.enums.InventoryMovementType;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
@@ -16,11 +24,17 @@ import com.rodrilang.librarymanager.importer.price.configuration.service.Provide
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
+import com.rodrilang.librarymanager.inventory.movement.repository.InventoryMovementRepository;
+import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
+import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
+import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
@@ -46,10 +60,14 @@ import java.util.Objects;
 public class InventoryServiceImpl implements InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
     private final TiendanubeVariantSyncService tiendanubeVariantSyncService;
+    private final TiendanubeProductSyncService tiendanubeProductSyncService;
     private final EditorialPriceService editorialPriceService;
+    private final InventoryStockService inventoryStockService;
+    private final PurchaseRequirementService purchaseRequirementService;
     private final BookstoreService bookstoreService;
     private final ProviderBookService providerBookService;
     private final BookstoreContext bookstoreContext;
@@ -90,7 +108,7 @@ public class InventoryServiceImpl implements InventoryService {
                 .book(book)
                 .bookstore(bookstore)
                 .condition(condition)
-                .stock(request.initialStock())
+                .stock(0)
                 .minimumStock(request.minimumStock() != null ? request.minimumStock() : 0)
                 .salePrice(request.salePrice())
                 .editorialPriceSyncEnabled(editorialPriceSyncEnabled)
@@ -101,6 +119,24 @@ public class InventoryServiceImpl implements InventoryService {
 
         Inventory saved = inventoryRepository.save(inventory);
 
+        if (request.initialStock() > 0) {
+
+            InventoryStockChangeResult result =
+                    inventoryStockService.changeStock(
+                            saved.getId(),
+                            new InventoryStockChangeCommand(
+                                    request.initialStock(),
+                                    InventoryMovementType.INITIAL_STOCK,
+                                    InventoryMovementSource.MANUAL,
+                                    null,
+                                    null,
+                                    "Stock informado al agregar el libro al inventario"
+                            )
+                    );
+
+            saved = result.inventory();
+        }
+
         if (saved.getTiendanubeStatus() == TiendanubeInventoryStatus.PENDING_PUBLICATION) {
             eventPublisher.publishEvent(new TiendanubePublicationRequestedEvent(saved.getId()));
         }
@@ -110,48 +146,93 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Transactional
     @Override
-    public InventoryDetailResponse addStock(Long bookId, InventoryQuantityRequest request) {
-
-        Inventory inventory = getEntityByBookId(bookId);
+    public InventoryDetailResponse addStock(
+            Long inventoryId,
+            InventoryQuantityRequest request
+    ) {
+        Inventory inventory = getEntityById(inventoryId);
 
         if (!Boolean.TRUE.equals(inventory.getActive())) {
-            throw new BusinessException("El inventario se encuentra inactivo. Debe reactivarse antes de agregar stock.");
+            throw new BusinessException(
+                    "El inventario se encuentra inactivo. " +
+                            "Debe reactivarse antes de agregar stock."
+            );
         }
 
-        inventory.setStock(inventory.getStock() + request.quantity());
+        InventoryStockChangeResult result =
+                inventoryStockService.changeStock(
+                        inventory.getId(),
+                        new InventoryStockChangeCommand(
+                                request.quantity(),
+                                InventoryMovementType.ENTRY,
+                                InventoryMovementSource.MANUAL,
+                                null,
+                                null,
+                                null
+                        )
+                );
 
-        return saveAndSyncStock(inventory);
+        return syncStockAndMap(
+                result.inventory()
+        );
     }
 
     @Transactional
     @Override
-    public InventoryDetailResponse recordSale(Long bookId, InventoryQuantityRequest request) {
-        Inventory inventory = getEntityByBookId(bookId);
+    public InventoryDetailResponse recordSale(
+            Long inventoryId,
+            InventorySaleRequest request
+    ) {
+
+        Inventory inventory = getEntityById(inventoryId);
 
         if (!Boolean.TRUE.equals(inventory.getActive())) {
-            throw new BusinessException("El libro se encuentra inactivo en el inventario.");
+            throw new BusinessException(
+                    "El libro se encuentra inactivo en el inventario."
+            );
         }
 
-        if (inventory.getStock() < request.quantity()) {
-            throw new BusinessException("No hay stock suficiente para registrar la venta.");
+        InventoryStockChangeResult result =
+                inventoryStockService.changeStock(
+                        inventory.getId(),
+                        new InventoryStockChangeCommand(
+                                -request.quantity(),
+                                InventoryMovementType.SALE,
+                                InventoryMovementSource.MANUAL,
+                                null,
+                                null,
+                                null
+                        )
+                );
+
+        if (Boolean.TRUE.equals(request.replenish())) {
+
+            purchaseRequirementService.addRequirement(
+                    new AddPurchaseRequirementCommand(
+                            inventory.getBook().getId(),
+                            request.quantity(),
+                            PurchaseRequirementSourceType.SALE,
+                            result.movement().getId().toString(),
+                            null
+                    )
+            );
         }
 
-        inventory.setStock(inventory.getStock() - request.quantity());
-
-        return saveAndSyncStock(inventory);
+        return syncStockAndMap(
+                result.inventory()
+        );
     }
 
     @Override
     @Transactional
-    public InventoryDetailResponse reactivate(Long bookId, ReactivateInventoryRequest request) {
-        Inventory inventory = getEntityByBookId(bookId);
+    public InventoryDetailResponse reactivate(Long inventoryId, ReactivateInventoryRequest request) {
+        Inventory inventory = getEntityById(inventoryId);
 
         if (Boolean.TRUE.equals(inventory.getActive())) {
             throw new BusinessException("El inventario ya se encuentra activo.");
         }
 
         inventory.setActive(true);
-        inventory.setStock(request.stock());
         inventory.setSalePrice(request.salePrice());
         inventory.setMinimumStock(request.minimumStock() != null ? request.minimumStock() : 0);
         inventory.setCondition(request.condition() != null ? request.condition() : BookCondition.NEW);
@@ -166,46 +247,81 @@ public class InventoryServiceImpl implements InventoryService {
             inventory.setTiendanubeStatus(TiendanubeInventoryStatus.PENDING_PUBLICATION);
         }
 
-        Inventory saved = inventoryRepository.save(inventory);
+        Inventory adjusted =
+                inventoryStockService.adjustStockTo(
+                        inventory.getId(),
+                        request.stock(),
+                        InventoryMovementSource.MANUAL,
+                        "Stock informado al reactivar el inventario"
+                );
 
-        if (saved.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
-            tiendanubeVariantSyncService.syncStock(saved.getId(), saved.getStock());
+        if (adjusted.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
+            tiendanubeVariantSyncService.syncStock(adjusted.getId(), adjusted.getStock());
 
-            if (Boolean.TRUE.equals(saved.getTiendanubePriceSyncEnabled())) {
-                tiendanubeVariantSyncService.syncPrice(saved.getId());
+            if (Boolean.TRUE.equals(adjusted.getTiendanubePriceSyncEnabled())) {
+                tiendanubeVariantSyncService.syncPrice(adjusted.getId());
             }
         }
 
-        return toDetailResponse(saved);
+        return toDetailResponse(adjusted);
     }
 
     @Transactional
     @Override
-    public InventoryDetailResponse update(Long bookId, UpdateInventoryRequest request) {
-        Inventory inventory = getEntityByBookId(bookId);
+    public InventoryDetailResponse update(Long inventoryId, UpdateInventoryRequest request) {
+        Inventory inventory = getEntityById(inventoryId);
+
         BigDecimal previousSalePrice = inventory.getSalePrice();
         Boolean previousPriceSyncEnabled = inventory.getTiendanubePriceSyncEnabled();
 
         inventoryMapper.updateEntity(request, inventory);
 
-        Inventory saved = inventoryRepository.save(inventory);
+        boolean priceChanged = !Objects.equals(previousSalePrice, inventory.getSalePrice());
 
-        boolean priceChanged = !Objects.equals(previousSalePrice, saved.getSalePrice());
-        boolean priceSyncEnabled = Boolean.TRUE.equals(saved.getTiendanubePriceSyncEnabled());
+        boolean priceSyncEnabled = Boolean.TRUE.equals(inventory.getTiendanubePriceSyncEnabled());
+
         boolean priceSyncJustEnabled = !Boolean.TRUE.equals(previousPriceSyncEnabled) && priceSyncEnabled;
 
-        if (priceSyncEnabled && (priceChanged || priceSyncJustEnabled)) {
-            tiendanubeVariantSyncService.syncPrice(saved.getId());
+        if (request.updateTiendaNube()) {
+
+            eventPublisher.publishEvent(
+                    new TiendanubeSyncRequestedEvent(
+                            inventory.getId(),
+                            TiendanubeSyncType.PUBLICATION
+                    )
+            );
+
+        } else if (priceSyncEnabled && (priceChanged || priceSyncJustEnabled)) {
+
+            eventPublisher.publishEvent(
+                    new TiendanubeSyncRequestedEvent(
+                            inventory.getId(),
+                            TiendanubeSyncType.PRICE
+                    )
+            );
         }
 
-        return toDetailResponse(saved);
+        return toDetailResponse(inventory);
     }
 
     @Override
+    public InventoryDetailResponse getById(Long inventoryId) {
+
+        log.info("Buscando inventario con ID: {} en el inventario", inventoryId);
+        Inventory inventory = getEntityById(inventoryId);
+
+        return toDetailResponse(inventory);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public InventoryDetailResponse getByBookId(Long bookId) {
 
-        log.info("Buscando libro con ID: {} en el inventario", bookId);
-        Inventory inventory = getEntityByBookId(bookId);
+        Inventory inventory =
+                getEntityByBookIdAndCondition(
+                        bookId,
+                        BookCondition.NEW
+                );
 
         return toDetailResponse(inventory);
     }
@@ -277,48 +393,82 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Transactional
     @Override
-    public void removeBook(Long bookId) {
+    public void deactivate(Long inventoryId) {
 
-        Inventory inventory = getEntityByBookId(bookId);
+        Inventory inventory = getEntityById(inventoryId);
+
         inventory.setActive(false);
 
-        Inventory saved = inventoryRepository.save(inventory);
-
-        if (saved.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
-            tiendanubeVariantSyncService.syncStock(saved.getId(), 0);
+        if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
+            tiendanubeVariantSyncService.syncStock(inventory.getId(), 0);
         }
     }
 
     @Override
     @Transactional
-    public void decreaseStockFromTiendanube(Long inventoryId, Integer quantity) {
+    public void recordTiendanubeSale(Long inventoryId, Integer quantity, String orderId) {
         validateQuantity(quantity);
 
-        Inventory inventory = inventoryRepository
-                .findById(inventoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe el inventario con id: " + inventoryId));
-
-        if (inventory.getStock() < quantity) {
-            throw new BusinessException("Stock insuficiente para el inventario: " + inventoryId);
-        }
-
-        inventory.setStock(inventory.getStock() - quantity);
-
-        inventoryRepository.save(inventory);
+        inventoryStockService.changeStock(
+                inventoryId,
+                new InventoryStockChangeCommand(
+                        -quantity,
+                        InventoryMovementType.SALE,
+                        InventoryMovementSource.TIENDANUBE,
+                        InventoryMovementReferenceType.TIENDANUBE_ORDER,
+                        orderId,
+                        null
+                )
+        );
     }
 
     @Override
     @Transactional
-    public void increaseStockFromTiendanube(Long inventoryId, Integer quantity) {
+    public void restoreTiendanubeCancelledOrderStock(Long inventoryId, Integer quantity, String orderId) {
         validateQuantity(quantity);
 
-        Inventory inventory = inventoryRepository
-                .findById(inventoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe el inventario con id: " + inventoryId));
+        boolean saleExists =
+                inventoryMovementRepository
+                        .existsByInventoryIdAndTypeAndReferenceTypeAndReferenceId(
+                                inventoryId,
+                                InventoryMovementType.SALE,
+                                InventoryMovementReferenceType.TIENDANUBE_ORDER,
+                                orderId
+                        );
 
-        inventory.setStock(inventory.getStock() + quantity);
+        if (!saleExists) {
+            throw new BusinessException(
+                    "No existe una venta TiendaNube registrada para la orden: "
+                            + orderId
+            );
+        }
 
-        inventoryRepository.save(inventory);
+        boolean returnExists =
+                inventoryMovementRepository
+                        .existsByInventoryIdAndTypeAndReferenceTypeAndReferenceId(
+                                inventoryId,
+                                InventoryMovementType.RETURN,
+                                InventoryMovementReferenceType.TIENDANUBE_ORDER,
+                                orderId
+                        );
+
+        if (returnExists) {
+            throw new BusinessException(
+                    "El stock de la orden TiendaNube ya fue restaurado: " + orderId
+            );
+        }
+
+        inventoryStockService.changeStock(
+                inventoryId,
+                new InventoryStockChangeCommand(
+                        quantity,
+                        InventoryMovementType.RETURN,
+                        InventoryMovementSource.TIENDANUBE,
+                        InventoryMovementReferenceType.TIENDANUBE_ORDER,
+                        orderId,
+                        "Stock restaurado por cancelación del pedido"
+                )
+        );
     }
 
     private void validateQuantity(Integer quantity) {
@@ -327,9 +477,21 @@ public class InventoryServiceImpl implements InventoryService {
         }
     }
 
-    private Inventory getEntityByBookId(Long bookId) {
+    private Inventory getEntityById(Long inventoryId) {
 
-        return getEntityByBookIdAndCondition(bookId, BookCondition.NEW);
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        return inventoryRepository
+                .findByIdAndBookstoreId(
+                        inventoryId,
+                        bookstoreId
+                )
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "No se encontró inventario con ID: "
+                                        + inventoryId
+                        )
+                );
     }
 
     private Inventory getEntityByBookIdAndCondition(Long bookId, BookCondition condition) {
@@ -382,10 +544,13 @@ public class InventoryServiceImpl implements InventoryService {
         return inventoryMapper.toDetailResponse(inventory, editorialPrice, providers);
     }
 
-    private InventoryDetailResponse saveAndSyncStock(Inventory inventory) {
-        Inventory saved = inventoryRepository.save(inventory);
-        tiendanubeVariantSyncService.syncStock(saved.getId(), saved.getStock());
+    private InventoryDetailResponse syncStockAndMap(Inventory inventory) {
 
-        return toDetailResponse(saved);
+        tiendanubeVariantSyncService.syncStock(
+                inventory.getId(),
+                inventory.getStock()
+        );
+
+        return toDetailResponse(inventory);
     }
 }

@@ -7,20 +7,15 @@ import com.rodrilang.librarymanager.auth.models.User;
 import com.rodrilang.librarymanager.auth.repositories.RefreshTokenRepository;
 import com.rodrilang.librarymanager.auth.repositories.UserRepository;
 import com.rodrilang.librarymanager.auth.services.RefreshTokenService;
+import com.rodrilang.librarymanager.auth.services.SecureTokenService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.HexFormat;
 
 @Slf4j
 @Service
@@ -28,27 +23,27 @@ import java.util.HexFormat;
 public class RefreshTokenServiceImpl implements RefreshTokenService {
 
     private static final int TOKEN_BYTES = 64;
-    private static final String HASH_ALGORITHM = "SHA-256";
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserRepository userRepository;
     private final Duration refreshTokenExpiration;
-    private final SecureRandom secureRandom;
+    private final SecureTokenService secureTokenService;
 
     public RefreshTokenServiceImpl(
             RefreshTokenRepository refreshTokenRepository,
             UserRepository userRepository,
-            @Value("${jwt.refresh-expiration}") Duration refreshTokenExpiration
+            @Value("${jwt.refresh-expiration}") Duration refreshTokenExpiration,
+            SecureTokenService secureTokenService
     ) {
         this.refreshTokenRepository = refreshTokenRepository;
         this.userRepository = userRepository;
         this.refreshTokenExpiration = refreshTokenExpiration;
-        this.secureRandom = new SecureRandom();
+        this.secureTokenService = secureTokenService;
     }
 
     @Override
-    public String generateRefreshToken(String username) {
-        User user = userRepository.findByUsername(username)
+    public String generateRefreshToken(String identifier) {
+        User user = userRepository.findByUsernameOrEmail(identifier)
                 .orElseThrow(() -> new InvalidTokenException("No se encontró el usuario asociado al refresh token."));
 
         return createRefreshToken(user);
@@ -58,7 +53,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     public RefreshTokenRotationResult rotate(String rawToken) {
         validateRawToken(rawToken);
 
-        String tokenHash = hashToken(rawToken);
+        String tokenHash = secureTokenService.hash(rawToken);
         Instant now = Instant.now();
 
         RefreshToken currentToken = refreshTokenRepository
@@ -66,13 +61,11 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
                 .orElseThrow(() -> new InvalidTokenException("El refresh token es inválido o fue revocado."));
 
         if (!currentToken.getExpiresAt().isAfter(now)) {
-            currentToken.setUsedAt(now);
-            currentToken.setRevoked(true);
 
             throw new InvalidTokenException("El refresh token ha vencido.");
         }
 
-        currentToken.setUsedAt(now);
+        currentToken.setRevokedAt(now);
         currentToken.setRevoked(true);
 
         User user = currentToken.getUser();
@@ -89,13 +82,44 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
             return;
         }
 
-        String tokenHash = hashToken(rawToken);
+        String tokenHash = secureTokenService.hash(rawToken);
+        Instant now = Instant.now();
 
         refreshTokenRepository
                 .findByTokenHashAndRevokedFalse(tokenHash)
-                .ifPresent(refreshToken -> refreshToken.setRevoked(true));
+                .ifPresent(refreshToken -> {
+                    refreshToken.setRevoked(true);
+                    refreshToken.setRevokedAt(now);
+                });
 
         log.debug("Refresh token revoked");
+    }
+
+    @Override
+    public void revokeAllForUser(Long userId) {
+        int revokedTokens =
+                refreshTokenRepository.revokeAllByUserId(userId, Instant.now());
+
+        log.debug(
+                "All refresh tokens revoked for userId={}. count={}",
+                userId,
+                revokedTokens
+        );
+    }
+
+    @Override
+    public void revokeAllForBookstore(Long bookstoreId) {
+        int revokedTokens =
+                refreshTokenRepository.revokeAllByBookstoreId(
+                        bookstoreId,
+                        Instant.now()
+                );
+
+        log.debug(
+                "All refresh tokens revoked for bookstoreId={}. count={}",
+                bookstoreId,
+                revokedTokens
+        );
     }
 
     @Override
@@ -112,32 +136,11 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         }
     }
 
-    private String generateSecureToken() {
-        byte[] bytes = new byte[TOKEN_BYTES];
-        secureRandom.nextBytes(bytes);
-
-        return Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(bytes);
-    }
-
-    private String hashToken(String rawToken) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
-
-            byte[] hash = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
-
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("No se pudo generar el hash del refresh token.", exception);
-        }
-    }
-
     private String createRefreshToken(User user) {
         Instant now = Instant.now();
 
-        String rawToken = generateSecureToken();
-        String tokenHash = hashToken(rawToken);
+        String rawToken = secureTokenService.generate(TOKEN_BYTES);
+        String tokenHash = secureTokenService.hash(rawToken);
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .tokenHash(tokenHash)

@@ -32,11 +32,13 @@ public class BookstoreInvitationService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public CreateBookstoreInvitationResponse create(
-            CreateBookstoreInvitationRequest request) {
+    public CreateBookstoreInvitationResponse create(CreateBookstoreInvitationRequest request) {
 
-        Bookstore bookstore =
-                bookstoreService.getEntityById(request.bookstoreId());
+        Bookstore bookstore = bookstoreService.getEntityById(request.bookstoreId());
+
+        if (!Boolean.TRUE.equals(bookstore.getActive())) {
+            throw new BusinessException("No se pueden invitar usuarios a una librería inactiva.");
+        }
 
         String token = tokenGenerator.generate();
         String tokenHash = tokenGenerator.hash(token);
@@ -52,12 +54,7 @@ public class BookstoreInvitationService {
                         .email(normalizeEmail(request.email()))
                         .role(request.role())
                         .tokenHash(tokenHash)
-                        .expiresAt(
-                                Instant.now().plus(
-                                        expirationHours,
-                                        ChronoUnit.HOURS
-                                )
-                        )
+                        .expiresAt(Instant.now().plus(expirationHours, ChronoUnit.HOURS))
                         .build();
 
         BookstoreInvitation saved = invitationRepository.save(invitation);
@@ -106,11 +103,7 @@ public class BookstoreInvitationService {
 
         BookstoreInvitation invitation = invitationRepository
                 .findByTokenHashForUpdate(tokenHash)
-                .orElseThrow(() ->
-                        new BusinessException(
-                                "La invitación no es válida"
-                        )
-                );
+                .orElseThrow(() -> new BusinessException("La invitación no es válida"));
 
         validateInvitation(invitation);
 
@@ -163,21 +156,15 @@ public class BookstoreInvitationService {
             BookstoreInvitation invitation) {
 
         if (invitation.isRevoked()) {
-            throw new BusinessException(
-                    "La invitación fue revocada"
-            );
+            throw new BusinessException("La invitación fue revocada");
         }
 
         if (invitation.isUsed()) {
-            throw new BusinessException(
-                    "La invitación ya fue utilizada"
-            );
+            throw new BusinessException("La invitación ya fue utilizada");
         }
 
         if (invitation.isExpired()) {
-            throw new BusinessException(
-                    "La invitación ha vencido"
-            );
+            throw new BusinessException("La invitación ha vencido");
         }
     }
 

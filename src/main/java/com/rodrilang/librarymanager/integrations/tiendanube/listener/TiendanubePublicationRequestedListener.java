@@ -1,5 +1,6 @@
-package com.rodrilang.librarymanager.integrations.tiendanube.event;
+package com.rodrilang.librarymanager.integrations.tiendanube.listener;
 
+import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

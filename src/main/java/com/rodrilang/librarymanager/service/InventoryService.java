@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.service;
 
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
+import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
@@ -15,11 +16,13 @@ public interface InventoryService {
 
     InventoryDetailResponse addStock(Long bookId, InventoryQuantityRequest request);
 
-    InventoryDetailResponse recordSale(Long bookId, InventoryQuantityRequest request);
+    InventoryDetailResponse recordSale(Long bookId, InventorySaleRequest request);
 
     InventoryDetailResponse reactivate(Long bookId, ReactivateInventoryRequest request);
 
     InventoryDetailResponse update(Long bookId, UpdateInventoryRequest request);
+
+    InventoryDetailResponse getById(Long bookId);
 
     InventoryDetailResponse getByBookId(Long bookId);
 
@@ -27,9 +30,9 @@ public interface InventoryService {
 
     Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable);
 
-    void removeBook(Long bookId);
+    void deactivate(Long bookId);
 
-    void decreaseStockFromTiendanube(Long inventoryId, Integer quantity);
+    void recordTiendanubeSale(Long inventoryId, Integer quantity, String orderId);
 
-    void increaseStockFromTiendanube(Long inventoryId, Integer quantity);
+    void restoreTiendanubeCancelledOrderStock(Long inventoryId, Integer quantity, String orderId);
 }
