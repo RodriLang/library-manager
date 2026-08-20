@@ -7,7 +7,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRemoteProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeRetryResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
-import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductSyncService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,7 +30,7 @@ import java.util.List;
 public class TiendanubeProductController {
 
     private final TiendanubeProductService productService;
-    private final TiendanubeVariantSyncService variantSyncService;
+    private final TiendanubeProductSyncService productSyncService;
 
     @PostMapping("/inventories/{inventoryId}/publish")
     @ResponseStatus(HttpStatus.CREATED)
@@ -42,7 +41,7 @@ public class TiendanubeProductController {
     @PostMapping("/inventories/{inventoryId}/sync")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void syncInventory(@PathVariable Long inventoryId) {
-        variantSyncService.syncVariant(inventoryId);
+        productSyncService.syncPublication(inventoryId);
     }
 
     @PostMapping("/inventories/{inventoryId}/retry")
