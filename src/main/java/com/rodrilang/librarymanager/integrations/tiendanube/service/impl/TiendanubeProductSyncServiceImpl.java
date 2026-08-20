@@ -14,6 +14,7 @@ import com.rodrilang.librarymanager.model.Inventory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 
@@ -65,10 +66,17 @@ public class TiendanubeProductSyncServiceImpl implements TiendanubeProductSyncSe
     }
 
     @Override
+    @Transactional
     public void syncPublication(Long inventoryId) {
 
-        TiendanubeProductLink link = productLinkRepository.findWithInventoryBookByInventoryIdAndActiveTrue(inventoryId)
-                .orElseThrow(() -> new BusinessException("El inventario no tiene vínculo activo con Tiendanube"));
+        TiendanubeProductLink link =
+                productLinkRepository
+                        .findWithInventoryBookByInventoryIdAndActiveTrue(inventoryId)
+                        .orElseThrow(() ->
+                                new BusinessException(
+                                        "El inventario no tiene vínculo activo con Tiendanube"
+                                )
+                        );
 
         Inventory inventory = link.getInventory();
 
