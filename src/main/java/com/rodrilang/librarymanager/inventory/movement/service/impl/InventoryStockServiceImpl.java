@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.inventory.movement.service.impl;
 
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
 import com.rodrilang.librarymanager.exception.BusinessException;
@@ -22,7 +23,7 @@ public class InventoryStockServiceImpl implements InventoryStockService {
 
     @Override
     @Transactional
-    public Inventory changeStock(
+    public InventoryStockChangeResult changeStock(
             Long inventoryId,
             InventoryStockChangeCommand command
     ) {
@@ -45,21 +46,25 @@ public class InventoryStockServiceImpl implements InventoryStockService {
 
         inventory.setStock(stockAfter);
 
-        InventoryMovement movement = InventoryMovement.builder()
-                .inventory(inventory)
-                .type(command.type())
-                .source(command.source())
-                .quantity(command.quantity())
-                .stockBefore(stockBefore)
-                .stockAfter(stockAfter)
-                .referenceType(command.referenceType())
-                .referenceId(command.referenceId())
-                .note(command.note())
-                .build();
+        InventoryMovement movement =
+                InventoryMovement.builder()
+                        .inventory(inventory)
+                        .type(command.type())
+                        .source(command.source())
+                        .quantity(command.quantity())
+                        .stockBefore(stockBefore)
+                        .stockAfter(stockAfter)
+                        .referenceType(command.referenceType())
+                        .referenceId(command.referenceId())
+                        .note(command.note())
+                        .build();
 
-        movementRepository.save(movement);
+        movement = movementRepository.save(movement);
 
-        return inventory;
+        return new InventoryStockChangeResult(
+                inventory,
+                movement
+        );
     }
 
     @Override

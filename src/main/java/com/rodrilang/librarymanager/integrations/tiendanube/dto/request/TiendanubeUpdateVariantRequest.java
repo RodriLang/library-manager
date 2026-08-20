@@ -10,6 +10,11 @@ public record TiendanubeUpdateVariantRequest(
         String barcode,
         BigDecimal price,
         Integer stock,
-        Boolean stockManagement
+        Boolean stockManagement,
+
+        BigDecimal weight,
+        BigDecimal width,
+        BigDecimal height,
+        BigDecimal depth
 ) {
 }

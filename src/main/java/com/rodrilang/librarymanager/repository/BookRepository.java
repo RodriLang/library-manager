@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.repository;
 
 import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.repository.projection.BookAuthorNameProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -358,20 +359,20 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
     @Query(
             value = """
-                SELECT b.id
-                FROM books b
-                WHERE b.active = TRUE
-                  AND similarity(
-                        b.title_sort,
-                        :normalizedTitle
-                      ) > 0.15
-                ORDER BY
-                    similarity(
-                        b.title_sort,
-                        :normalizedTitle
-                    ) DESC
-                LIMIT :limit
-                """,
+                    SELECT b.id
+                    FROM books b
+                    WHERE b.active = TRUE
+                      AND similarity(
+                            b.title_sort,
+                            :normalizedTitle
+                          ) > 0.15
+                    ORDER BY
+                        similarity(
+                            b.title_sort,
+                            :normalizedTitle
+                        ) DESC
+                    LIMIT :limit
+                    """,
             nativeQuery = true
     )
     List<Long> findTiendanubeCandidateIds(
@@ -388,5 +389,18 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             """)
     List<Book> findAllWithDetailsByIdIn(
             @Param("ids") Collection<Long> ids
+    );
+
+    @Query("""
+            SELECT
+                b.id AS bookId,
+                a.name AS authorName
+            FROM Book b
+            JOIN b.authors a
+            WHERE b.id IN :bookIds
+            ORDER BY a.name
+            """)
+    List<BookAuthorNameProjection> findAuthorNamesByBookIds(
+            @Param("bookIds") Collection<Long> bookIds
     );
 }

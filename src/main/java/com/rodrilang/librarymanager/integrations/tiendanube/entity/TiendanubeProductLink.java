@@ -45,6 +45,12 @@ public class TiendanubeProductLink {
     @Column(name = "tiendanube_variant_id", nullable = false)
     private Long tiendanubeVariantId;
 
+    @Column(name = "tiendanube_image_id")
+    private Long tiendanubeImageId;
+
+    @Column(name = "last_synced_cover_url", columnDefinition = "TEXT")
+    private String lastSyncedCoverUrl;
+
     @Column(name = "sku")
     private String sku;
 

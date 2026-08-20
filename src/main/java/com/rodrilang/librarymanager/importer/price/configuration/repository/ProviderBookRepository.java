@@ -2,18 +2,29 @@ package com.rodrilang.librarymanager.importer.price.configuration.repository;
 
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
+import com.rodrilang.librarymanager.purchasing.provider.repository.projection.BookAlternativeProviderProjection;
+import com.rodrilang.librarymanager.purchasing.requirement.repository.projection.PurchaseRequirementProviderProjection;
+import io.micrometer.common.lang.NonNullApi;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.lang.Nullable;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-public interface ProviderBookRepository extends JpaRepository<ProviderBook, Long> {
+@NonNullApi
+public interface ProviderBookRepository
+        extends JpaRepository<ProviderBook, Long>,
+        JpaSpecificationExecutor<ProviderBook> {
 
     Optional<ProviderBook> findByProviderIdAndExternalCode(Long providerId, String externalCode);
 
@@ -22,13 +33,67 @@ public interface ProviderBookRepository extends JpaRepository<ProviderBook, Long
     @EntityGraph(attributePaths = "book")
     List<ProviderBook> findByProviderIdAndExternalCodeIn(Long providerId, Collection<String> externalCodes);
 
-    List<ProviderBook> findByProviderIdAndBookIdIn(Long providerId, Collection<Long> bookIds);
+    @Override
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.publisher",
+            "provider"
+    })
+    Page<ProviderBook> findAll(
+            @Nullable Specification<ProviderBook> spec,
+            Pageable pageable
+    );
 
-    List<ProviderBook> findByProviderIdAndActiveTrue(Long providerId);
+    @Query("""
+            SELECT
+                pb.book.id AS bookId,
+                pb.provider.id AS providerId,
+                pb.provider.name AS providerName
+            FROM ProviderBook pb
+            WHERE pb.book.id IN :bookIds
+              AND pb.active = true
+              AND pb.provider.active = true
+              AND pb.provider.id <> :excludedProviderId
+            ORDER BY
+                pb.book.id,
+                pb.provider.name
+            """)
+    List<BookAlternativeProviderProjection> findAlternativeProviders(
+            @Param("bookIds") Collection<Long> bookIds,
+            @Param("excludedProviderId") Long excludedProviderId
+    );
 
-    List<ProviderBook> findByBookIdAndActiveTrue(Long bookId);
-
-    List<ProviderBook> findByProviderIdAndReportedIsbn(Long providerId, String reportedIsbn);
+    @Query("""
+            SELECT
+                pb.book.id AS bookId,
+                pb.provider.id AS providerId,
+                pb.provider.name AS providerName,
+                ep.price AS price
+            FROM ProviderBook pb
+            LEFT JOIN EditorialPrice ep
+                ON ep.book.id = pb.book.id
+               AND ep.provider.id = pb.provider.id
+               AND ep.active = true
+               AND ep.validFrom = (
+                    SELECT MAX(ep2.validFrom)
+                    FROM EditorialPrice ep2
+                    WHERE ep2.book.id = pb.book.id
+                      AND ep2.provider.id = pb.provider.id
+                      AND ep2.active = true
+                      AND ep2.validFrom <= CURRENT_DATE
+               )
+            WHERE pb.book.id IN :bookIds
+              AND pb.active = true
+              AND pb.provider.active = true
+            ORDER BY
+                pb.book.id,
+                pb.provider.name
+            """)
+    List<PurchaseRequirementProviderProjection>
+    findAvailableProvidersByBookIds(
+            @Param("bookIds")
+            Collection<Long> bookIds
+    );
 
     @Query("""
             SELECT new com.rodrilang.librarymanager.dto.response.BookProviderResponse(
@@ -83,4 +148,9 @@ public interface ProviderBookRepository extends JpaRepository<ProviderBook, Long
     );
 
     boolean existsByBookId(Long bookId);
+
+    boolean existsByProviderIdAndBookIdAndActiveTrue(
+            Long providerId,
+            Long bookId
+    );
 }

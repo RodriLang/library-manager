@@ -112,13 +112,18 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
         }
 
         try {
-            TiendanubeUpdateVariantRequest request = new TiendanubeUpdateVariantRequest(
-                    null,
-                    null,
-                    inventory.getSalePrice(),
-                    null,
-                    null
-            );
+            TiendanubeUpdateVariantRequest request =
+                    new TiendanubeUpdateVariantRequest(
+                            null,
+                            null,
+                            inventory.getSalePrice(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                    );
 
             client.updateVariant(
                     link.getTiendanubeStoreId(),
@@ -157,13 +162,18 @@ public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncSe
                 sku = isbn;
             }
 
-            TiendanubeUpdateVariantRequest request = new TiendanubeUpdateVariantRequest(
-                    sku,
-                    isbn,
-                    inventory.getSalePrice(),
-                    inventory.getStock(),
-                    true
-            );
+            TiendanubeUpdateVariantRequest request =
+                    new TiendanubeUpdateVariantRequest(
+                            sku,
+                            isbn,
+                            inventory.getSalePrice(),
+                            inventory.getStock(),
+                            true,
+                            inventory.getBook().getWeightGrams(),
+                            inventory.getBook().getWidthCm(),
+                            inventory.getBook().getHeightCm(),
+                            inventory.getBook().getDepthCm()
+                    );
 
             client.updateVariant(
                     link.getTiendanubeStoreId(),

@@ -7,8 +7,10 @@ import com.rodrilang.librarymanager.integrations.tiendanube.config.TiendanubePro
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateImageRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateWebhookRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateProductRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateStockRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateVariantRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeImageResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeOrderResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductVariantResponse;
@@ -224,6 +226,39 @@ public class TiendanubeClient {
         }
     }
 
+    public void deleteProductImage(
+            Long storeId,
+            Long productId,
+            Long imageId
+    ) {
+        TiendanubeStore store = getActiveStore(storeId);
+
+        try {
+            tiendanubeRestClient
+                    .delete()
+                    .uri(
+                            properties.apiUrl()
+                                    + "/{storeId}/products/{productId}/images/{imageId}",
+                            storeId,
+                            productId,
+                            imageId
+                    )
+                    .header(
+                            HttpHeaders.AUTHORIZATION,
+                            buildAuthorizationHeader(store)
+                    )
+                    .header(
+                            HttpHeaders.USER_AGENT,
+                            USER_AGENT_VALUE
+                    )
+                    .retrieve()
+                    .toBodilessEntity();
+
+        } catch (RestClientException exception) {
+            throw buildApiException("eliminar imagen de producto", exception, store);
+        }
+    }
+
     private long parseTotalCount(ResponseEntity<?> response) {
         String value = response.getHeaders().getFirst("x-total-count");
 
@@ -240,7 +275,7 @@ public class TiendanubeClient {
         }
     }
 
-    public void createProductImage(
+    public TiendanubeImageResponse createProductImage(
             Long storeId,
             Long productId,
             TiendanubeCreateImageRequest request
@@ -248,7 +283,7 @@ public class TiendanubeClient {
         TiendanubeStore store = getActiveStore(storeId);
 
         try {
-            tiendanubeRestClient.post()
+            return tiendanubeRestClient.post()
                     .uri(properties.apiUrl() + "/{storeId}/products/{productId}/images", storeId, productId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
@@ -256,7 +291,7 @@ public class TiendanubeClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()
-                    .toBodilessEntity();
+                    .body(TiendanubeImageResponse.class);
 
         } catch (RestClientException exception) {
             throw buildApiException("crear imagen de producto", exception, store);
@@ -345,6 +380,44 @@ public class TiendanubeClient {
 
         } catch (RestClientException exception) {
             throw buildApiException("actualizar variante", exception, store);
+        }
+    }
+
+    public TiendanubeProductResponse updateProduct(
+            Long storeId,
+            Long productId,
+            TiendanubeUpdateProductRequest request
+    ) {
+        TiendanubeStore store = getActiveStore(storeId);
+
+        try {
+            return tiendanubeRestClient.put()
+                    .uri(
+                            properties.apiUrl()
+                                    + "/{storeId}/products/{productId}",
+                            storeId,
+                            productId
+                    )
+                    .header(
+                            HttpHeaders.AUTHORIZATION,
+                            buildAuthorizationHeader(store)
+                    )
+                    .header(
+                            HttpHeaders.USER_AGENT,
+                            USER_AGENT_VALUE
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TiendanubeProductResponse.class);
+
+        } catch (RestClientException exception) {
+            throw buildApiException(
+                    "actualizar publicación",
+                    exception,
+                    store
+            );
         }
     }
 

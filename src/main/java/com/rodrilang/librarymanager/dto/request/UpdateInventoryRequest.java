@@ -20,7 +20,9 @@ public record UpdateInventoryRequest(
 
         Boolean editorialPriceSyncEnabled,
 
-        Boolean tiendanubePriceSyncEnabled
+        Boolean tiendanubePriceSyncEnabled,
+
+        boolean updateTiendaNube
 
 ) {
 }
