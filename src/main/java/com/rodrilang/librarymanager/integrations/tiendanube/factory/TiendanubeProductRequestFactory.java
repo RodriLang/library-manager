@@ -5,11 +5,13 @@ import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProdu
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class TiendanubeProductRequestFactory {
 
@@ -60,6 +62,17 @@ public class TiendanubeProductRequestFactory {
     }
 
     private Map<String, String> buildName(Book book) {
+
+        log.info(
+                "Construyendo nombre Tiendanube. bookId={}, title={}, authorsCount={}, authors={}",
+                book.getId(),
+                book.getTitle(),
+                book.getAuthors() != null ? book.getAuthors().size() : null,
+                book.getAuthors() != null
+                        ? book.getAuthors().stream().map(Author::getName).toList()
+                        : null
+        );
+
         String authorName = book.getAuthors()
                 .stream()
                 .findFirst()
@@ -69,6 +82,12 @@ public class TiendanubeProductRequestFactory {
         String name = authorName == null || authorName.isBlank()
                 ? book.getTitle()
                 : book.getTitle() + " - " + authorName;
+
+        log.info(
+                "Nombre Tiendanube generado. bookId={}, result={}",
+                book.getId(),
+                name
+        );
 
         return Map.of("es", name);
     }
