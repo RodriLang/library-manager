@@ -23,9 +23,17 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
     Optional<Book> findByIsbn10(String isbn10);
 
-    List<Book> findByIsbn13In(Collection<String> isbn13Values);
+    @EntityGraph(attributePaths = {
+            "authors",
+            "publisher"
+    })
+    List<Book> findByIsbn13InAndActiveTrue(Collection<String> isbn13Values);
 
-    List<Book> findByIsbn10In(Collection<String> isbn10Values);
+    @EntityGraph(attributePaths = {
+            "authors",
+            "publisher"
+    })
+    List<Book> findByIsbn10InAndActiveTrue(Collection<String> isbn10Values);
 
     @Query("""
             SELECT DISTINCT b
@@ -362,15 +370,8 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     SELECT b.id
                     FROM books b
                     WHERE b.active = TRUE
-                      AND similarity(
-                            b.title_sort,
-                            :normalizedTitle
-                          ) > 0.15
-                    ORDER BY
-                        similarity(
-                            b.title_sort,
-                            :normalizedTitle
-                        ) DESC
+                      AND b.title_sort IS NOT NULL
+                    ORDER BY b.title_sort <-> :normalizedTitle
                     LIMIT :limit
                     """,
             nativeQuery = true
