@@ -10,8 +10,13 @@ import org.springframework.web.client.RestClient;
 public class TiendanubeConfiguration {
 
     @Bean
-    public RestClient tiendanubeRestClient(RestClient.Builder builder) {
-        return builder.build();
+    public RestClient tiendanubeRestClient(
+            RestClient.Builder builder,
+            TiendanubeProperties properties
+    ) {
+        return builder
+                .baseUrl(properties.apiUrl())
+                .build();
     }
 
 }
