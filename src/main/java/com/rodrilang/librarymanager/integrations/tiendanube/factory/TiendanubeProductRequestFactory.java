@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.factory;
 
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.*;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
+import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
 import org.springframework.stereotype.Component;
@@ -59,7 +60,17 @@ public class TiendanubeProductRequestFactory {
     }
 
     private Map<String, String> buildName(Book book) {
-        return Map.of("es", book.getTitle());
+        String authorName = book.getAuthors()
+                .stream()
+                .findFirst()
+                .map(Author::getName)
+                .orElse(null);
+
+        String name = authorName == null || authorName.isBlank()
+                ? book.getTitle()
+                : book.getTitle() + " - " + authorName;
+
+        return Map.of("es", name);
     }
 
     private Map<String, String> buildDescription(Book book) {
