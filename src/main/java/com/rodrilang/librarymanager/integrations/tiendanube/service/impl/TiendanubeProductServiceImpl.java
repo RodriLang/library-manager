@@ -178,6 +178,12 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     public TiendanubeInventoryStatusResponse getInventoryStatus(Long inventoryId) {
         Inventory inventory = getInventory(inventoryId);
 
+        log.info(
+                "Estado Tiendanube inventario. inventoryId={}, status={}",
+                inventoryId,
+                inventory.getTiendanubeStatus()
+        );
+
         Long bookstoreId = inventory.getBookstore().getId();
 
         boolean tiendanubeConnected =
