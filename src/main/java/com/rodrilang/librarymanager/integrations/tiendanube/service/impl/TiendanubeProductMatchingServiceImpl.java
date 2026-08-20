@@ -32,6 +32,8 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMatchingService {
 
+    private static final int TEXT_CANDIDATE_LIMIT = 15;
+
     private final InventoryRepository inventoryRepository;
     private final BookRepository bookRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
@@ -98,7 +100,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
         List<Long> candidateIds =
                 bookRepository.findTiendanubeCandidateIds(
                         remoteName,
-                        50
+                        TEXT_CANDIDATE_LIMIT
                 );
 
         if (candidateIds.isEmpty()) {

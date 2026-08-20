@@ -191,11 +191,11 @@ public class ImportContextFactory {
     }
 
     private List<Book> loadBooksByIsbn13(Set<String> values) {
-        return loadInBatches(values, bookRepository::findByIsbn13In);
+        return loadInBatches(values, bookRepository::findByIsbn13InAndActiveTrue);
     }
 
     private List<Book> loadBooksByIsbn10(Set<String> values) {
-        return loadInBatches(values, bookRepository::findByIsbn10In);
+        return loadInBatches(values, bookRepository::findByIsbn10InAndActiveTrue);
     }
 
     private List<Book> loadInBatches(

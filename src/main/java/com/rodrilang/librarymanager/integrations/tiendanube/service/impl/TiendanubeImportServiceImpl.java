@@ -90,13 +90,40 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         size
                 );
 
-        List<ProductPreviewData> previewData =
-                productsPage.products()
+        List<TiendanubeProductResponse> products = productsPage.products();
+
+        List<Long> variantIds =
+                products.stream()
+                        .flatMap(product ->
+                                product.variants() == null
+                                        ? Stream.empty()
+                                        : product.variants().stream()
+                        )
+                        .map(TiendanubeVariantResponse::id)
+                        .toList();
+
+        Map<Long, TiendanubeProductLink> linksByVariantId =
+                productLinkRepository
+                        .findAllByTiendanubeStoreIdAndTiendanubeVariantIdInAndActiveTrue(
+                                store.getStoreId(),
+                                variantIds
+                        )
                         .stream()
+                        .collect(Collectors.toMap(
+                                TiendanubeProductLink::getTiendanubeVariantId,
+                                link -> link
+                        ));
+
+        Map<String, Book> booksByRemoteIsbn =
+                loadBooksByRemoteIsbn(products, linksByVariantId);
+
+        List<ProductPreviewData> previewData =
+                products.stream()
                         .map(product ->
                                 prepareProductPreview(
                                         product,
-                                        store.getStoreId()
+                                        linksByVariantId,
+                                        booksByRemoteIsbn
                                 )
                         )
                         .toList();
@@ -574,6 +601,156 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         }
     }
 
+    private Map<String, Book> loadBooksByRemoteIsbn(
+            List<TiendanubeProductResponse> products,
+            Map<Long, TiendanubeProductLink> linksByVariantId
+    ) {
+        Map<String, ParsedIsbn> parsedByRemoteIsbn =
+                collectParsedRemoteIsbns(
+                        products,
+                        linksByVariantId
+                );
+
+        if (parsedByRemoteIsbn.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Book> booksByCanonicalIsbn = loadBooksByCanonicalIsbn(parsedByRemoteIsbn.values());
+
+        return mapBooksByRemoteIsbn(
+                parsedByRemoteIsbn,
+                booksByCanonicalIsbn
+        );
+    }
+
+    private Map<String, ParsedIsbn> collectParsedRemoteIsbns(
+            List<TiendanubeProductResponse> products,
+            Map<Long, TiendanubeProductLink> linksByVariantId
+    ) {
+        Map<String, ParsedIsbn> result = new HashMap<>();
+
+        for (TiendanubeProductResponse product : products) {
+            if (product.variants() == null) {
+                continue;
+            }
+
+            for (TiendanubeVariantResponse variant : product.variants()) {
+                if (linksByVariantId.containsKey(variant.id())) {
+                    continue;
+                }
+
+                addParsedRemoteIsbn(variant, result);
+            }
+        }
+
+        return result;
+    }
+
+    private void addParsedRemoteIsbn(
+            TiendanubeVariantResponse variant,
+            Map<String, ParsedIsbn> result
+    ) {
+        String remoteIsbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
+
+        if (remoteIsbn == null || result.containsKey(remoteIsbn)) {
+            return;
+        }
+
+        ParsedIsbn parsedIsbn = isbnService.parse(remoteIsbn);
+
+        if (parsedIsbn.valid()) {
+            result.put(remoteIsbn, parsedIsbn);
+        }
+    }
+
+    private Map<String, Book> loadBooksByCanonicalIsbn(Collection<ParsedIsbn> parsedIsbns) {
+        List<String> isbn13Values =
+                parsedIsbns.stream()
+                        .map(ParsedIsbn::isbn13)
+                        .filter(this::hasText)
+                        .distinct()
+                        .toList();
+
+        List<String> isbn10Values =
+                parsedIsbns.stream()
+                        .map(ParsedIsbn::isbn10)
+                        .filter(this::hasText)
+                        .distinct()
+                        .toList();
+
+        Map<String, Book> result = new HashMap<>();
+
+        addBooksByIsbn13(isbn13Values, result);
+
+        addBooksByIsbn10(isbn10Values, result);
+
+        return result;
+    }
+
+    private void addBooksByIsbn13(
+            List<String> isbn13Values,
+            Map<String, Book> result
+    ) {
+        if (isbn13Values.isEmpty()) {
+            return;
+        }
+
+        bookRepository.findByIsbn13InAndActiveTrue(isbn13Values)
+                .forEach(book -> result.put(book.getIsbn13(), book));
+    }
+
+    private void addBooksByIsbn10(
+            List<String> isbn10Values,
+            Map<String, Book> result
+    ) {
+        if (isbn10Values.isEmpty()) {
+            return;
+        }
+
+        bookRepository.findByIsbn10InAndActiveTrue(isbn10Values)
+                .forEach(book ->
+                        result.put(book.getIsbn10(), book));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private Map<String, Book> mapBooksByRemoteIsbn(
+            Map<String, ParsedIsbn> parsedByRemoteIsbn,
+            Map<String, Book> booksByCanonicalIsbn
+    ) {
+        Map<String, Book> result = new HashMap<>();
+
+        parsedByRemoteIsbn.forEach(
+                (remoteIsbn, parsedIsbn) -> {
+                    Book book = findBookByParsedIsbn(parsedIsbn, booksByCanonicalIsbn);
+
+                    if (book != null) {
+                        result.put(remoteIsbn, book);
+                    }
+                }
+        );
+
+        return result;
+    }
+
+    private Book findBookByParsedIsbn(ParsedIsbn parsedIsbn, Map<String, Book> booksByCanonicalIsbn) {
+        if (parsedIsbn.isbn13() != null) {
+            Book book = booksByCanonicalIsbn.get(parsedIsbn.isbn13());
+
+            if (book != null) {
+                return book;
+            }
+        }
+
+        if (parsedIsbn.isbn10() != null) {
+            return booksByCanonicalIsbn.get(parsedIsbn.isbn10());
+        }
+
+        return null;
+    }
+
     private TiendanubeImportPreviewResponse buildPreviewResponse(
             List<TiendanubeImportPreviewItemResponse> items,
             TiendanubeProductsPage page
@@ -638,36 +815,6 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
         throw new BusinessException(
                 "No existe un libro en el catálogo con ISBN " + value
         );
-    }
-
-    private Optional<Book> findOptionalBookByIsbn(
-            String value
-    ) {
-        ParsedIsbn parsedIsbn =
-                isbnService.parse(value);
-
-        if (!parsedIsbn.valid()) {
-            return Optional.empty();
-        }
-
-        if (parsedIsbn.isbn13() != null) {
-            Optional<Book> byIsbn13 =
-                    bookRepository.findByIsbn13WithDetails(
-                            parsedIsbn.isbn13()
-                    );
-
-            if (byIsbn13.isPresent()) {
-                return byIsbn13;
-            }
-        }
-
-        if (parsedIsbn.isbn10() != null) {
-            return bookRepository.findByIsbn10WithDetails(
-                    parsedIsbn.isbn10()
-            );
-        }
-
-        return Optional.empty();
     }
 
     private TiendanubeImportPreviewItemResponse buildBookMatchItem(
@@ -840,7 +987,8 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
 
     private ProductPreviewData prepareProductPreview(
             TiendanubeProductResponse product,
-            Long storeId
+            Map<Long, TiendanubeProductLink> allLinksByVariantId,
+            Map<String, Book> booksByRemoteIsbn
     ) {
         Map<Long, TiendanubeProductLink> linksByVariantId = new HashMap<>();
 
@@ -861,19 +1009,12 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
 
         for (TiendanubeVariantResponse variant : product.variants()) {
 
-            Optional<TiendanubeProductLink> existingLink =
-                    productLinkRepository
-                            .findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(
-                                    storeId,
-                                    variant.id()
-                            );
+            TiendanubeProductLink existingLink = allLinksByVariantId.get(variant.id());
 
-            if (existingLink.isPresent()) {
-                TiendanubeProductLink link = existingLink.get();
+            if (existingLink != null) {
+                linksByVariantId.put(variant.id(), existingLink);
 
-                linksByVariantId.put(variant.id(), link);
-
-                booksByVariantId.put(variant.id(), link.getInventory().getBook());
+                booksByVariantId.put(variant.id(), existingLink.getInventory().getBook());
 
                 continue;
             }
@@ -881,14 +1022,10 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             String isbn = TiendanubeProductUtils.resolveRemoteIsbn(variant);
 
             if (isbn != null) {
-                Optional<Book> book =
-                        findOptionalBookByIsbn(isbn);
+                Book book = booksByRemoteIsbn.get(isbn);
 
-                if (book.isPresent()) {
-                    booksByVariantId.put(
-                            variant.id(),
-                            book.get()
-                    );
+                if (book != null) {
+                    booksByVariantId.put(variant.id(), book);
 
                     continue;
                 }

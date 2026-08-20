@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubePro
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,4 +35,16 @@ public interface TiendanubeProductLinkRepository extends JpaRepository<Tiendanub
             "inventory.book.authors"
     })
     Optional<TiendanubeProductLink> findWithInventoryBookByInventoryIdAndActiveTrue(Long inventoryId);
+
+    @EntityGraph(attributePaths = {
+            "inventory",
+            "inventory.book",
+            "inventory.book.authors",
+            "inventory.book.publisher"
+    })
+    List<TiendanubeProductLink>
+    findAllByTiendanubeStoreIdAndTiendanubeVariantIdInAndActiveTrue(
+            Long tiendanubeStoreId,
+            Collection<Long> tiendanubeVariantIds
+    );
 }
