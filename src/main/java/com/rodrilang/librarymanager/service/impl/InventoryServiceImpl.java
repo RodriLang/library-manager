@@ -1,6 +1,9 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
+import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductSyncService;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
@@ -61,6 +64,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
     private final TiendanubeVariantSyncService tiendanubeVariantSyncService;
+    private final TiendanubeProductSyncService tiendanubeProductSyncService;
     private final EditorialPriceService editorialPriceService;
     private final InventoryStockService inventoryStockService;
     private final PurchaseRequirementService purchaseRequirementService;
@@ -278,8 +282,23 @@ public class InventoryServiceImpl implements InventoryService {
 
         boolean priceSyncJustEnabled = !Boolean.TRUE.equals(previousPriceSyncEnabled) && priceSyncEnabled;
 
-        if (priceSyncEnabled && (priceChanged || priceSyncJustEnabled)) {
-            tiendanubeVariantSyncService.syncPrice(inventory.getId());
+        if (request.updateTiendaNube()) {
+
+            eventPublisher.publishEvent(
+                    new TiendanubeSyncRequestedEvent(
+                            inventory.getId(),
+                            TiendanubeSyncType.PUBLICATION
+                    )
+            );
+
+        } else if (priceSyncEnabled && (priceChanged || priceSyncJustEnabled)) {
+
+            eventPublisher.publishEvent(
+                    new TiendanubeSyncRequestedEvent(
+                            inventory.getId(),
+                            TiendanubeSyncType.PRICE
+                    )
+            );
         }
 
         return toDetailResponse(inventory);

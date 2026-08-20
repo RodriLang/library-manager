@@ -5,4 +5,6 @@ public interface TiendanubeProductSyncService {
     void syncMissingImage(Long inventoryId);
 
     void syncAfterImport(Long inventoryId);
+
+    void syncPublication(Long inventoryId);
 }
