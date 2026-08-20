@@ -38,11 +38,13 @@ import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
+import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -67,6 +69,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     private final TiendanubeProductMatchingService matchingService;
     private final TiendanubeProductSyncService productSyncService;
     private final IsbnService isbnService;
+    private final EditorialPriceService editorialPriceService;
     private final BookstoreContext bookstoreContext;
 
     @Override
@@ -112,9 +115,12 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         bookIds
                 );
 
+        Map<Long, BigDecimal> editorialPrices = editorialPriceService.findCurrentPricesByBookIds(bookIds);
+
         PreviewContext context =
                 new PreviewContext(
-                        inventoryInfo
+                        inventoryInfo,
+                        editorialPrices
                 );
 
         List<TiendanubeImportPreviewItemResponse> items =
@@ -545,12 +551,15 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         context
                 );
 
+        BigDecimal editorialPrice = context.editorialPrices().get(book.getId());
+
         return new TiendanubeImportBookCandidateResponse(
                 book.getId(),
                 book.getPreferredIsbn(),
                 book.getTitle(),
                 authors,
                 publisher,
+                editorialPrice,
                 inventory != null
                         ? inventory.inventoryId()
                         : null,
@@ -912,7 +921,8 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     private record PreviewContext(
-            Map<Long, InventoryPreviewInfo> inventoryInfo
+            Map<Long, InventoryPreviewInfo> inventoryInfo,
+            Map<Long, BigDecimal> editorialPrices
     ) {
     }
 

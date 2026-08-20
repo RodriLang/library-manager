@@ -59,7 +59,7 @@ public class TiendanubeClient {
 
         try {
             return tiendanubeRestClient.post()
-                    .uri(properties.apiUrl() + "/{storeId}/products", storeId)
+                    .uri(properties.endpoints().products(), storeId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -77,7 +77,7 @@ public class TiendanubeClient {
         TiendanubeStore store = getActiveStore(storeId);
         try {
             return tiendanubeRestClient.get()
-                    .uri(properties.apiUrl() + "/{storeId}/orders/{orderId}", storeId, orderId)
+                    .uri(properties.endpoints().orders(), storeId, orderId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .accept(MediaType.APPLICATION_JSON)
@@ -95,7 +95,7 @@ public class TiendanubeClient {
 
         try {
             return tiendanubeRestClient.get()
-                    .uri(properties.apiUrl() + "/{storeId}/products/{productId}", storeId, productId)
+                    .uri(properties.endpoints().product(), storeId, productId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .accept(MediaType.APPLICATION_JSON)
@@ -148,13 +148,7 @@ public class TiendanubeClient {
         try {
             ResponseEntity<TiendanubeProductResponse[]> response =
                     tiendanubeRestClient.get()
-                            .uri(
-                                    properties.apiUrl()
-                                            + "/{storeId}/products?page={page}&per_page={perPage}",
-                                    storeId,
-                                    remotePage,
-                                    size
-                            )
+                            .uri(properties.endpoints().productsPage(), storeId, remotePage, size)
                             .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                             .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                             .accept(MediaType.APPLICATION_JSON)
@@ -201,20 +195,9 @@ public class TiendanubeClient {
         try {
             tiendanubeRestClient
                     .delete()
-                    .uri(
-                            properties.apiUrl()
-                                    + "/{storeId}/products/{productId}",
-                            storeId,
-                            productId
-                    )
-                    .header(
-                            HttpHeaders.AUTHORIZATION,
-                            buildAuthorizationHeader(store)
-                    )
-                    .header(
-                            HttpHeaders.USER_AGENT,
-                            USER_AGENT_VALUE
-                    )
+                    .uri(properties.endpoints().product(), storeId, productId)
+                    .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .retrieve()
                     .toBodilessEntity();
 
@@ -236,21 +219,9 @@ public class TiendanubeClient {
         try {
             tiendanubeRestClient
                     .delete()
-                    .uri(
-                            properties.apiUrl()
-                                    + "/{storeId}/products/{productId}/images/{imageId}",
-                            storeId,
-                            productId,
-                            imageId
-                    )
-                    .header(
-                            HttpHeaders.AUTHORIZATION,
-                            buildAuthorizationHeader(store)
-                    )
-                    .header(
-                            HttpHeaders.USER_AGENT,
-                            USER_AGENT_VALUE
-                    )
+                    .uri(properties.endpoints().productImage(), storeId, productId, imageId)
+                    .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .retrieve()
                     .toBodilessEntity();
 
@@ -284,7 +255,7 @@ public class TiendanubeClient {
 
         try {
             return tiendanubeRestClient.post()
-                    .uri(properties.apiUrl() + "/{storeId}/products/{productId}/images", storeId, productId)
+                    .uri(properties.endpoints().productImages(), storeId, productId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -306,13 +277,7 @@ public class TiendanubeClient {
     ) {
         try {
             return tiendanubeRestClient.get()
-                    .uri(
-                            properties.apiUrl()
-                                    + "/{storeId}/products?page={page}&per_page={perPage}",
-                            storeId,
-                            page,
-                            perPage
-                    )
+                    .uri(properties.endpoints().productsPage(), storeId, page, perPage)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .accept(MediaType.APPLICATION_JSON)
@@ -324,7 +289,7 @@ public class TiendanubeClient {
         }
     }
 
-    public TiendanubeProductVariantResponse updateStock(
+    public void updateStock(
             Long storeId,
             Long productId,
             Long variantId,
@@ -334,12 +299,8 @@ public class TiendanubeClient {
 
         TiendanubeUpdateStockRequest request = new TiendanubeUpdateStockRequest(true, stock);
         try {
-            return tiendanubeRestClient.put()
-                    .uri(properties.apiUrl() + "/{storeId}/products/{productId}/variants/{variantId}",
-                            storeId,
-                            productId,
-                            variantId
-                    )
+            tiendanubeRestClient.put()
+                    .uri(properties.endpoints().productVariant(), storeId, productId, variantId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -353,7 +314,7 @@ public class TiendanubeClient {
         }
     }
 
-    public TiendanubeProductVariantResponse updateVariant(
+    public void updateVariant(
             Long storeId,
             Long productId,
             Long variantId,
@@ -362,14 +323,8 @@ public class TiendanubeClient {
         TiendanubeStore store = getActiveStore(storeId);
 
         try {
-            return tiendanubeRestClient.put()
-                    .uri(
-                            properties.apiUrl()
-                                    + "/{storeId}/products/{productId}/variants/{variantId}",
-                            storeId,
-                            productId,
-                            variantId
-                    )
+            tiendanubeRestClient.put()
+                    .uri(properties.endpoints().productVariant(), storeId, productId, variantId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -383,7 +338,7 @@ public class TiendanubeClient {
         }
     }
 
-    public TiendanubeProductResponse updateProduct(
+    public void updateProduct(
             Long storeId,
             Long productId,
             TiendanubeUpdateProductRequest request
@@ -391,21 +346,10 @@ public class TiendanubeClient {
         TiendanubeStore store = getActiveStore(storeId);
 
         try {
-            return tiendanubeRestClient.put()
-                    .uri(
-                            properties.apiUrl()
-                                    + "/{storeId}/products/{productId}",
-                            storeId,
-                            productId
-                    )
-                    .header(
-                            HttpHeaders.AUTHORIZATION,
-                            buildAuthorizationHeader(store)
-                    )
-                    .header(
-                            HttpHeaders.USER_AGENT,
-                            USER_AGENT_VALUE
-                    )
+            tiendanubeRestClient.put()
+                    .uri(properties.endpoints().product(), storeId, productId)
+                    .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)
@@ -431,7 +375,7 @@ public class TiendanubeClient {
         TiendanubeCreateWebhookRequest request = new TiendanubeCreateWebhookRequest(event, url);
         try {
             return tiendanubeRestClient.post()
-                    .uri(properties.apiUrl() + "/{storeId}/webhooks", storeId)
+                    .uri(properties.endpoints().webhooks(), storeId)
                     .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
                     .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
                     .contentType(MediaType.APPLICATION_JSON)

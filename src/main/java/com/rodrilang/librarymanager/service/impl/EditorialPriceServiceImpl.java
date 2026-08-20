@@ -21,6 +21,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -286,9 +287,28 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     @Override
     public Optional<EditorialPrice> findCurrentByBookId(Long bookId) {
         return editorialPriceRepository
-                .findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
+                .findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDescIdDesc(
                         bookId,
                         LocalDate.now(ZoneId.systemDefault())
                 );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> findCurrentPricesByBookIds(List<Long> bookIds) {
+
+        if (bookIds == null || bookIds.isEmpty()) {
+            return Map.of();
+        }
+
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+
+        return editorialPriceRepository
+                .findCurrentByBookIds(bookIds, today)
+                .stream()
+                .collect(Collectors.toMap(
+                        editorialPrice -> editorialPrice.getBook().getId(),
+                        EditorialPrice::getPrice
+                ));
     }
 }

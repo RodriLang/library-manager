@@ -54,75 +54,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     @Override
     @Transactional
     public TiendanubePublishResultResponse publishInventory(Long inventoryId) {
-        Inventory inventory = inventoryRepository
-                .findByIdForTiendanubePublish(inventoryId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "No se encontró el inventario."
-                        )
-                );
-        TiendanubeStore store = getActiveStore(inventory.getBookstore().getId());
-
-        validateCanPublish(inventory, store.getStoreId());
-
-        List<TiendanubeProductResponse> remoteProducts = client.getProducts(store.getStoreId());
-        RemoteInventoryMatch remoteMatch = matchingService.findRemoteMatch(inventory, remoteProducts);
-
-        if (remoteMatch != null) {
-            if (remoteMatch.autoLink()) {
-                TiendanubeProductLinkResponse link = productLinkService.linkExistingProduct(
-                        inventoryId,
-                        remoteMatch.productId(),
-                        remoteMatch.variantId()
-                );
-
-                return new TiendanubePublishResultResponse(
-                        inventoryId,
-                        link.productId(),
-                        link.variantId(),
-                        TiendanubeInventoryStatus.LINKED
-                );
-            }
-
-            inventoryStateService.updateStatus(inventoryId, TiendanubeInventoryStatus.LINK_REQUIRED);
-
-            return new TiendanubePublishResultResponse(
-                    inventoryId,
-                    null,
-                    null,
-                    TiendanubeInventoryStatus.LINK_REQUIRED
-            );
-        }
-
-        inventoryStateService.updateStatus(inventoryId, TiendanubeInventoryStatus.PUBLISHING);
-
-        try {
-            TiendanubeCreateProductRequest request = productRequestFactory.createProduct(inventory);
-            TiendanubeProductResponse remoteProduct = client.createProduct(store.getStoreId(), request);
-            TiendanubeVariantResponse remoteVariant = getMainVariant(remoteProduct);
-
-            linkPersistenceService.savePublishedLink(
-                    inventoryId,
-                    store.getStoreId(),
-                    remoteProduct.id(),
-                    remoteVariant
-            );
-
-            log.info("Inventario publicado en Tiendanube. inventoryId={}, productId={}, variantId={}",
-                    inventoryId, remoteProduct.id(), remoteVariant.id());
-
-            return new TiendanubePublishResultResponse(
-                    inventoryId,
-                    remoteProduct.id(),
-                    remoteVariant.id(),
-                    TiendanubeInventoryStatus.LINKED
-            );
-
-        } catch (RuntimeException exception) {
-            inventoryStateService.markSyncError(inventoryId);
-            log.error("Error publicando inventario en Tiendanube. inventoryId={}", inventoryId, exception);
-            throw exception;
-        }
+        return doPublishInventory(inventoryId);
     }
 
     @Override
@@ -147,6 +79,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
     }
 
     @Override
+    @Transactional
     public TiendanubeRetryResponse retry(Long inventoryId) {
         Inventory inventory = getInventory(inventoryId);
 
@@ -164,7 +97,7 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
             );
         }
 
-        TiendanubePublishResultResponse result = publishInventory(inventoryId);
+        TiendanubePublishResultResponse result = doPublishInventory(inventoryId);
 
         return new TiendanubeRetryResponse(
                 inventoryId,
@@ -302,6 +235,78 @@ public class TiendanubeProductServiceImpl implements TiendanubeProductService {
                 inventoryId,
                 link.getTiendanubeProductId()
         );
+    }
+
+    private TiendanubePublishResultResponse doPublishInventory(Long inventoryId) {
+        Inventory inventory = inventoryRepository
+                .findByIdForTiendanubePublish(inventoryId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "No se encontró el inventario."
+                        )
+                );
+        TiendanubeStore store = getActiveStore(inventory.getBookstore().getId());
+
+        validateCanPublish(inventory, store.getStoreId());
+
+        List<TiendanubeProductResponse> remoteProducts = client.getProducts(store.getStoreId());
+        RemoteInventoryMatch remoteMatch = matchingService.findRemoteMatch(inventory, remoteProducts);
+
+        if (remoteMatch != null) {
+            if (remoteMatch.autoLink()) {
+                TiendanubeProductLinkResponse link = productLinkService.linkExistingProduct(
+                        inventoryId,
+                        remoteMatch.productId(),
+                        remoteMatch.variantId()
+                );
+
+                return new TiendanubePublishResultResponse(
+                        inventoryId,
+                        link.productId(),
+                        link.variantId(),
+                        TiendanubeInventoryStatus.LINKED
+                );
+            }
+
+            inventoryStateService.updateStatus(inventoryId, TiendanubeInventoryStatus.LINK_REQUIRED);
+
+            return new TiendanubePublishResultResponse(
+                    inventoryId,
+                    null,
+                    null,
+                    TiendanubeInventoryStatus.LINK_REQUIRED
+            );
+        }
+
+        inventoryStateService.updateStatus(inventoryId, TiendanubeInventoryStatus.PUBLISHING);
+
+        try {
+            TiendanubeCreateProductRequest request = productRequestFactory.createProduct(inventory);
+            TiendanubeProductResponse remoteProduct = client.createProduct(store.getStoreId(), request);
+            TiendanubeVariantResponse remoteVariant = getMainVariant(remoteProduct);
+
+            linkPersistenceService.savePublishedLink(
+                    inventoryId,
+                    store.getStoreId(),
+                    remoteProduct.id(),
+                    remoteVariant
+            );
+
+            log.info("Inventario publicado en Tiendanube. inventoryId={}, productId={}, variantId={}",
+                    inventoryId, remoteProduct.id(), remoteVariant.id());
+
+            return new TiendanubePublishResultResponse(
+                    inventoryId,
+                    remoteProduct.id(),
+                    remoteVariant.id(),
+                    TiendanubeInventoryStatus.LINKED
+            );
+
+        } catch (RuntimeException exception) {
+            inventoryStateService.markSyncError(inventoryId);
+            log.error("Error publicando inventario en Tiendanube. inventoryId={}", inventoryId, exception);
+            throw exception;
+        }
     }
 
     private void validateCanPublish(Inventory inventory, Long storeId) {

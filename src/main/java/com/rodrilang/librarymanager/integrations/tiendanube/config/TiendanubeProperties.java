@@ -10,7 +10,20 @@ public record TiendanubeProperties(
         String redirectUri,
         String authUrl,
         String tokenUrl,
-        String apiUrl
+        String apiUrl,
+        Endpoints endpoints
 
 ) {
+
+    public record Endpoints(
+            String products,
+            String product,
+            String productVariant,
+            String productImages,
+            String productImage,
+            String productsPage,
+            String orders,
+            String webhooks
+    ) {
+    }
 }

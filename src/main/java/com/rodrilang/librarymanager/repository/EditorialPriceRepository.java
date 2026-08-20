@@ -21,7 +21,7 @@ public interface EditorialPriceRepository
 
     @EntityGraph(attributePaths = "provider")
     Optional<EditorialPrice>
-    findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
+    findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDescIdDesc(
             Long bookId,
             LocalDate validFrom
     );
@@ -99,6 +99,32 @@ public interface EditorialPriceRepository
     List<EditorialPrice> findCurrentByBooksAndProviders(
             @Param("bookIds") Collection<Long> bookIds,
             @Param("providerIds") Collection<Long> providerIds,
+            @Param("date") LocalDate date
+    );
+
+    @Query("""
+            SELECT ep
+            FROM EditorialPrice ep
+            WHERE ep.book.id IN :bookIds
+              AND ep.active = true
+              AND ep.validFrom <= :date
+              AND NOT EXISTS (
+                  SELECT ep2.id
+                  FROM EditorialPrice ep2
+                  WHERE ep2.book.id = ep.book.id
+                    AND ep2.active = true
+                    AND ep2.validFrom <= :date
+                    AND (
+                        ep2.validFrom > ep.validFrom
+                        OR (
+                            ep2.validFrom = ep.validFrom
+                            AND ep2.id > ep.id
+                        )
+                    )
+              )
+            """)
+    List<EditorialPrice> findCurrentByBookIds(
+            @Param("bookIds") Collection<Long> bookIds,
             @Param("date") LocalDate date
     );
 
