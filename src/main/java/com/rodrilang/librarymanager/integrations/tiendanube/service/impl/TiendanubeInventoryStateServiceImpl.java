@@ -19,7 +19,7 @@ public class TiendanubeInventoryStateServiceImpl implements TiendanubeInventoryS
     private final TiendanubeProductLinkRepository productLinkRepository;
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void updateStatus(Long inventoryId, TiendanubeInventoryStatus status) {
         Inventory inventory = inventoryRepository.findById(inventoryId).orElseThrow();
         inventory.setTiendanubeStatus(status);
