@@ -46,7 +46,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
     Optional<Book> findFirstByTitleIgnoreCase(String title);
 
-    Optional<Book> findFirstByTitleIgnoreCaseAndPublisher_NameIgnoreCase(String title, String publisherName);
+    Optional<Book> findFirstByTitleIgnoreCaseAndPublisherId(String title, Long publisherId);
 
     @Query(
             value = """

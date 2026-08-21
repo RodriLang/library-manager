@@ -3,7 +3,6 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
-import com.rodrilang.librarymanager.enums.CoverCandidateStatus;
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListMetadata;
@@ -16,6 +15,7 @@ import com.rodrilang.librarymanager.importer.price.service.PriceListBookUpsertSe
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -247,13 +247,20 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         }
 
         if (hasText(row.publisherName())) {
-            return bookRepository.findFirstByTitleIgnoreCaseAndPublisher_NameIgnoreCase(
-                    row.title().trim(),
-                    row.publisherName().trim()
-            ).orElse(null);
+            Publisher publisher = publisherResolver.resolve(row, context);
+
+            if (publisher != null) {
+                return bookRepository
+                        .findFirstByTitleIgnoreCaseAndPublisherId(
+                                row.title().trim(),
+                                publisher.getId()
+                        )
+                        .orElse(null);
+            }
         }
 
-        return bookRepository.findFirstByTitleIgnoreCase(row.title().trim()).orElse(null);
+        return bookRepository.findFirstByTitleIgnoreCase(row.title().trim())
+                .orElse(null);
     }
 
     private String resolveDescription(PriceListMetadata metadata) {
