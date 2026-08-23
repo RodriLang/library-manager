@@ -28,6 +28,7 @@ import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.EditorialPriceService;
 import com.rodrilang.librarymanager.service.PublisherService;
 import com.rodrilang.librarymanager.util.PageableUtils;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -171,8 +172,12 @@ public class BookServiceImpl implements BookService {
                     pageable
             );
         } else {
+            String searchQuery = TextNormalizer.normalizeForSearch(normalizedQuery);
+            String fullTextQuery = TextNormalizer.normalizeForFullTextSearch(normalizedQuery);
+
             books = bookRepository.searchText(
-                    normalizedQuery,
+                    searchQuery,
+                    fullTextQuery,
                     bookstoreId,
                     pageable
             );

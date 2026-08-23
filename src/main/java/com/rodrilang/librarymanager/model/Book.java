@@ -59,6 +59,9 @@ public class Book extends AuditableEntity {
     @Column(name = "title_sort", nullable = false)
     private String titleSort;
 
+    @Column(name = "title_search", nullable = false)
+    private String titleSearch;
+
     private String subtitle;
 
     @Column(columnDefinition = "TEXT")
@@ -169,6 +172,7 @@ public class Book extends AuditableEntity {
     @PreUpdate
     private void normalizeFields() {
         this.titleSort = TextNormalizer.normalizeForSort(title);
+        this.titleSearch = TextNormalizer.normalizeForSearch(title);
 
         if (isbn13 != null) {
             isbn13 = isbn13.trim();

@@ -171,15 +171,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                         SELECT
                             i.id AS inventory_id,
                             CASE
-                                WHEN immutable_unaccent(lower(b.title))
-                                     = immutable_unaccent(lower(:query))
-                                    THEN 1
-                                WHEN immutable_unaccent(lower(b.title))
-                                     LIKE concat(
-                                         immutable_unaccent(lower(:query)),
-                                         '%'
-                                     )
-                                    THEN 2
+                                WHEN b.title_search = :query THEN 1
+                                WHEN b.title_search LIKE concat(:query, '%') THEN 2
                                 ELSE 3
                             END AS priority
                         FROM inventory i
@@ -187,12 +180,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                         WHERE i.active = true
                           AND b.active = true
                           AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(lower(b.title))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                          AND to_tsvector('simple', b.title_search)
+                                @@ to_tsquery('simple', :fullTextQuery)
                     
                         UNION ALL
                     
@@ -283,12 +272,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                         WHERE i.active = true
                           AND b.active = true
                           AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(lower(b.title))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                          AND to_tsvector('simple', b.title_search)
+                                @@ to_tsquery('simple', :fullTextQuery)
                     
                         UNION ALL
                     
@@ -346,6 +331,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     Page<Inventory> searchText(
             @Param("bookstoreId") Long bookstoreId,
             @Param("query") String query,
+            @Param("fullTextQuery") String fullTextQuery,
             Pageable pageable
     );
 
