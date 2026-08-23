@@ -53,6 +53,12 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     SELECT b.*
                     FROM books b
                     WHERE b.active = true
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM bookstore_excluded_publishers bep
+                          WHERE bep.bookstore_id = :bookstoreId
+                            AND bep.publisher_id = b.publisher_id
+                      )
                       AND (
                             b.isbn_13 LIKE concat(:query, '%')
                             OR b.isbn_10 LIKE concat(:query, '%')
@@ -69,6 +75,12 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     SELECT COUNT(*)
                     FROM books b
                     WHERE b.active = true
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM bookstore_excluded_publishers bep
+                          WHERE bep.bookstore_id = :bookstoreId
+                            AND bep.publisher_id = b.publisher_id
+                      )
                       AND (
                             b.isbn_13 LIKE concat(:query, '%')
                             OR b.isbn_10 LIKE concat(:query, '%')
@@ -78,12 +90,24 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     )
     Page<Book> searchByIsbn(
             @Param("query") String query,
+            @Param("bookstoreId") Long bookstoreId,
             Pageable pageable
     );
 
     @Query(
             value = """
-                    WITH matches AS (
+                    WITH visible_books AS (
+                        SELECT b.*
+                        FROM books b
+                        WHERE b.active = true
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM bookstore_excluded_publishers bep
+                              WHERE bep.bookstore_id = :bookstoreId
+                                AND bep.publisher_id = b.publisher_id
+                          )
+                    ),
+                    matches AS (
                         SELECT
                             b.id AS book_id,
                             CASE
@@ -98,30 +122,26 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                                     THEN 2
                                 ELSE 3
                             END AS priority
-                        FROM books b
-                        WHERE b.active = true
-                          AND immutable_unaccent(lower(b.title))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        FROM visible_books b
+                        WHERE immutable_unaccent(lower(b.title))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     
                         UNION ALL
                     
                         SELECT
                             b.id AS book_id,
                             4 AS priority
-                        FROM books b
-                        WHERE b.active = true
-                          AND immutable_unaccent(
-                                  lower(coalesce(b.subtitle, ''))
-                              )
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        FROM visible_books b
+                        WHERE immutable_unaccent(lower(coalesce(b.subtitle, '')))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     
                         UNION ALL
                     
@@ -129,14 +149,13 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                             b.id AS book_id,
                             5 AS priority
                         FROM publishers p
-                        JOIN books b ON b.publisher_id = p.id
-                        WHERE b.active = true
-                          AND immutable_unaccent(lower(p.name))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        JOIN visible_books b ON b.publisher_id = p.id
+                        WHERE immutable_unaccent(lower(p.name))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     
                         UNION ALL
                     
@@ -153,14 +172,13 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                             END AS priority
                         FROM authors a
                         JOIN book_authors ba ON ba.author_id = a.id
-                        JOIN books b ON b.id = ba.book_id
-                        WHERE b.active = true
-                          AND immutable_unaccent(lower(a.name))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        JOIN visible_books b ON b.id = ba.book_id
+                        WHERE immutable_unaccent(lower(a.name))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     ),
                     ranked_matches AS (
                         SELECT
@@ -171,71 +189,77 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     )
                     SELECT b.*
                     FROM ranked_matches rm
-                    JOIN books b ON b.id = rm.book_id
+                    JOIN visible_books b ON b.id = rm.book_id
                     ORDER BY
                         rm.priority ASC,
                         coalesce(b.title_sort, b.title) ASC,
                         b.id ASC
                     """,
             countQuery = """
+                    WITH visible_books AS (
+                        SELECT b.*
+                        FROM books b
+                        WHERE b.active = true
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM bookstore_excluded_publishers bep
+                              WHERE bep.bookstore_id = :bookstoreId
+                                AND bep.publisher_id = b.publisher_id
+                          )
+                    )
                     SELECT COUNT(DISTINCT matches.book_id)
                     FROM (
                         SELECT b.id AS book_id
-                        FROM books b
-                        WHERE b.active = true
-                          AND immutable_unaccent(lower(b.title))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        FROM visible_books b
+                        WHERE immutable_unaccent(lower(b.title))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     
                         UNION ALL
                     
                         SELECT b.id AS book_id
-                        FROM books b
-                        WHERE b.active = true
-                          AND immutable_unaccent(
-                                  lower(coalesce(b.subtitle, ''))
-                              )
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        FROM visible_books b
+                        WHERE immutable_unaccent(lower(coalesce(b.subtitle, '')))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     
                         UNION ALL
                     
                         SELECT b.id AS book_id
                         FROM publishers p
-                        JOIN books b ON b.publisher_id = p.id
-                        WHERE b.active = true
-                          AND immutable_unaccent(lower(p.name))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        JOIN visible_books b ON b.publisher_id = p.id
+                        WHERE immutable_unaccent(lower(p.name))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     
                         UNION ALL
                     
                         SELECT ba.book_id
                         FROM authors a
                         JOIN book_authors ba ON ba.author_id = a.id
-                        JOIN books b ON b.id = ba.book_id
-                        WHERE b.active = true
-                          AND immutable_unaccent(lower(a.name))
-                              LIKE concat(
-                                  '%',
-                                  immutable_unaccent(lower(:query)),
-                                  '%'
-                              )
+                        JOIN visible_books b ON b.id = ba.book_id
+                        WHERE immutable_unaccent(lower(a.name))
+                            LIKE concat(
+                                '%',
+                                immutable_unaccent(lower(:query)),
+                                '%'
+                            )
                     ) matches
                     """,
             nativeQuery = true
     )
     Page<Book> searchText(
             @Param("query") String query,
+            @Param("bookstoreId") Long bookstoreId,
             Pageable pageable
     );
 
@@ -273,15 +297,77 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                             AND ep2.active = true
                             AND ep2.valid_from <= CURRENT_DATE
                       )
+                    WHERE b.active = true
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM bookstore_excluded_publishers bep
+                          WHERE bep.bookstore_id = :bookstoreId
+                            AND bep.publisher_id = b.publisher_id
+                      )
                     ORDER BY ep.price ASC NULLS LAST
                     """,
             countQuery = """
                     SELECT COUNT(*)
                     FROM books b
+                    WHERE b.active = true
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM bookstore_excluded_publishers bep
+                          WHERE bep.bookstore_id = :bookstoreId
+                            AND bep.publisher_id = b.publisher_id
+                      )
                     """,
             nativeQuery = true
     )
-    Page<Book> findAllOrderByCurrentEditorialPriceAsc(Pageable pageable);
+    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceAsc(
+            @Param("bookstoreId") Long bookstoreId,
+            Pageable pageable
+    );
+
+    @Query("""
+            SELECT b
+            FROM Book b
+            WHERE b.active = true
+              AND b.publisher.id = :publisherId
+            """)
+    Page<Book> findAllByPublisherForCatalogSettings(
+            @Param("publisherId") Long publisherId,
+            Pageable pageable
+    );
+
+    @Query(
+            value = """
+                    SELECT b.*
+                    FROM books b
+                    WHERE b.active = true
+                      AND b.publisher_id = :publisherId
+                      AND (
+                          immutable_unaccent(lower(b.title))
+                              LIKE CONCAT('%', immutable_unaccent(lower(:query)), '%')
+                          OR b.isbn_13 LIKE CONCAT(:query, '%')
+                          OR b.isbn_10 LIKE CONCAT(:query, '%')
+                      )
+                    ORDER BY b.title_sort ASC
+                    """,
+            countQuery = """
+                    SELECT COUNT(*)
+                    FROM books b
+                    WHERE b.active = true
+                      AND b.publisher_id = :publisherId
+                      AND (
+                          immutable_unaccent(lower(b.title))
+                              LIKE CONCAT('%', immutable_unaccent(lower(:query)), '%')
+                          OR b.isbn_13 LIKE CONCAT(:query, '%')
+                          OR b.isbn_10 LIKE CONCAT(:query, '%')
+                      )
+                    """,
+            nativeQuery = true
+    )
+    Page<Book> searchByPublisherForCatalogSettings(
+            @Param("publisherId") Long publisherId,
+            @Param("query") String query,
+            Pageable pageable
+    );
 
     @Query(
             value = """
@@ -296,15 +382,45 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                             AND ep2.active = true
                             AND ep2.valid_from <= CURRENT_DATE
                       )
+                    WHERE b.active = true
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM bookstore_excluded_publishers bep
+                          WHERE bep.bookstore_id = :bookstoreId
+                            AND bep.publisher_id = b.publisher_id
+                      )
                     ORDER BY ep.price DESC NULLS LAST
                     """,
             countQuery = """
                     SELECT COUNT(*)
                     FROM books b
+                    WHERE b.active = true
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM bookstore_excluded_publishers bep
+                          WHERE bep.bookstore_id = :bookstoreId
+                            AND bep.publisher_id = b.publisher_id
+                      )
                     """,
             nativeQuery = true
     )
-    Page<Book> findAllOrderByCurrentEditorialPriceDesc(Pageable pageable);
+    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceDesc(
+            @Param("bookstoreId") Long bookstoreId,
+            Pageable pageable
+    );
+
+    @Query("""
+            SELECT b
+            FROM Book b
+            WHERE b.active = true
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM BookstoreExcludedPublisher bep
+                  WHERE bep.bookstore.id = :bookstoreId
+                    AND bep.publisher.id = b.publisher.id
+              )
+            """)
+    Page<Book> findAllForCatalog(@Param("bookstoreId") Long bookstoreId, Pageable pageable);
 
     @Query("""
             select b.id

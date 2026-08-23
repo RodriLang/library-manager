@@ -18,5 +18,7 @@ public interface EditorialPriceService {
 
     Optional<EditorialPrice> findCurrentByBookId(Long bookId);
 
+    Map<Long, EditorialPrice> findCurrentByBookIds(List<Long> bookIds);
+
     Map<Long, BigDecimal> findCurrentPricesByBookIds(List<Long> bookIds);
 }
