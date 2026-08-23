@@ -64,5 +64,15 @@ public interface BookMapper {
     @Mapping(target = "titleSort", ignore = true)
     @Mapping(target = "createdByBookstore", ignore = true)
     @Mapping(target = "catalogStatus", ignore = true)
-    void updateEntity(UpdateBookRequest request, @MappingTarget Book inventory);
+    @Mapping(
+            target = "publicationYear",
+            source = "publicationYear",
+            nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.SET_TO_NULL
+    )
+    @Mapping(
+            target = "publicationMonth",
+            source = "publicationMonth",
+            nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.SET_TO_NULL
+    )
+    void updateEntity(UpdateBookRequest request, @MappingTarget Book book);
 }

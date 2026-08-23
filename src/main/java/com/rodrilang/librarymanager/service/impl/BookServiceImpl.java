@@ -67,6 +67,8 @@ public class BookServiceImpl implements BookService {
             throw new DuplicateResourceException("ISBN ya registrado");
         }
 
+        validatePublicationDate(request.publicationYear(), request.publicationMonth());
+
         Publisher publisher = publisherService.getEntityById(request.publisherId());
         Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreContext.getCurrentBookstoreId());
@@ -111,6 +113,8 @@ public class BookServiceImpl implements BookService {
     public BookDetailResponse update(Long bookId, UpdateBookRequest request) {
         Book book = getEntityById(bookId);
 
+        validatePublicationDate(request.publicationYear(), request.publicationMonth());
+
         bookMapper.updateEntity(request, book);
 
         if (request.publisherId() != null) {
@@ -152,9 +156,10 @@ public class BookServiceImpl implements BookService {
 
         Page<Book> books;
 
+        long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
         if (identifierQuery) {
-            String normalizedIdentifier =
-                    normalizeSearchIdentifier(normalizedQuery);
+            String normalizedIdentifier = normalizeSearchIdentifier(normalizedQuery);
 
             if (normalizedIdentifier == null) {
                 return Page.empty(pageable);
@@ -162,11 +167,13 @@ public class BookServiceImpl implements BookService {
 
             books = bookRepository.searchByIsbn(
                     normalizedIdentifier,
+                    bookstoreId,
                     pageable
             );
         } else {
             books = bookRepository.searchText(
                     normalizedQuery,
+                    bookstoreId,
                     pageable
             );
         }
@@ -176,8 +183,7 @@ public class BookServiceImpl implements BookService {
 
         long mappingStart = System.currentTimeMillis();
 
-        Page<BookSummaryResponse> response =
-                books.map(this::toSummaryResponse);
+        Page<BookSummaryResponse> response = toSummaryResponsePage(books);
 
         long mappingTime =
                 System.currentTimeMillis() - mappingStart;
@@ -197,19 +203,24 @@ public class BookServiceImpl implements BookService {
     @Transactional(readOnly = true)
     @Override
     public Page<BookSummaryResponse> getAll(Pageable pageable) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
         if (PageableUtils.hasSort(pageable, "editorialPrice")) {
             boolean ascending = PageableUtils.isAscending(pageable, "editorialPrice");
             Pageable unsortedPageable = PageableUtils.withoutSort(pageable);
 
             Page<Book> books = ascending
-                    ? bookRepository.findAllOrderByCurrentEditorialPriceAsc(unsortedPageable)
-                    : bookRepository.findAllOrderByCurrentEditorialPriceDesc(unsortedPageable);
+                    ? bookRepository.findAllForCatalogOrderByCurrentEditorialPriceAsc(bookstoreId, unsortedPageable)
+                    : bookRepository.findAllForCatalogOrderByCurrentEditorialPriceDesc(bookstoreId, unsortedPageable);
 
-            return books.map(this::toSummaryResponse);
+            return toSummaryResponsePage(books);
         }
 
         Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, BOOK_SORT_MAPPING);
-        return bookRepository.findAll(normalizedPageable).map(this::toSummaryResponse);
+
+        Page<Book> books = bookRepository.findAllForCatalog(bookstoreId, normalizedPageable);
+
+        return toSummaryResponsePage(books);
     }
 
     @Override
@@ -284,9 +295,22 @@ public class BookServiceImpl implements BookService {
                 : normalized;
     }
 
-    private BookSummaryResponse toSummaryResponse(Book book) {
-        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId()).orElse(null);
-        return bookMapper.toSummaryResponse(book, editorialPrice);
+    private void validatePublicationDate(Integer year, Integer month) {
+        if (month != null && year == null) {
+            throw new BusinessException("El mes de publicación requiere un año de publicación");
+        }
+    }
+
+    private Page<BookSummaryResponse> toSummaryResponsePage(Page<Book> books) {
+        List<Long> bookIds = books.getContent()
+                .stream()
+                .map(Book::getId)
+                .toList();
+
+        Map<Long, EditorialPrice> pricesByBookId = editorialPriceService.findCurrentByBookIds(bookIds);
+
+        return books.map(book -> bookMapper.toSummaryResponse(book, pricesByBookId.get(book.getId()))
+        );
     }
 
     private BookDetailResponse toDetailResponse(Book book) {

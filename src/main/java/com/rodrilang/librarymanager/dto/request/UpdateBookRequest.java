@@ -1,9 +1,10 @@
 package com.rodrilang.librarymanager.dto.request;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Set;
 
 public record UpdateBookRequest(
@@ -16,7 +17,12 @@ public record UpdateBookRequest(
 
         String language,
 
-        LocalDate publicationDate,
+        @Min(1000)
+        Integer publicationYear,
+
+        @Min(1)
+        @Max(12)
+        Integer publicationMonth,
 
         String coverUrl,
 

@@ -3,7 +3,6 @@ package com.rodrilang.librarymanager.importer.price.dto.internal;
 import lombok.Builder;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 
 @Builder
 public record PriceListMetadata(
@@ -16,7 +15,9 @@ public record PriceListMetadata(
 
         Integer pageCount,
 
-        LocalDate publicationDate,
+        Integer publicationYear,
+
+        Integer publicationMonth,
 
         String language,
 

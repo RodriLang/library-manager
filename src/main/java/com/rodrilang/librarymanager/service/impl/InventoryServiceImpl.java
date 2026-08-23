@@ -269,7 +269,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional
     @Override
     public InventoryDetailResponse update(Long inventoryId, UpdateInventoryRequest request) {
-        Inventory inventory = getEntityById(inventoryId);
+        Inventory inventory = getActiveEntityById(inventoryId);
 
         BigDecimal previousSalePrice = inventory.getSalePrice();
         Boolean previousPriceSyncEnabled = inventory.getTiendanubePriceSyncEnabled();
@@ -305,10 +305,11 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public InventoryDetailResponse getById(Long inventoryId) {
 
         log.info("Buscando inventario con ID: {} en el inventario", inventoryId);
-        Inventory inventory = getEntityById(inventoryId);
+        Inventory inventory = getActiveEntityById(inventoryId);
 
         return toDetailResponse(inventory);
     }
@@ -329,25 +330,29 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional(readOnly = true)
     @Override
     public Page<InventorySummaryResponse> getAll(Pageable pageable) {
-
         pageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
 
-        return inventoryRepository.findAllByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId(), pageable)
-                .map(this::toSummaryResponse);
+        Page<Inventory> inventory = inventoryRepository.findAllByBookstoreIdAndActiveTrue(
+                bookstoreContext.getCurrentBookstoreId(),
+                pageable
+        );
+
+        return toSummaryResponsePage(inventory);
     }
 
     @Transactional(readOnly = true)
     @Override
     public Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable) {
         if (query == null || query.isBlank()) {
-            Pageable normalizedPageable = PageableUtils.mapSortProperties(
-                    pageable,
-                    INVENTORY_SORT_MAPPING
+            Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
+
+            Page<Inventory> inventory = inventoryRepository.findAllByBookstoreIdAndActiveTrue(
+                    bookstoreContext.getCurrentBookstoreId(),
+                    normalizedPageable
             );
 
-            return inventoryRepository
-                    .findAllByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId(), normalizedPageable)
-                    .map(this::toSummaryResponse);
+            return toSummaryResponsePage(inventory);
+
         }
 
         String normalizedQuery = query.trim();
@@ -388,7 +393,7 @@ public class InventoryServiceImpl implements InventoryService {
             );
         }
 
-        return inventory.map(this::toSummaryResponse);
+        return toSummaryResponsePage(inventory);
     }
 
     @Transactional
@@ -494,6 +499,18 @@ public class InventoryServiceImpl implements InventoryService {
                 );
     }
 
+    private Inventory getActiveEntityById(Long inventoryId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        return inventoryRepository
+                .findByIdAndBookstoreIdAndActiveTrue(inventoryId, bookstoreId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "No se encontró inventario activo con ID: " + inventoryId
+                        )
+                );
+    }
+
     private Inventory getEntityByBookIdAndCondition(Long bookId, BookCondition condition) {
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
@@ -524,11 +541,18 @@ public class InventoryServiceImpl implements InventoryService {
                 : normalized;
     }
 
-    private InventorySummaryResponse toSummaryResponse(Inventory inventory) {
-        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(inventory.getBook().getId())
-                .orElse(null);
+    private Page<InventorySummaryResponse> toSummaryResponsePage(Page<Inventory> inventoryPage) {
+        List<Long> bookIds = inventoryPage.getContent()
+                .stream()
+                .map(inventory -> inventory.getBook().getId())
+                .distinct()
+                .toList();
 
-        return inventoryMapper.toSummaryResponse(inventory, editorialPrice);
+        Map<Long, EditorialPrice> pricesByBookId = editorialPriceService.findCurrentByBookIds(bookIds);
+
+        return inventoryPage.map(inventory ->
+                inventoryMapper.toSummaryResponse(inventory, pricesByBookId.get(inventory.getBook().getId()))
+        );
     }
 
     private InventoryDetailResponse toDetailResponse(Inventory inventory) {

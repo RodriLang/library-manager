@@ -93,8 +93,7 @@ public class BookMetadataEnrichmentServiceImpl implements BookMetadataEnrichment
             changed = true;
         }
 
-        if (book.getPublicationDate() == null && metadata.publicationDate() != null) {
-            book.setPublicationDate(metadata.publicationDate());
+        if (updatePublicationPeriod(book, metadata)) {
             changed = true;
         }
 
@@ -131,5 +130,29 @@ public class BookMetadataEnrichmentServiceImpl implements BookMetadataEnrichment
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private boolean updatePublicationPeriod(Book book, BookMetadata metadata) {
+        Integer metadataYear = metadata.publicationYear();
+        Integer metadataMonth = metadata.publicationMonth();
+
+        if (metadataYear == null) {
+            return false;
+        }
+
+        if (book.getPublicationYear() == null) {
+            book.setPublicationYear(metadataYear);
+            book.setPublicationMonth(metadataMonth);
+            return true;
+        }
+
+        if (book.getPublicationMonth() == null
+                && book.getPublicationYear().equals(metadataYear)
+                && metadataMonth != null) {
+            book.setPublicationMonth(metadataMonth);
+            return true;
+        }
+
+        return false;
     }
 }

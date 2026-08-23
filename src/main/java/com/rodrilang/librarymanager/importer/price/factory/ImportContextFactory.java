@@ -95,7 +95,7 @@ public class ImportContextFactory {
 
         Map<String, Book> booksByExternalCode = loadBooksByExternalCode(provider, externalCodes);
 
-        Map<String, Publisher> publishersByName = publisherResolver.loadPublishers(rows);
+        Map<String, Publisher> publishersByName = publisherResolver.loadPublishers(provider.getId(), rows);
         Map<String, Author> authorsByName = authorResolver.loadAuthors(rows);
 
         return new ImportContext(

@@ -3,7 +3,6 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 import com.rodrilang.librarymanager.dto.internal.BookImportResult;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
-import com.rodrilang.librarymanager.enums.CoverCandidateStatus;
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListMetadata;
@@ -16,6 +15,7 @@ import com.rodrilang.librarymanager.importer.price.service.PriceListBookUpsertSe
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -109,7 +109,8 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
                 .description(resolveDescription(metadata))
                 .language(resolveLanguage(metadata))
                 .pageCount(resolvePageCount(metadata))
-                .publicationDate(resolvePublicationDate(metadata))
+                .publicationYear(resolvePublicationYear(metadata))
+                .publicationMonth(resolvePublicationMonth(metadata))
                 .coverUrl(null)
                 .coverSource(null)
                 .widthCm(metadata != null ? metadata.widthCm() : null)
@@ -196,9 +197,7 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             book.setPageCount(metadata.pageCount());
         }
 
-        if (book.getPublicationDate() == null && metadata.publicationDate() != null) {
-            book.setPublicationDate(metadata.publicationDate());
-        }
+        updatePublicationPeriod(book, metadata);
 
         if (hasText(metadata.sourceCoverUrl()) && !hasText(book.getCoverUrl())) {
             book.registerCoverCandidate(metadata.sourceCoverUrl());
@@ -247,13 +246,20 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         }
 
         if (hasText(row.publisherName())) {
-            return bookRepository.findFirstByTitleIgnoreCaseAndPublisher_NameIgnoreCase(
-                    row.title().trim(),
-                    row.publisherName().trim()
-            ).orElse(null);
+            Publisher publisher = publisherResolver.resolve(row, context);
+
+            if (publisher != null) {
+                return bookRepository
+                        .findFirstByTitleIgnoreCaseAndPublisherId(
+                                row.title().trim(),
+                                publisher.getId()
+                        )
+                        .orElse(null);
+            }
         }
 
-        return bookRepository.findFirstByTitleIgnoreCase(row.title().trim()).orElse(null);
+        return bookRepository.findFirstByTitleIgnoreCase(row.title().trim())
+                .orElse(null);
     }
 
     private String resolveDescription(PriceListMetadata metadata) {
@@ -272,7 +278,26 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
         return metadata != null ? metadata.pageCount() : null;
     }
 
-    private LocalDate resolvePublicationDate(PriceListMetadata metadata) {
-        return metadata != null ? metadata.publicationDate() : null;
+    private Integer resolvePublicationYear(PriceListMetadata metadata) {
+        return metadata != null ? metadata.publicationYear() : null;
+    }
+
+    private Integer resolvePublicationMonth(PriceListMetadata metadata) {
+        return metadata != null ? metadata.publicationMonth() : null;
+    }
+
+    private void updatePublicationPeriod(Book book, PriceListMetadata metadata) {
+        if (book.getPublicationYear() == null && metadata.publicationYear() != null) {
+            book.setPublicationYear(metadata.publicationYear());
+            book.setPublicationMonth(metadata.publicationMonth());
+            return;
+        }
+
+        if (book.getPublicationYear() != null
+                && book.getPublicationMonth() == null
+                && book.getPublicationYear().equals(metadata.publicationYear())
+                && metadata.publicationMonth() != null) {
+            book.setPublicationMonth(metadata.publicationMonth());
+        }
     }
 }

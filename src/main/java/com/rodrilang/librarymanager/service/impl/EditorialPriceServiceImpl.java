@@ -295,8 +295,23 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<Long, BigDecimal> findCurrentPricesByBookIds(List<Long> bookIds) {
+    public Map<Long, EditorialPrice> findCurrentByBookIds(List<Long> bookIds) {
+        return loadCurrentByBookIds(bookIds);
+    }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> findCurrentPricesByBookIds(List<Long> bookIds) {
+        return loadCurrentByBookIds(bookIds)
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().getPrice()
+                ));
+    }
+
+    private Map<Long, EditorialPrice> loadCurrentByBookIds(List<Long> bookIds) {
         if (bookIds == null || bookIds.isEmpty()) {
             return Map.of();
         }
@@ -308,7 +323,7 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 .stream()
                 .collect(Collectors.toMap(
                         editorialPrice -> editorialPrice.getBook().getId(),
-                        EditorialPrice::getPrice
+                        Function.identity()
                 ));
     }
 }

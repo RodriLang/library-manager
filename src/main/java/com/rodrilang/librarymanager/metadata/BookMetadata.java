@@ -1,6 +1,5 @@
 package com.rodrilang.librarymanager.metadata;
 
-import java.time.LocalDate;
 import java.util.Set;
 
 public record BookMetadata(
@@ -21,7 +20,9 @@ public record BookMetadata(
 
         Set<String> authors,
 
-        LocalDate publicationDate,
+        Integer publicationYear,
+
+        Integer publicationMonth,
 
         String coverUrl
 ) {
