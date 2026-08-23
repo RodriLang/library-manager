@@ -53,7 +53,8 @@ public class BookMetadataServiceImpl implements BookMetadataService {
                 firstNonBlank(results, BookMetadata::language),
                 firstNonBlank(results, BookMetadata::publisher),
                 mergeAuthors(results),
-                firstNonNull(results, BookMetadata::publicationDate),
+                firstNonNull(results, BookMetadata::publicationYear),
+                firstNonNull(results, BookMetadata::publicationMonth),
                 firstNonBlank(results, BookMetadata::coverUrl)
         );
     }

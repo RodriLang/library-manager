@@ -68,7 +68,8 @@ public class ConfigurablePriceListRowInspector {
                 || hasText(metadata.observations())
                 || metadata.externalStock() != null
                 || metadata.pageCount() != null
-                || metadata.publicationDate() != null
+                || metadata.publicationYear() != null
+                || metadata.publicationMonth() != null
                 || metadata.widthCm() != null
                 || metadata.heightCm() != null
                 || metadata.depthCm() != null

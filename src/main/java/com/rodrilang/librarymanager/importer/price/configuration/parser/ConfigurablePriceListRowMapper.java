@@ -72,15 +72,18 @@ public class ConfigurablePriceListRowMapper {
                 decimal(values, PriceListField.WEIGHT)
         );
 
+        LocalDate publicationDate = date(
+                values,
+                PriceListField.PUBLICATION_DATE
+        );
+
         PriceListMetadata metadata = PriceListMetadata.builder()
                 .subtitle(text(values, PriceListField.SUBTITLE))
                 .description(text(values, PriceListField.DESCRIPTION))
                 .genreName(text(values, PriceListField.GENRE))
                 .pageCount(integer(values, PriceListField.PAGE_COUNT))
-                .publicationDate(date(
-                        values,
-                        PriceListField.PUBLICATION_DATE
-                ))
+                .publicationYear(publicationDate != null ? publicationDate.getYear() : null)
+                .publicationMonth(publicationDate != null ? publicationDate.getMonthValue() : null)
                 .language(text(values, PriceListField.LANGUAGE))
                 .sourceCoverUrl(text(values, PriceListField.COVER_URL))
                 .collectionName(text(values, PriceListField.COLLECTION))

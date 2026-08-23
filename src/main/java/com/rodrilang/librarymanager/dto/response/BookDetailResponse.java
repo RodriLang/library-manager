@@ -5,7 +5,6 @@ import com.rodrilang.librarymanager.enums.BookSource;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 
@@ -25,7 +24,9 @@ public record BookDetailResponse(
 
         Integer pageCount,
 
-        LocalDate publicationDate,
+        Integer publicationYear,
+
+        Integer publicationMonth,
 
         String coverUrl,
 

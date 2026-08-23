@@ -55,6 +55,7 @@ public class OpenLibraryProvider implements BookMetadataProvider {
                     resolvePublisher(book),
                     resolveAuthors(book),
                     null,
+                    null,
                     resolveCoverUrl(book)
             ));
         } catch (RestClientException ex) {

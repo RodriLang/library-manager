@@ -67,6 +67,8 @@ public class BookServiceImpl implements BookService {
             throw new DuplicateResourceException("ISBN ya registrado");
         }
 
+        validatePublicationDate(request.publicationYear(), request.publicationMonth());
+
         Publisher publisher = publisherService.getEntityById(request.publisherId());
         Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreContext.getCurrentBookstoreId());
@@ -110,6 +112,8 @@ public class BookServiceImpl implements BookService {
     @Override
     public BookDetailResponse update(Long bookId, UpdateBookRequest request) {
         Book book = getEntityById(bookId);
+
+        validatePublicationDate(request.publicationYear(), request.publicationMonth());
 
         bookMapper.updateEntity(request, book);
 
@@ -289,6 +293,12 @@ public class BookServiceImpl implements BookService {
         return normalized.isBlank()
                 ? null
                 : normalized;
+    }
+
+    private void validatePublicationDate(Integer year, Integer month) {
+        if (month != null && year == null) {
+            throw new BusinessException("El mes de publicación requiere un año de publicación");
+        }
     }
 
     private Page<BookSummaryResponse> toSummaryResponsePage(Page<Book> books) {
