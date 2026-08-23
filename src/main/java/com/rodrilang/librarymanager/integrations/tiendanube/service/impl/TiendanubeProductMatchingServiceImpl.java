@@ -26,6 +26,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
@@ -85,82 +86,72 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
     }
 
     @Override
-    public List<Book> findBookCandidates(
-            TiendanubeProductResponse product
-    ) {
-        String remoteName =
-                TextNormalizer.normalizeForMatch(
-                        getProductName(product)
-                );
+    public List<Book> findBookCandidates(TiendanubeProductResponse product) {
+        String productName = getProductName(product);
 
-        if (remoteName.isBlank()) {
+        String remoteSearchName = TextNormalizer.normalizeForSearch(productName);
+        String remoteMatchName = TextNormalizer.normalizeForMatch(productName);
+
+        if (remoteSearchName.isBlank()) {
             return List.of();
         }
 
-        List<Long> candidateIds =
-                bookRepository.findTiendanubeCandidateIds(
-                        remoteName,
-                        TEXT_CANDIDATE_LIMIT
-                );
+        String fullTextQuery = buildCandidateFullTextQuery(remoteSearchName);
+
+        if (fullTextQuery.isBlank()) {
+            return List.of();
+        }
+
+        List<Long> candidateIds = bookRepository.findTiendanubeCandidateIds(
+                fullTextQuery,
+                TEXT_CANDIDATE_LIMIT
+        );
 
         if (candidateIds.isEmpty()) {
             return List.of();
         }
 
-        Map<Long, Integer> positionById =
-                new HashMap<>();
+        Map<Long, Integer> positionById = new HashMap<>();
 
         for (int i = 0; i < candidateIds.size(); i++) {
-            positionById.put(
-                    candidateIds.get(i),
-                    i
-            );
+            positionById.put(candidateIds.get(i), i);
         }
 
-        List<Book> candidates =
-                bookRepository
-                        .findAllWithDetailsByIdIn(
-                                candidateIds
-                        )
-                        .stream()
-                        .sorted(
-                                Comparator.comparingInt(
-                                        book ->
-                                                positionById.getOrDefault(
-                                                        book.getId(),
-                                                        Integer.MAX_VALUE
-                                                )
+        List<Book> candidates = bookRepository
+                .findAllWithDetailsByIdIn(candidateIds)
+                .stream()
+                .sorted(
+                        Comparator.comparingInt(
+                                book -> positionById.getOrDefault(
+                                        book.getId(),
+                                        Integer.MAX_VALUE
                                 )
                         )
-                        .toList();
+                )
+                .toList();
 
-        List<Book> titleCandidates =
-                candidates.stream()
-                        .filter(book ->
-                                matchesTitle(
-                                        remoteName,
-                                        book
-                                )
-                        )
-                        .toList();
+        List<Book> titleCandidates = candidates.stream()
+                .filter(book -> matchesTitle(remoteSearchName, book))
+                .toList();
 
         if (titleCandidates.size() <= 1) {
             return titleCandidates;
         }
 
-        List<Book> authorCandidates =
-                titleCandidates.stream()
-                        .filter(book ->
-                                matchesAuthor(
-                                        remoteName,
-                                        book
-                                )
-                        )
-                        .toList();
+        List<Book> authorCandidates = titleCandidates.stream()
+                .filter(book -> matchesAuthor(remoteMatchName, book))
+                .toList();
 
         return authorCandidates.isEmpty()
                 ? titleCandidates
                 : authorCandidates;
+    }
+
+    private String buildCandidateFullTextQuery(String normalizedName) {
+        return Stream.of(normalizedName.split("\\s+"))
+                .filter(token -> token.length() > 2)
+                .map(token -> token + ":*")
+                .collect(Collectors.joining(" | "));
     }
 
     private TiendanubeRemoteVariantResponse analyzeVariant(
@@ -262,31 +253,26 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
     }
 
     private MatchResult findTextualMatch(Long bookstoreId, TiendanubeProductResponse product) {
-        String remoteName = TextNormalizer.normalizeForMatch(getProductName(product));
+        List<Book> bookCandidates = findBookCandidates(product);
 
-        if (remoteName.isBlank()) {
+        if (bookCandidates.isEmpty()) {
             return new MatchResult(TiendanubeMatchType.NOT_FOUND, List.of());
         }
 
-        List<Inventory> inventories = inventoryRepository.findAllByBookstoreId(bookstoreId);
-
-        List<Inventory> titleCandidates = inventories.stream()
-                .filter(inventory -> matchesTitle(remoteName, inventory.getBook()))
+        List<Long> bookIds = bookCandidates.stream()
+                .map(Book::getId)
                 .toList();
 
-        if (titleCandidates.isEmpty()) {
+        List<Inventory> inventories = inventoryRepository.findAllByBookstoreIdAndBookIdInAndActiveTrue(
+                bookstoreId,
+                bookIds
+        );
+
+        if (inventories.isEmpty()) {
             return new MatchResult(TiendanubeMatchType.NOT_FOUND, List.of());
         }
 
-        List<Inventory> titleAndAuthorCandidates = titleCandidates.stream()
-                .filter(inventory -> matchesAuthor(remoteName, inventory.getBook()))
-                .toList();
-
-        if (!titleAndAuthorCandidates.isEmpty()) {
-            return createPossibleMatchResult(titleAndAuthorCandidates);
-        }
-
-        return createPossibleMatchResult(titleCandidates);
+        return createPossibleMatchResult(inventories);
     }
 
     private MatchResult createMatchResult(TiendanubeMatchType matchType, List<Inventory> inventories) {
@@ -339,13 +325,13 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
     }
 
     private boolean matchesTitle(String remoteName, Book book) {
-        String title = TextNormalizer.normalizeForMatch(book.getTitle());
+        String title = book.getTitleSearch();
 
-        if (title.isBlank()) {
+        if (title == null || title.isBlank()) {
             return false;
         }
 
-        return remoteName.equals(title) || remoteName.startsWith(title + " ");
+        return containsAllTokens(remoteName, title);
     }
 
     private boolean matchesAuthor(String remoteName, Book book) {
@@ -446,23 +432,23 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
     }
 
     private boolean matchesRemoteProductText(TiendanubeProductResponse product, Book book) {
-        String remoteName = TextNormalizer.normalizeForMatch(getProductName(product));
-        String localTitle = TextNormalizer.normalizeForMatch(book.getTitle());
+        String productName = getProductName(product);
 
-        if (remoteName.isBlank() || localTitle.isBlank()) {
+        String remoteSearchName = TextNormalizer.normalizeForSearch(productName);
+        String remoteMatchName = TextNormalizer.normalizeForMatch(productName);
+
+        if (remoteSearchName.isBlank()) {
             return false;
         }
 
-        boolean titleMatches = remoteName.equals(localTitle) || remoteName.startsWith(localTitle + " ");
-
-        if (!titleMatches) {
+        if (!matchesTitle(remoteSearchName, book)) {
             return false;
         }
 
-        if (remoteName.equals(localTitle)) {
+        if (remoteSearchName.equals(book.getTitleSearch())) {
             return true;
         }
 
-        return matchesAuthor(remoteName, book);
+        return matchesAuthor(remoteMatchName, book);
     }
 }

@@ -41,6 +41,7 @@ import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.EditorialPriceService;
 import com.rodrilang.librarymanager.service.InventoryService;
 import com.rodrilang.librarymanager.util.PageableUtils;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -386,9 +387,13 @@ public class InventoryServiceImpl implements InventoryService {
                     pageable
             );
         } else {
+            String searchQuery = TextNormalizer.normalizeForSearch(normalizedQuery);
+            String fullTextQuery = TextNormalizer.normalizeForFullTextSearch(normalizedQuery);
+
             inventory = inventoryRepository.searchText(
                     bookstoreId,
-                    normalizedQuery,
+                    searchQuery,
+                    fullTextQuery,
                     pageable
             );
         }

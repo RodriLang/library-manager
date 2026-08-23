@@ -96,7 +96,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
     @Query(
             value = """
-                    WITH visible_books AS (
+                    WITH visible_books AS NOT MATERIALIZED (
                         SELECT b.*
                         FROM books b
                         WHERE b.active = true
@@ -111,24 +111,13 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                         SELECT
                             b.id AS book_id,
                             CASE
-                                WHEN immutable_unaccent(lower(b.title))
-                                     = immutable_unaccent(lower(:query))
-                                    THEN 1
-                                WHEN immutable_unaccent(lower(b.title))
-                                     LIKE concat(
-                                         immutable_unaccent(lower(:query)),
-                                         '%'
-                                     )
-                                    THEN 2
+                                WHEN b.title_search = :query THEN 1
+                                WHEN b.title_search LIKE concat(:query, '%') THEN 2
                                 ELSE 3
                             END AS priority
                         FROM visible_books b
-                        WHERE immutable_unaccent(lower(b.title))
-                            LIKE concat(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        WHERE to_tsvector('simple', b.title_search)
+                              @@ to_tsquery('simple', :fullTextQuery)
                     
                         UNION ALL
                     
@@ -196,7 +185,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                         b.id ASC
                     """,
             countQuery = """
-                    WITH visible_books AS (
+                    WITH visible_books AS NOT MATERIALIZED (
                         SELECT b.*
                         FROM books b
                         WHERE b.active = true
@@ -211,12 +200,8 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     FROM (
                         SELECT b.id AS book_id
                         FROM visible_books b
-                        WHERE immutable_unaccent(lower(b.title))
-                            LIKE concat(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        WHERE to_tsvector('simple', b.title_search)
+                              @@ to_tsquery('simple', :fullTextQuery)
                     
                         UNION ALL
                     
@@ -259,6 +244,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     )
     Page<Book> searchText(
             @Param("query") String query,
+            @Param("fullTextQuery") String fullTextQuery,
             @Param("bookstoreId") Long bookstoreId,
             Pageable pageable
     );
@@ -487,14 +473,22 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     SELECT b.id
                     FROM books b
                     WHERE b.active = TRUE
-                      AND b.title_sort IS NOT NULL
-                    ORDER BY b.title_sort <-> :normalizedTitle
+                      AND b.title_search IS NOT NULL
+                      AND to_tsvector('simple', b.title_search)
+                          @@ to_tsquery('simple', :fullTextQuery)
+                    ORDER BY
+                        ts_rank_cd(
+                            to_tsvector('simple', b.title_search),
+                            to_tsquery('simple', :fullTextQuery)
+                        ) DESC,
+                        char_length(b.title_search) ASC,
+                        b.id ASC
                     LIMIT :limit
                     """,
             nativeQuery = true
     )
     List<Long> findTiendanubeCandidateIds(
-            @Param("normalizedTitle") String normalizedTitle,
+            @Param("fullTextQuery") String fullTextQuery,
             @Param("limit") int limit
     );
 
