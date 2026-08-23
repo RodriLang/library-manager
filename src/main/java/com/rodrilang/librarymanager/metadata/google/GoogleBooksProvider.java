@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -49,6 +48,9 @@ public class GoogleBooksProvider implements BookMetadataProvider {
                 return Optional.empty();
             }
 
+            PublicationPeriod publicationPeriod =
+                    parsePublishedDate(volume.publishedDate());
+
             return Optional.of(new BookMetadata(
                     isbn,
                     trimToNull(volume.title()),
@@ -58,9 +60,11 @@ public class GoogleBooksProvider implements BookMetadataProvider {
                     trimToNull(volume.language()),
                     trimToNull(volume.publisher()),
                     resolveAuthors(volume),
-                    parsePublishedDate(volume.publishedDate()),
+                    publicationPeriod.year(),
+                    publicationPeriod.month(),
                     resolveCoverUrl(volume)
             ));
+
         } catch (RestClientException ex) {
             return Optional.empty();
         }
@@ -115,24 +119,28 @@ public class GoogleBooksProvider implements BookMetadataProvider {
         return url.trim().replace("http://", "https://");
     }
 
-    private LocalDate parsePublishedDate(String publishedDate) {
+    private PublicationPeriod parsePublishedDate(String publishedDate) {
         if (publishedDate == null || publishedDate.isBlank()) {
-            return null;
+            return PublicationPeriod.empty();
         }
 
-        try {
-            if (publishedDate.matches("\\d{4}")) {
-                return LocalDate.parse(publishedDate + "-01-01");
-            }
+        String normalized = publishedDate.trim();
 
-            if (publishedDate.matches("\\d{4}-\\d{2}")) {
-                return LocalDate.parse(publishedDate + "-01");
-            }
-
-            return LocalDate.parse(publishedDate);
-        } catch (RuntimeException ex) {
-            return null;
+        if (normalized.matches("\\d{4}")) {
+            return new PublicationPeriod(
+                    Integer.parseInt(normalized),
+                    null
+            );
         }
+
+        if (normalized.matches("\\d{4}-\\d{2}(-\\d{2})?")) {
+            return new PublicationPeriod(
+                    Integer.parseInt(normalized.substring(0, 4)),
+                    Integer.parseInt(normalized.substring(5, 7))
+            );
+        }
+
+        return PublicationPeriod.empty();
     }
 
     private String trimToNull(String value) {
@@ -141,5 +149,15 @@ public class GoogleBooksProvider implements BookMetadataProvider {
         }
 
         return value.trim();
+    }
+
+    private record PublicationPeriod(
+            Integer year,
+            Integer month
+    ) {
+
+        private static PublicationPeriod empty() {
+            return new PublicationPeriod(null, null);
+        }
     }
 }

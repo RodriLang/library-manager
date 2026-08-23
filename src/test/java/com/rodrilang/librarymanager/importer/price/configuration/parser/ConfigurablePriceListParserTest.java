@@ -15,10 +15,12 @@ import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class ConfigurablePriceListParserTest {
 
@@ -145,13 +147,15 @@ class ConfigurablePriceListParserTest {
             assertEquals("¡Esta es una chica especial!", first.title());
             assertEquals("Gianina Covezzi", first.authorName());
             assertEquals("Aguinaldo", first.publisherName());
-            assertEquals(0, new BigDecimal("14500").compareTo(first.retailPrice()));
+            int actual = new BigDecimal("14500").compareTo(first.retailPrice());
+            assertEquals(0, actual);
 
-            assertEquals(0, new BigDecimal("14500").compareTo(first.retailPrice()), () -> "Precio leído: " + first.retailPrice());
+            assertEquals(0, actual, () -> "Precio leído: " + first.retailPrice());
             assertNotNull(first.metadata());
             assertEquals(134, first.metadata().pageCount());
             assertEquals(0, new BigDecimal("197").compareTo(first.metadata().weightGrams()));
-            assertEquals(LocalDate.of(2022, 2, 1), first.metadata().publicationDate());
+            assertEquals(2022, first.metadata().publicationYear());
+            assertEquals(2, first.metadata().publicationMonth());
             assertEquals("Español", first.metadata().language());
             assertEquals("Cuentos", first.metadata().genreName());
             assertEquals("Cuentos, Literatura Argentina", first.metadata().tags());

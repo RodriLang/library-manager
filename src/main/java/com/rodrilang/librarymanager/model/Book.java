@@ -30,7 +30,6 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -69,7 +68,11 @@ public class Book extends AuditableEntity {
 
     private Integer pageCount;
 
-    private LocalDate publicationDate;
+    @Column(name = "publication_year")
+    private Integer publicationYear;
+
+    @Column(name = "publication_month")
+    private Integer publicationMonth;
 
     @Column(length = 1000)
     private String coverUrl;
@@ -234,7 +237,6 @@ public class Book extends AuditableEntity {
         }
 
         String normalizedUrl = sourceUrl.trim();
-        String normalizedSource = normalizeNullableText(source);
 
         if (
                 normalizedUrl.equals(this.coverCandidateUrl)
