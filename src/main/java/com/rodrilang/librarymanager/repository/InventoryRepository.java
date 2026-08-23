@@ -27,7 +27,10 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             "book.authors",
             "book.publisher"
     })
-    List<Inventory> findAllByBookstoreId(Long bookstoreId);
+    List<Inventory> findAllByBookstoreIdAndBookIdInAndActiveTrue(
+            Long bookstoreId,
+            Collection<Long> bookIds
+    );
 
     @EntityGraph(attributePaths = {
             "book",

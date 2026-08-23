@@ -473,14 +473,22 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     SELECT b.id
                     FROM books b
                     WHERE b.active = TRUE
-                      AND b.title_sort IS NOT NULL
-                    ORDER BY b.title_sort <-> :normalizedTitle
+                      AND b.title_search IS NOT NULL
+                      AND to_tsvector('simple', b.title_search)
+                          @@ to_tsquery('simple', :fullTextQuery)
+                    ORDER BY
+                        ts_rank_cd(
+                            to_tsvector('simple', b.title_search),
+                            to_tsquery('simple', :fullTextQuery)
+                        ) DESC,
+                        char_length(b.title_search) ASC,
+                        b.id ASC
                     LIMIT :limit
                     """,
             nativeQuery = true
     )
     List<Long> findTiendanubeCandidateIds(
-            @Param("normalizedTitle") String normalizedTitle,
+            @Param("fullTextQuery") String fullTextQuery,
             @Param("limit") int limit
     );
 
