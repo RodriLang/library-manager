@@ -11,6 +11,8 @@ public record BookRequest(
 
         String isbn,
 
+        boolean withoutIsbn,
+
         String title,
 
         String subtitle,
