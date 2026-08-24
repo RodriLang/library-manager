@@ -22,16 +22,11 @@ public class TiendanubeSyncEventListener {
 
         try {
             switch (event.type()) {
+                case STOCK -> variantSyncService.syncStock(event.inventoryId());
 
-                case PRICE ->
-                        variantSyncService.syncPrice(
-                                event.inventoryId()
-                        );
+                case PRICE -> variantSyncService.syncPrice(event.inventoryId());
 
-                case PUBLICATION ->
-                        productSyncService.syncPublication(
-                                event.inventoryId()
-                        );
+                case PUBLICATION -> productSyncService.syncPublication(event.inventoryId());
             }
 
         } catch (RuntimeException exception) {

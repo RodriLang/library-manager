@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.exception;
 import com.rodrilang.librarymanager.auth.exceptions.ExpiredPasswordResetTokenException;
 import com.rodrilang.librarymanager.auth.exceptions.InvalidPasswordResetTokenException;
 import com.rodrilang.librarymanager.auth.exceptions.InvalidTokenException;
+import com.rodrilang.librarymanager.auth.exceptions.PasswordReuseException;
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
 import com.rodrilang.librarymanager.media.exception.ImageStorageException;
@@ -275,6 +276,20 @@ public class GlobalExceptionHandler {
         return buildError(
                 HttpStatus.BAD_REQUEST,
                 "EXPIRED_PASSWORD_RESET_TOKEN",
+                exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(PasswordReuseException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordReuse(
+            PasswordReuseException exception,
+            HttpServletRequest request
+    ) {
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "PASSWORD_REUSE_NOT_ALLOWED",
                 exception.getMessage(),
                 request.getRequestURI(),
                 null

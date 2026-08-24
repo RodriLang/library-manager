@@ -14,6 +14,8 @@ import com.rodrilang.librarymanager.repository.AuthorRepository;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.service.BookCatalogService;
+import com.rodrilang.librarymanager.util.StringUtils;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -114,12 +116,13 @@ public class BookCatalogServiceImpl implements BookCatalogService {
             return null;
         }
 
-        String normalizedName = publisherName.trim();
+        String name = StringUtils.normalizeName(publisherName);
+        String normalizedName = TextNormalizer.normalizeForMatch(name);
 
         return publisherRepository.findByNameNormalized(normalizedName)
                 .orElseGet(() -> publisherRepository.save(
                         Publisher.builder()
-                                .name(normalizedName)
+                                .name(name)
                                 .build()
                 ));
     }
@@ -131,16 +134,18 @@ public class BookCatalogServiceImpl implements BookCatalogService {
 
         return authorNames.stream()
                 .filter(name -> name != null && !name.isBlank())
-                .map(String::trim)
                 .map(this::resolveAuthor)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private Author resolveAuthor(String authorName) {
-        return authorRepository.findByNameNormalized(authorName)
+        String name = StringUtils.normalizeName(authorName);
+        String normalizedName = TextNormalizer.normalizeForMatch(name);
+
+        return authorRepository.findByNameNormalized(normalizedName)
                 .orElseGet(() -> authorRepository.save(
                         Author.builder()
-                                .name(authorName)
+                                .name(name)
                                 .build()
                 ));
     }

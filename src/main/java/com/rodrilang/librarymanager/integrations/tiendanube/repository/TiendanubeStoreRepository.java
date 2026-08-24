@@ -15,5 +15,5 @@ public interface TiendanubeStoreRepository extends JpaRepository<TiendanubeStore
 
     Optional<TiendanubeStore> findByStoreIdAndActiveTrue(Long storeId);
 
-    boolean existsByBookstoreIdAndActiveTrue(Long bookstoreId);
+    boolean existsByStoreIdAndActiveTrueAndTokenValidTrue(Long storeId);
 }
