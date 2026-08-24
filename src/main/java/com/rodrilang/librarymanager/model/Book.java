@@ -232,43 +232,6 @@ public class Book extends AuditableEntity {
         this.coverCandidateError = null;
     }
 
-    public void registerCoverCandidate(
-            String sourceUrl,
-            String source
-    ) {
-        if (sourceUrl == null || sourceUrl.isBlank()) {
-            return;
-        }
-
-        String normalizedUrl = sourceUrl.trim();
-
-        if (
-                normalizedUrl.equals(this.coverCandidateUrl)
-                        && this.coverCandidateStatus != CoverCandidateStatus.FAILED
-        ) {
-            return;
-        }
-
-        this.coverCandidateUrl = normalizedUrl;
-        this.coverCandidateStatus = CoverCandidateStatus.PENDING;
-        this.coverCandidateAttempts = 0;
-        this.coverCandidateNextAttemptAt = null;
-        this.coverCandidateError = null;
-    }
-
-    public void markCoverCandidateAsProcessing() {
-        if (coverCandidateUrl == null || coverCandidateUrl.isBlank()) {
-            throw new IllegalStateException(
-                    "El libro no tiene una portada candidata"
-            );
-        }
-
-        this.coverCandidateStatus = CoverCandidateStatus.PROCESSING;
-        this.coverCandidateAttempts++;
-        this.coverCandidateNextAttemptAt = null;
-        this.coverCandidateError = null;
-    }
-
     public void completeCoverCandidate(
             String cloudinaryUrl,
             String coverSource

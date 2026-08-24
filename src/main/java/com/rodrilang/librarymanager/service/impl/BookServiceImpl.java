@@ -62,21 +62,46 @@ public class BookServiceImpl implements BookService {
     @Transactional
     @Override
     public BookDetailResponse create(BookRequest request) {
-        ParsedIsbn parsedIsbn = parseRequiredIsbn(request.isbn());
 
-        if (existsByParsedIsbn(parsedIsbn)) {
-            throw new DuplicateResourceException("ISBN ya registrado");
+        validateIsbnRequest(request);
+
+        ParsedIsbn parsedIsbn = null;
+
+        if (!request.withoutIsbn()) {
+            parsedIsbn = parseRequiredIsbn(request.isbn());
+
+            if (existsByParsedIsbn(parsedIsbn)) {
+                throw new DuplicateResourceException("ISBN ya registrado");
+            }
         }
 
-        validatePublicationDate(request.publicationYear(), request.publicationMonth());
+        validatePublicationDate(
+                request.publicationYear(),
+                request.publicationMonth()
+        );
 
-        Publisher publisher = publisherService.getEntityById(request.publisherId());
-        Set<Author> authors = authorService.getEntitiesByIds(request.authorIds());
-        Bookstore bookstore = bookstoreService.getEntityById(bookstoreContext.getCurrentBookstoreId());
+        Publisher publisher = request.publisherId() != null
+                ? publisherService.getEntityById(request.publisherId())
+                : null;
+
+        Set<Author> authors =
+                authorService.getEntitiesByIds(request.authorIds());
+
+        Bookstore bookstore =
+                bookstoreService.getEntityById(
+                        bookstoreContext.getCurrentBookstoreId()
+                );
 
         Book book = bookMapper.toEntity(request);
-        book.setIsbn10(parsedIsbn.isbn10());
-        book.setIsbn13(parsedIsbn.isbn13());
+
+        if (parsedIsbn != null) {
+            book.setIsbn10(parsedIsbn.isbn10());
+            book.setIsbn13(parsedIsbn.isbn13());
+        } else {
+            book.setIsbn10(null);
+            book.setIsbn13(null);
+        }
+
         book.setPublisher(publisher);
         book.setAuthors(authors);
         book.setSource(BookSource.MANUAL);
@@ -88,7 +113,14 @@ public class BookServiceImpl implements BookService {
             Book saved = bookRepository.save(book);
             return toDetailResponse(saved);
         } catch (DataIntegrityViolationException ex) {
-            log.error("Error de integridad al crear libro. isbn={}", parsedIsbn.preferredIsbn(), ex);
+            log.error(
+                    "Error de integridad al crear libro. isbn={}",
+                    parsedIsbn != null
+                            ? parsedIsbn.preferredIsbn()
+                            : null,
+                    ex
+            );
+
             throw new BusinessException("No se pudo registrar el libro. Verifique los datos ingresados.");
         }
     }
@@ -298,6 +330,23 @@ public class BookServiceImpl implements BookService {
         return normalized.isBlank()
                 ? null
                 : normalized;
+    }
+
+    private void validateIsbnRequest(BookRequest request) {
+        if (!request.withoutIsbn()
+                && (request.isbn() == null || request.isbn().isBlank())) {
+            throw new BusinessException(
+                    "El ISBN es obligatorio salvo que se indique que el libro no posee ISBN"
+            );
+        }
+
+        if (request.withoutIsbn()
+                && request.isbn() != null
+                && !request.isbn().isBlank()) {
+            throw new BusinessException(
+                    "No se puede informar un ISBN para un libro marcado como sin ISBN"
+            );
+        }
     }
 
     private void validatePublicationDate(Integer year, Integer month) {
