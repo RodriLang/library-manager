@@ -44,7 +44,6 @@ public interface BookMapper {
     @Mapping(target = "active", ignore = true)
     @Mapping(target = "publisher", ignore = true)
     @Mapping(target = "authors", ignore = true)
-    @Mapping(target = "coverUrl", ignore = true)
     @Mapping(target = "source", ignore = true)
     @Mapping(target = "titleSort", ignore = true)
     @Mapping(target = "createdByBookstore", ignore = true)

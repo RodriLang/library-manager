@@ -23,9 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -34,6 +32,9 @@ import java.util.stream.Stream;
 public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMatchingService {
 
     private static final int TEXT_CANDIDATE_LIMIT = 15;
+    private static final int RETURNED_CANDIDATE_LIMIT = 5;
+
+    private static final double MIN_TITLE_SCORE = 0.45;
 
     private final InventoryRepository inventoryRepository;
     private final BookRepository bookRepository;
@@ -111,40 +112,15 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
             return List.of();
         }
 
-        Map<Long, Integer> positionById = new HashMap<>();
-
-        for (int i = 0; i < candidateIds.size(); i++) {
-            positionById.put(candidateIds.get(i), i);
-        }
-
-        List<Book> candidates = bookRepository
+        return bookRepository
                 .findAllWithDetailsByIdIn(candidateIds)
                 .stream()
-                .sorted(
-                        Comparator.comparingInt(
-                                book -> positionById.getOrDefault(
-                                        book.getId(),
-                                        Integer.MAX_VALUE
-                                )
-                        )
-                )
+                .map(book -> scoreCandidate(remoteSearchName, remoteMatchName, book))
+                .filter(candidate -> candidate.titleScore() >= MIN_TITLE_SCORE)
+                .sorted(Comparator.comparingDouble(BookMatchScore::score).reversed())
+                .limit(RETURNED_CANDIDATE_LIMIT)
+                .map(BookMatchScore::book)
                 .toList();
-
-        List<Book> titleCandidates = candidates.stream()
-                .filter(book -> matchesTitle(remoteSearchName, book))
-                .toList();
-
-        if (titleCandidates.size() <= 1) {
-            return titleCandidates;
-        }
-
-        List<Book> authorCandidates = titleCandidates.stream()
-                .filter(book -> matchesAuthor(remoteMatchName, book))
-                .toList();
-
-        return authorCandidates.isEmpty()
-                ? titleCandidates
-                : authorCandidates;
     }
 
     private String buildCandidateFullTextQuery(String normalizedName) {
@@ -324,38 +300,18 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
         );
     }
 
-    private boolean matchesTitle(String remoteName, Book book) {
-        String title = book.getTitleSearch();
-
-        if (title == null || title.isBlank()) {
-            return false;
-        }
-
-        return containsAllTokens(remoteName, title);
-    }
-
-    private boolean matchesAuthor(String remoteName, Book book) {
+    private double authorScore(String remoteName, Book book) {
         if (book.getAuthors() == null || book.getAuthors().isEmpty()) {
-            return false;
+            return 0;
         }
 
-        return book.getAuthors().stream()
-                .anyMatch(author -> containsAllTokens(
-                        remoteName,
-                        TextNormalizer.normalizeForMatch(author.getName())
-                ));
-    }
-
-    private boolean containsAllTokens(String text, String candidate) {
-        if (candidate.isBlank()) {
-            return false;
-        }
-
-        List<String> textTokens = List.of(text.split(" "));
-
-        return Stream.of(candidate.split(" "))
-                .filter(token -> token.length() > 1)
-                .allMatch(textTokens::contains);
+        return book.getAuthors()
+                .stream()
+                .map(Author::getName)
+                .map(TextNormalizer::normalizeForMatch)
+                .mapToDouble(author -> titleScore(remoteName, author))
+                .max()
+                .orElse(0);
     }
 
     private String getProductName(TiendanubeProductResponse product) {
@@ -433,22 +389,94 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
 
     private boolean matchesRemoteProductText(TiendanubeProductResponse product, Book book) {
         String productName = getProductName(product);
-
         String remoteSearchName = TextNormalizer.normalizeForSearch(productName);
-        String remoteMatchName = TextNormalizer.normalizeForMatch(productName);
 
         if (remoteSearchName.isBlank()) {
             return false;
         }
 
-        if (!matchesTitle(remoteSearchName, book)) {
-            return false;
+        return titleScore(remoteSearchName, book.getTitleSearch()) >= MIN_TITLE_SCORE;
+    }
+
+    private BookMatchScore scoreCandidate(
+            String remoteSearchName,
+            String remoteMatchName,
+            Book book
+    ) {
+        double titleScore = titleScore(remoteSearchName, book.getTitleSearch());
+
+        double authorScore = titleScore >= MIN_TITLE_SCORE
+                ? authorScore(remoteMatchName, book)
+                : 0;
+
+        double score =
+                titleScore * 0.85
+                        + authorScore * 0.15;
+
+        return new BookMatchScore(
+                book,
+                titleScore,
+                score
+        );
+    }
+
+    private double titleScore(String remoteName, String title) {
+        if (remoteName == null || remoteName.isBlank() || title == null || title.isBlank()) {
+            return 0;
         }
 
-        if (remoteSearchName.equals(book.getTitleSearch())) {
-            return true;
+        List<String> remoteTokens = significantTokens(remoteName);
+        List<String> titleTokens = significantTokens(title);
+
+        if (remoteTokens.isEmpty() || titleTokens.isEmpty()) {
+            return 0;
         }
 
-        return matchesAuthor(remoteMatchName, book);
+        double total = 0;
+
+        for (String titleToken : titleTokens) {
+            double bestMatch = remoteTokens.stream()
+                    .mapToDouble(remoteToken -> tokenSimilarity(titleToken, remoteToken))
+                    .max()
+                    .orElse(0);
+
+            total += bestMatch;
+        }
+
+        double coverage = total / titleTokens.size();
+
+        if (titleTokens.size() == 1 && remoteTokens.size() >= 3) {
+            coverage *= 0.65;
+        }
+
+        return coverage;
+    }
+
+    private List<String> significantTokens(String value) {
+        return Stream.of(value.split("\\s+"))
+                .filter(token -> token.length() > 1)
+                .toList();
+    }
+
+    private double tokenSimilarity(String first, String second) {
+        if (first.equals(second)) {
+            return 1.0;
+        }
+
+        int minLength = Math.min(first.length(), second.length());
+        int maxLength = Math.max(first.length(), second.length());
+
+        if (minLength >= 5 && (first.startsWith(second) || second.startsWith(first))) {
+            return (double) minLength / maxLength;
+        }
+
+        return 0;
+    }
+
+    private record BookMatchScore(
+            Book book,
+            double titleScore,
+            double score
+    ) {
     }
 }
