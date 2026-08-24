@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.auth.services.impl;
 import com.rodrilang.librarymanager.auth.events.PasswordResetEmailEvent;
 import com.rodrilang.librarymanager.auth.exceptions.ExpiredPasswordResetTokenException;
 import com.rodrilang.librarymanager.auth.exceptions.InvalidPasswordResetTokenException;
+import com.rodrilang.librarymanager.auth.exceptions.PasswordReuseException;
 import com.rodrilang.librarymanager.auth.models.User;
 import com.rodrilang.librarymanager.auth.repositories.UserRepository;
 import com.rodrilang.librarymanager.auth.services.PasswordResetService;
@@ -85,7 +86,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         }
 
         if (passwordEncoder.matches(newPassword, user.getPassword())) {
-            throw new IllegalArgumentException("La nueva contraseña debe ser diferente de la actual.");
+            throw new PasswordReuseException("La nueva contraseña debe ser diferente de la actual.");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));
