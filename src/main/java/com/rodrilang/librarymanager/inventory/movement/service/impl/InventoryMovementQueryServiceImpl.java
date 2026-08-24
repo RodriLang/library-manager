@@ -18,8 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class InventoryMovementQueryServiceImpl
-        implements InventoryMovementQueryService {
+public class InventoryMovementQueryServiceImpl implements InventoryMovementQueryService {
 
     private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryMovementMapper inventoryMovementMapper;

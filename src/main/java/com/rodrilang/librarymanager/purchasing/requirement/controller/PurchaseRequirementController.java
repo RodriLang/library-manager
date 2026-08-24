@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.purchasing.requirement.dto.request.AddPurcha
 import com.rodrilang.librarymanager.purchasing.requirement.dto.request.AdjustPurchaseRequirementRequest;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.request.AssignPurchaseRequirementProviderRequest;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.AddPurchaseRequirementResponse;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.BookPurchaseRequirementStatusResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementSummaryResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
@@ -121,6 +122,13 @@ public class PurchaseRequirementController {
         return ResponseEntity.ok(
                 service.findById(requirementId)
         );
+    }
+
+    @GetMapping("/books/{bookId}/status")
+    public ResponseEntity<BookPurchaseRequirementStatusResponse> findBookStatus(
+            @PathVariable Long bookId
+    ) {
+        return ResponseEntity.ok(service.findBookStatus(bookId));
     }
 
     @GetMapping

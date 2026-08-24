@@ -15,6 +15,7 @@ import com.rodrilang.librarymanager.purchasing.order.repository.projection.Purch
 import com.rodrilang.librarymanager.purchasing.requirement.dto.PurchaseRequirementFilter;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.AddPurchaseRequirementResponse;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.BookPurchaseRequirementStatusResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementProviderResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementReasonResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
@@ -58,7 +59,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     private final InventoryRepository inventoryRepository;
 
-    private final PurchaseRequirementMapper mapper;
+    private final PurchaseRequirementMapper purchaseRequirementMapper;
 
     private final BookService bookService;
     private final BookstoreService bookstoreService;
@@ -88,7 +89,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         RequirementAddResult result = createOrAccumulateRequirement(command);
 
-        return mapper.toResponse(result.requirement());
+        return purchaseRequirementMapper.toResponse(result.requirement());
     }
 
     @Transactional
@@ -190,7 +191,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         requirement.setStatus(PurchaseRequirementStatus.PENDING);
 
-        return mapper.toResponse(requirement);
+        return purchaseRequirementMapper.toResponse(requirement);
     }
 
     @Transactional
@@ -206,7 +207,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         int currentQuantity = requirement.getQuantity();
 
         if (quantity == currentQuantity) {
-            return mapper.toResponse(requirement);
+            return purchaseRequirementMapper.toResponse(requirement);
         }
 
         int delta = quantity - currentQuantity;
@@ -224,12 +225,12 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
             requirement.setStatus(PurchaseRequirementStatus.CANCELLED);
 
-            return mapper.toResponse(requirement);
+            return purchaseRequirementMapper.toResponse(requirement);
         }
 
         requirement.setQuantity(quantity);
 
-        return mapper.toResponse(requirement);
+        return purchaseRequirementMapper.toResponse(requirement);
     }
 
     @Transactional
@@ -242,14 +243,14 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
             requirement.setPreferredProvider(null);
 
-            return mapper.toResponse(requirement);
+            return purchaseRequirementMapper.toResponse(requirement);
         }
 
         PriceListProvider provider = resolveProvider(providerId, requirement.getBook().getId());
 
         requirement.setPreferredProvider(provider);
 
-        return mapper.toResponse(requirement);
+        return purchaseRequirementMapper.toResponse(requirement);
     }
 
     @Transactional
@@ -292,7 +293,21 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                                         "No se encontró la necesidad de compra con ID: " + requirementId)
                         );
 
-        return mapper.toResponse(requirement);
+        return purchaseRequirementMapper.toResponse(requirement);
+    }
+
+    @Override
+    public BookPurchaseRequirementStatusResponse findBookStatus(Long bookId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        return requirementRepository
+                .findByBookstoreIdAndBookIdAndStatus(
+                        bookstoreId,
+                        bookId,
+                        PurchaseRequirementStatus.PENDING
+                )
+                .map(purchaseRequirementMapper::toBookStatusResponse)
+                .orElseGet(BookPurchaseRequirementStatusResponse::notPending);
     }
 
     @Transactional(readOnly = true)
@@ -426,7 +441,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                             List.of()
                     );
 
-            return mapper.toSummaryResponse(
+            return purchaseRequirementMapper.toSummaryResponse(
                     requirement,
                     inventory,
                     reasons,

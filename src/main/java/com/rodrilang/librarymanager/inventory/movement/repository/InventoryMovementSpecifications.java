@@ -70,7 +70,7 @@ public final class InventoryMovementSpecifications {
                 return null;
             }
 
-            return cb.lessThanOrEqualTo(root.get("createdAt"), to);
+            return cb.lessThan(root.get("createdAt"), to);
         };
     }
 

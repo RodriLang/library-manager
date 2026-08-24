@@ -12,7 +12,7 @@ public record BookPurchaseRequirementStatusResponse(
         return new BookPurchaseRequirementStatusResponse(
                 false,
                 null,
-                null,
+                0,
                 null,
                 null
         );
