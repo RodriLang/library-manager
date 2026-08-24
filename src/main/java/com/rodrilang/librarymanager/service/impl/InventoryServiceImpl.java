@@ -1,10 +1,6 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
-import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
-import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
-import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductSyncService;
-import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
@@ -22,9 +18,11 @@ import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
-import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.inventory.movement.repository.InventoryMovementRepository;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
@@ -64,8 +62,6 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
-    private final TiendanubeVariantSyncService tiendanubeVariantSyncService;
-    private final TiendanubeProductSyncService tiendanubeProductSyncService;
     private final EditorialPriceService editorialPriceService;
     private final InventoryStockService inventoryStockService;
     private final PurchaseRequirementService purchaseRequirementService;
@@ -173,9 +169,14 @@ public class InventoryServiceImpl implements InventoryService {
                         )
                 );
 
-        return syncStockAndMap(
-                result.inventory()
+        eventPublisher.publishEvent(
+                new TiendanubeSyncRequestedEvent(
+                        result.inventory().getId(),
+                        TiendanubeSyncType.STOCK
+                )
         );
+
+        return toDetailResponse(result.inventory());
     }
 
     @Transactional
@@ -219,9 +220,14 @@ public class InventoryServiceImpl implements InventoryService {
             );
         }
 
-        return syncStockAndMap(
-                result.inventory()
+        eventPublisher.publishEvent(
+                new TiendanubeSyncRequestedEvent(
+                        result.inventory().getId(),
+                        TiendanubeSyncType.STOCK
+                )
         );
+
+        return toDetailResponse(result.inventory());
     }
 
     @Override
@@ -257,10 +263,20 @@ public class InventoryServiceImpl implements InventoryService {
                 );
 
         if (adjusted.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
-            tiendanubeVariantSyncService.syncStock(adjusted.getId(), adjusted.getStock());
+            eventPublisher.publishEvent(
+                    new TiendanubeSyncRequestedEvent(
+                            adjusted.getId(),
+                            TiendanubeSyncType.STOCK
+                    )
+            );
 
             if (Boolean.TRUE.equals(adjusted.getTiendanubePriceSyncEnabled())) {
-                tiendanubeVariantSyncService.syncPrice(adjusted.getId());
+                eventPublisher.publishEvent(
+                        new TiendanubeSyncRequestedEvent(
+                                adjusted.getId(),
+                                TiendanubeSyncType.PRICE
+                        )
+                );
             }
         }
 
@@ -410,7 +426,12 @@ public class InventoryServiceImpl implements InventoryService {
         inventory.setActive(false);
 
         if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
-            tiendanubeVariantSyncService.syncStock(inventory.getId(), 0);
+            eventPublisher.publishEvent(
+                    new TiendanubeSyncRequestedEvent(
+                            inventory.getId(),
+                            TiendanubeSyncType.STOCK
+                    )
+            );
         }
     }
 
@@ -571,15 +592,5 @@ public class InventoryServiceImpl implements InventoryService {
                         );
 
         return inventoryMapper.toDetailResponse(inventory, editorialPrice, providers);
-    }
-
-    private InventoryDetailResponse syncStockAndMap(Inventory inventory) {
-
-        tiendanubeVariantSyncService.syncStock(
-                inventory.getId(),
-                inventory.getStock()
-        );
-
-        return toDetailResponse(inventory);
     }
 }

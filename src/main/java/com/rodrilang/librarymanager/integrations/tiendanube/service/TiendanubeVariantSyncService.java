@@ -2,7 +2,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.service;
 
 public interface TiendanubeVariantSyncService {
 
-    void syncStock(Long inventoryId, Integer currentStock);
+    void syncStock(Long inventoryId);
 
     void syncPrice(Long inventoryId);
 
