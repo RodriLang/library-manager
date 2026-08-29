@@ -31432,21 +31432,28 @@ VALUES ('9782733858233', 'loic mehee'),
        ('9789876848077', 'raul fortin'),
        ('9788412841206', 'sally johnson');
 
--- Cada ISBN debe resolver a un solo libro.
+-- Cada ISBN presente en este ambiente debe resolver como máximo a un libro.
+-- Un ISBN puede no existir porque los catálogos pueden diferir entre ambientes.
 DO
 $$
     BEGIN
-        IF EXISTS (SELECT 1
-                   FROM (SELECT t.isbn_13,
-                                COUNT(DISTINCT b.id) AS matches
-                         FROM (SELECT DISTINCT isbn_13
-                               FROM s69_mass_isbn_targets) t
-                                  LEFT JOIN books b
-                                            ON b.isbn_13 = t.isbn_13
-                         GROUP BY t.isbn_13
-                         HAVING COUNT(DISTINCT b.id) <> 1) x) THEN
+        IF EXISTS (
+            SELECT 1
+            FROM (
+                     SELECT t.isbn_13,
+                            COUNT(DISTINCT b.id) AS matches
+                     FROM (
+                              SELECT DISTINCT isbn_13
+                              FROM s69_mass_isbn_targets
+                          ) t
+                              LEFT JOIN books b
+                                        ON b.isbn_13 = t.isbn_13
+                     GROUP BY t.isbn_13
+                     HAVING COUNT(DISTINCT b.id) > 1
+                 ) x
+        ) THEN
             RAISE EXCEPTION
-                'Abortado: algún ISBN auditado no resuelve exactamente a un libro';
+                'Abortado: algún ISBN auditado resuelve a más de un libro';
         END IF;
     END
 $$;
