@@ -5,15 +5,20 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceInsertRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceUpdateRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceImportCounters;
+import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListImportItemInsertRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListResolvedPrice;
+import com.rodrilang.librarymanager.importer.price.enums.EditorialPriceChange;
+import com.rodrilang.librarymanager.importer.price.enums.PriceListImportItemOperation;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.repository.EditorialPriceBatchRepository;
+import com.rodrilang.librarymanager.importer.price.repository.PriceListImportItemBatchRepository;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePriceSyncRequestedEvent;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
 import com.rodrilang.librarymanager.repository.InventoryEditorialPriceSyncRepository;
 import com.rodrilang.librarymanager.repository.projection.EditorialPriceImportProjection;
+import com.rodrilang.librarymanager.repository.projection.PreviousEditorialPriceProjection;
 import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +48,7 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     private final EditorialPriceBatchRepository batchRepository;
     private final PriceListImportJobRepository jobRepository;
     private final InventoryEditorialPriceSyncRepository inventoryEditorialPriceSyncRepository;
+    private final PriceListImportItemBatchRepository importItemBatchRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -127,6 +134,23 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
         Set<Long> changedPriceBookIds = new LinkedHashSet<>();
 
+        Map<Long, PriceListImportItemOperation> operationByBookId = new HashMap<>();
+
+        Map<Long, BigDecimal> previousPriceByBookId =
+                editorialPriceRepository
+                        .findLatestBeforeImport(
+                                job.getProvider().getId(),
+                                bookIds,
+                                job.getValidFrom()
+                        )
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        PreviousEditorialPriceProjection::getBookId,
+                                        PreviousEditorialPriceProjection::getPrice
+                                )
+                        );
+
         int unchanged = 0;
 
         long classificationStartedAt =
@@ -144,6 +168,11 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         )
                 );
 
+                operationByBookId.put(
+                        resolved.bookId(),
+                        PriceListImportItemOperation.CREATED
+                );
+
                 changedPriceBookIds.add(resolved.bookId());
 
                 continue;
@@ -154,6 +183,12 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                             && Boolean.TRUE.equals(existing.getActive())
             ) {
                 unchanged++;
+
+                operationByBookId.put(
+                        resolved.bookId(),
+                        PriceListImportItemOperation.UNCHANGED
+                );
+
                 continue;
             }
 
@@ -162,6 +197,11 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                             existing.getId(),
                             resolved.selectedPrice()
                     )
+            );
+
+            operationByBookId.put(
+                    resolved.bookId(),
+                    PriceListImportItemOperation.UPDATED
             );
 
             changedPriceBookIds.add(resolved.bookId());
@@ -212,7 +252,76 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         / 1_000_000
         );
 
-        long inventorySyncStartedAt = System.nanoTime();
+        Map<Long, EditorialPriceImportProjection> persistedByBookId =
+                editorialPriceRepository
+                        .findForImport(
+                                bookIds,
+                                job.getProvider().getId(),
+                                job.getValidFrom()
+                        )
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        EditorialPriceImportProjection::getBookId,
+                                        Function.identity()
+                                )
+                        );
+
+        List<PriceListImportItemInsertRow> importItems =
+                prices.stream()
+                        .map(resolved -> {
+
+                            EditorialPriceImportProjection persistedPrice =
+                                    persistedByBookId.get(
+                                            resolved.bookId()
+                                    );
+
+                            if (persistedPrice == null) {
+                                throw new BusinessException(
+                                        "No se pudo recuperar el precio editorial "
+                                                + "del libro "
+                                                + resolved.bookId()
+                                                + " después de la importación."
+                                );
+                            }
+
+                            BigDecimal previousPrice =
+                                    previousPriceByBookId.get(
+                                            resolved.bookId()
+                                    );
+
+                            PriceListImportItemOperation operation =
+                                    operationByBookId.get(
+                                            resolved.bookId()
+                                    );
+
+                            if (operation == null) {
+                                throw new BusinessException(
+                                        "No se pudo determinar el resultado "
+                                                + "de importación del libro "
+                                                + resolved.bookId()
+                                                + "."
+                                );
+                            }
+
+                            return new PriceListImportItemInsertRow(
+                                    resolved.bookId(),
+                                    persistedPrice.getId(),
+                                    resolved.selectedPrice(),
+                                    previousPrice,
+                                    operation,
+                                    classifyPriceChange(
+                                            previousPrice,
+                                            resolved.selectedPrice()
+                                    )
+                            );
+                        })
+                        .toList();
+
+        importItemBatchRepository.insertBatch(
+                jobId,
+                importItems
+        );
 
         InventoryEditorialPriceSyncResult inventorySyncResult =
                 inventoryEditorialPriceSyncRepository.syncCurrentPrices(
@@ -325,5 +434,26 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         editorialPrice -> editorialPrice.getBook().getId(),
                         Function.identity()
                 ));
+    }
+
+    private EditorialPriceChange classifyPriceChange(
+            BigDecimal previousPrice,
+            BigDecimal importedPrice
+    ) {
+        if (previousPrice == null) {
+            return EditorialPriceChange.FIRST_PRICE;
+        }
+
+        int comparison = importedPrice.compareTo(previousPrice);
+
+        if (comparison > 0) {
+            return EditorialPriceChange.INCREASED;
+        }
+
+        if (comparison < 0) {
+            return EditorialPriceChange.DECREASED;
+        }
+
+        return EditorialPriceChange.UNCHANGED;
     }
 }

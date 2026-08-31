@@ -30,8 +30,8 @@ import java.time.LocalDate;
 @Table(
         name = "editorial_prices",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_editorial_prices_book_source_valid_from",
-                columnNames = {"book_id", "source", "valid_from"}
+                name = "uk_editorial_prices_book_provider_valid_from",
+                columnNames = {"book_id", "provider_id", "valid_from"}
         )
 )
 public class EditorialPrice extends AuditableEntity {

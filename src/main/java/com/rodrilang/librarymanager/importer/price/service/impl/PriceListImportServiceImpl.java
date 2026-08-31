@@ -198,6 +198,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                             .provider(provider)
                             .importConfig(importConfig)
                             .validFrom(validFrom)
+                            .originalFileName(file.getOriginalFilename())
 
                             .status(PriceListImportJobStatus.PENDING)
                             .phase(PriceListImportPhase.STAGING)

@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.repository;
 
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.projection.EditorialPriceImportProjection;
+import com.rodrilang.librarymanager.repository.projection.PreviousEditorialPriceProjection;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,8 +15,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-public interface EditorialPriceRepository
-        extends JpaRepository<EditorialPrice, Long> {
+public interface EditorialPriceRepository extends JpaRepository<EditorialPrice, Long> {
 
     boolean existsByBookId(Long bookId);
 
@@ -143,5 +143,28 @@ public interface EditorialPriceRepository
             Collection<Long> bookIds,
             Long providerId,
             LocalDate validFrom
+    );
+
+    @Query(
+            value = """
+                    SELECT DISTINCT ON (ep.book_id)
+                           ep.book_id AS "bookId",
+                           ep.price AS "price"
+                    FROM editorial_prices ep
+                    WHERE ep.provider_id = :providerId
+                      AND ep.book_id IN (:bookIds)
+                      AND ep.active = TRUE
+                      AND ep.valid_from < :validFrom
+                    ORDER BY
+                        ep.book_id,
+                        ep.valid_from DESC,
+                        ep.id DESC
+                    """,
+            nativeQuery = true
+    )
+    List<PreviousEditorialPriceProjection> findLatestBeforeImport(
+            @Param("providerId") Long providerId,
+            @Param("bookIds") Collection<Long> bookIds,
+            @Param("validFrom") LocalDate validFrom
     );
 }
