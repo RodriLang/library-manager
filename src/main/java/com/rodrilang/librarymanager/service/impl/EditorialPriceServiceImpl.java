@@ -1,6 +1,10 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.dto.internal.InventoryEditorialPriceSyncResult;
+import com.rodrilang.librarymanager.editorialprice.dto.internal.EffectiveEditorialPriceRefreshResult;
+import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceOrigin;
+import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceHealthCacheService;
+import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceInsertRow;
 import com.rodrilang.librarymanager.importer.price.dto.internal.EditorialPriceUpdateRow;
@@ -14,7 +18,6 @@ import com.rodrilang.librarymanager.importer.price.repository.EditorialPriceBatc
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportItemBatchRepository;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePriceSyncRequestedEvent;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
 import com.rodrilang.librarymanager.repository.InventoryEditorialPriceSyncRepository;
 import com.rodrilang.librarymanager.repository.projection.EditorialPriceImportProjection;
@@ -31,11 +34,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -50,6 +50,8 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
     private final InventoryEditorialPriceSyncRepository inventoryEditorialPriceSyncRepository;
     private final PriceListImportItemBatchRepository importItemBatchRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final EffectiveEditorialPriceService effectiveEditorialPriceService;
+    private final EditorialPriceHealthCacheService editorialPriceHealthCacheService;
 
     @Override
     @Transactional
@@ -100,12 +102,12 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
 
         long loadStartedAt = System.nanoTime();
 
-        List<EditorialPriceImportProjection> existingPrices =
-                editorialPriceRepository.findForImport(
-                        bookIds,
-                        job.getProvider().getId(),
-                        job.getValidFrom()
-                );
+        List<EditorialPriceImportProjection> existingPrices = editorialPriceRepository.findForImport(
+                bookIds,
+                job.getProvider().getId(),
+                job.getValidFrom(),
+                EditorialPriceOrigin.PRICE_LIST
+        );
 
         log.info(
                 "Resolved price existing prices loaded. "
@@ -131,8 +133,6 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         List<EditorialPriceInsertRow> toInsert = new ArrayList<>();
 
         List<EditorialPriceUpdateRow> toUpdate = new ArrayList<>();
-
-        Set<Long> changedPriceBookIds = new LinkedHashSet<>();
 
         Map<Long, PriceListImportItemOperation> operationByBookId = new HashMap<>();
 
@@ -173,8 +173,6 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         PriceListImportItemOperation.CREATED
                 );
 
-                changedPriceBookIds.add(resolved.bookId());
-
                 continue;
             }
 
@@ -203,8 +201,6 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                     resolved.bookId(),
                     PriceListImportItemOperation.UPDATED
             );
-
-            changedPriceBookIds.add(resolved.bookId());
         }
 
         log.info(
@@ -252,20 +248,10 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         / 1_000_000
         );
 
-        Map<Long, EditorialPriceImportProjection> persistedByBookId =
-                editorialPriceRepository
-                        .findForImport(
-                                bookIds,
-                                job.getProvider().getId(),
-                                job.getValidFrom()
-                        )
-                        .stream()
-                        .collect(
-                                Collectors.toMap(
-                                        EditorialPriceImportProjection::getBookId,
-                                        Function.identity()
-                                )
-                        );
+        Map<Long, EditorialPriceImportProjection> persistedByBookId = editorialPriceRepository
+                .findForImport(bookIds, job.getProvider().getId(), job.getValidFrom(), EditorialPriceOrigin.PRICE_LIST)
+                .stream()
+                .collect(Collectors.toMap(EditorialPriceImportProjection::getBookId, Function.identity()));
 
         List<PriceListImportItemInsertRow> importItems =
                 prices.stream()
@@ -323,19 +309,27 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                 importItems
         );
 
+        EffectiveEditorialPriceRefreshResult effectiveRefresh =
+                effectiveEditorialPriceService.refreshForBooks(
+                        bookIds,
+                        job.getValidFrom()
+                );
+
         InventoryEditorialPriceSyncResult inventorySyncResult =
                 inventoryEditorialPriceSyncRepository.syncCurrentPrices(
-                        changedPriceBookIds,
-                        LocalDate.now(ZoneId.systemDefault())
+                        effectiveRefresh.changedBookIds(),
+                        LocalDate.now(ZoneId.of("America/Argentina/Buenos_Aires"))
                 );
 
         log.info(
                 "Resolved price inventory sync completed. "
-                        + "jobId={} changedBooks={} "
+                        + "jobId={} effectiveChangedBooks={} "
+                        + "conflictedBooks={} "
                         + "updatedInventories={} "
                         + "tiendanubeSyncRequested={}",
                 jobId,
-                changedPriceBookIds.size(),
+                effectiveRefresh.changedBookIds().size(),
+                effectiveRefresh.conflictedBookIds().size(),
                 inventorySyncResult.updatedInventories(),
                 inventorySyncResult
                         .tiendanubeSyncInventoryIds()
@@ -353,6 +347,8 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                     )
             );
         }
+
+        editorialPriceHealthCacheService.evictSummaryAfterCommit();
 
         int accounted = toInsert.size() + toUpdate.size() + unchanged;
 
@@ -392,48 +388,13 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         );
     }
 
-    @Transactional(readOnly = true)
-    @Override
-    public Optional<EditorialPrice> findCurrentByBookId(Long bookId) {
-        return editorialPriceRepository
-                .findFirstByBookIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDescIdDesc(
-                        bookId,
-                        LocalDate.now(ZoneId.systemDefault())
-                );
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Map<Long, EditorialPrice> findCurrentByBookIds(List<Long> bookIds) {
-        return loadCurrentByBookIds(bookIds);
-    }
-
     @Override
     @Transactional(readOnly = true)
     public Map<Long, BigDecimal> findCurrentPricesByBookIds(List<Long> bookIds) {
-        return loadCurrentByBookIds(bookIds)
+        return effectiveEditorialPriceService.findCurrentByBookIds(bookIds)
                 .entrySet()
                 .stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> entry.getValue().getPrice()
-                ));
-    }
-
-    private Map<Long, EditorialPrice> loadCurrentByBookIds(List<Long> bookIds) {
-        if (bookIds == null || bookIds.isEmpty()) {
-            return Map.of();
-        }
-
-        LocalDate today = LocalDate.now(ZoneId.systemDefault());
-
-        return editorialPriceRepository
-                .findCurrentByBookIds(bookIds, today)
-                .stream()
-                .collect(Collectors.toMap(
-                        editorialPrice -> editorialPrice.getBook().getId(),
-                        Function.identity()
-                ));
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getPrice()));
     }
 
     private EditorialPriceChange classifyPriceChange(

@@ -1,0 +1,38 @@
+package com.rodrilang.librarymanager.editorialprice.enums;
+
+public enum EditorialPriceHealthSignal {
+
+    NO_PRICE,
+
+    FUTURE_ONLY,
+
+    EXTERNAL_REFERENCE_ONLY,
+
+    STALE_CONFIRMATION,
+
+    UNKNOWN_CONFIRMATION,
+
+    MISSING_FROM_LATEST_LIST,
+
+    MISSING_CONSECUTIVE_LISTS,
+
+    PRICE_DECREASE,
+
+    ANOMALOUS_CHANGE,
+
+    EXTREME_CHANGE,
+
+    REVERTED_CHANGE,
+
+    SOURCE_CONFLICT,
+
+    RESOLVED_SOURCE_CONFLICT,
+
+    EXTERNAL_SOURCE_DIVERGENCE,
+
+    MANUAL_PRICE,
+
+    STALE_MANUAL_CONFIRMATION,
+
+    REAPPEARED
+}

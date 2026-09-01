@@ -35,6 +35,7 @@ public class EditorialPriceBatchRepository {
                     price,
                     currency,
                     valid_from,
+                    origin,
                     active
                 )
                 VALUES (
@@ -43,103 +44,57 @@ public class EditorialPriceBatchRepository {
                     :price,
                     'ARS',
                     :validFrom,
+                    'PRICE_LIST',
                     TRUE
                 )
                 """;
 
         MapSqlParameterSource[] parameters = rows.stream()
-                .map(row ->
-                        new MapSqlParameterSource()
-                                .addValue(
-                                        "bookId",
-                                        row.bookId(),
-                                        Types.BIGINT
-                                )
-                                .addValue(
-                                        "providerId",
-                                        providerId,
-                                        Types.BIGINT
-                                )
-                                .addValue(
-                                        "price",
-                                        row.price(),
-                                        Types.NUMERIC
-                                )
-                                .addValue(
-                                        "validFrom",
-                                        validFrom,
-                                        Types.DATE
-                                )
-                )
+                .map(row -> new MapSqlParameterSource()
+                        .addValue("bookId", row.bookId(), Types.BIGINT)
+                        .addValue("providerId", providerId, Types.BIGINT)
+                        .addValue("price", row.price(), Types.NUMERIC)
+                        .addValue("validFrom", validFrom, Types.DATE))
                 .toArray(MapSqlParameterSource[]::new);
 
         long startedAt = System.nanoTime();
 
-        jdbcTemplate.batchUpdate(
-                sql,
-                parameters
-        );
-
-        long elapsedMs =
-                (System.nanoTime() - startedAt)
-                        / 1_000_000;
+        jdbcTemplate.batchUpdate(sql, parameters);
 
         log.info(
-                "Editorial price insert batch completed. "
-                        + "providerId={} validFrom={} rows={} time={}ms",
+                "Editorial price insert batch completed. providerId={} validFrom={} rows={} time={}ms",
                 providerId,
                 validFrom,
                 rows.size(),
-                elapsedMs
+                (System.nanoTime() - startedAt) / 1_000_000
         );
     }
 
-    public void updateBatch(
-            List<EditorialPriceUpdateRow> rows
-    ) {
-        if (rows == null || rows.isEmpty()) {
-            return;
-        }
+    public void updateBatch(List<EditorialPriceUpdateRow> rows) {
+        if (rows == null || rows.isEmpty()) return;
 
         String sql = """
                 UPDATE editorial_prices
                 SET price = :price,
                     active = TRUE
                 WHERE id = :editorialPriceId
+                  AND origin = 'PRICE_LIST'
                 """;
 
         MapSqlParameterSource[] parameters = rows.stream()
-                .map(row ->
-                        new MapSqlParameterSource()
-                                .addValue(
-                                        "editorialPriceId",
-                                        row.editorialPriceId(),
-                                        Types.BIGINT
-                                )
-                                .addValue(
-                                        "price",
-                                        row.price(),
-                                        Types.NUMERIC
-                                )
-                )
+                .map(row -> new MapSqlParameterSource()
+                        .addValue("editorialPriceId", row.editorialPriceId(), Types.BIGINT)
+                        .addValue("price", row.price(), Types.NUMERIC))
                 .toArray(MapSqlParameterSource[]::new);
 
         long startedAt = System.nanoTime();
 
-        jdbcTemplate.batchUpdate(
-                sql,
-                parameters
-        );
-
-        long elapsedMs =
-                (System.nanoTime() - startedAt)
-                        / 1_000_000;
+        jdbcTemplate.batchUpdate(sql, parameters);
 
         log.info(
-                "Editorial price update batch completed. "
-                        + "rows={} time={}ms",
+                "Editorial price update batch completed. rows={} time={}ms",
                 rows.size(),
-                elapsedMs
+                (System.nanoTime() - startedAt) / 1_000_000
         );
     }
 }

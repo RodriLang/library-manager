@@ -6,6 +6,8 @@ import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
+import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
+import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
@@ -18,14 +20,12 @@ import com.rodrilang.librarymanager.mapper.BookMapper;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.service.AuthorService;
 import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
-import com.rodrilang.librarymanager.service.EditorialPriceService;
 import com.rodrilang.librarymanager.service.PublisherService;
 import com.rodrilang.librarymanager.util.PageableUtils;
 import com.rodrilang.librarymanager.util.TextNormalizer;
@@ -53,7 +53,7 @@ public class BookServiceImpl implements BookService {
     private final PublisherService publisherService;
     private final AuthorService authorService;
     private final BookCatalogService bookCatalogService;
-    private final EditorialPriceService editorialPriceService;
+    private final EffectiveEditorialPriceService effectiveEditorialPriceService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
     private final IsbnService isbnService;
@@ -356,25 +356,20 @@ public class BookServiceImpl implements BookService {
     }
 
     private Page<BookSummaryResponse> toSummaryResponsePage(Page<Book> books) {
-        List<Long> bookIds = books.getContent()
-                .stream()
+        List<Long> bookIds = books.getContent().stream()
                 .map(Book::getId)
                 .toList();
 
-        Map<Long, EditorialPrice> pricesByBookId = editorialPriceService.findCurrentByBookIds(bookIds);
+        Map<Long, EffectiveEditorialPrice> pricesByBookId = effectiveEditorialPriceService.findCurrentByBookIds(bookIds);
 
-        return books.map(book -> bookMapper.toSummaryResponse(book, pricesByBookId.get(book.getId()))
-        );
+        return books.map(book -> bookMapper.toSummaryResponse(book, pricesByBookId.get(book.getId())));
     }
 
     private BookDetailResponse toDetailResponse(Book book) {
-        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(book.getId()).orElse(null);
+        EffectiveEditorialPrice editorialPrice = effectiveEditorialPriceService.findCurrentByBookId(book.getId())
+                .orElse(null);
 
-        List<BookProviderResponse> providers =
-                providerBookService
-                        .findActiveProvidersByBookId(
-                                book.getId()
-                        );
+        List<BookProviderResponse> providers = providerBookService.findActiveProvidersByBookId(book.getId());
 
         return bookMapper.toDetailResponse(book, editorialPrice, providers);
     }
