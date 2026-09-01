@@ -67,6 +67,9 @@ public class PriceListImportJob {
     @Column(name = "valid_from", nullable = false)
     private LocalDate validFrom;
 
+    @Column(name = "original_file_name", length = 500)
+    private String originalFileName;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PriceListImportJobStatus status;

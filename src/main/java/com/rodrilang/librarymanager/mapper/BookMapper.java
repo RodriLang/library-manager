@@ -5,8 +5,8 @@ import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
+import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.model.Book;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -28,7 +28,7 @@ public interface BookMapper {
     @Mapping(target = "providers", source = "providers")
     BookDetailResponse toDetailResponse(
             Book book,
-            EditorialPrice editorialPrice,
+            EffectiveEditorialPrice editorialPrice,
             List<BookProviderResponse> providers
     );
 
@@ -36,7 +36,7 @@ public interface BookMapper {
     @Mapping(target = "id", source = "book.id")
     @Mapping(target = "publisherName", source = "book.publisher.name")
     @Mapping(target = "editorialPrice", source = "editorialPrice")
-    BookSummaryResponse toSummaryResponse(Book book, EditorialPrice editorialPrice);
+    BookSummaryResponse toSummaryResponse(Book book, EffectiveEditorialPrice editorialPrice);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "isbn10", ignore = true)

@@ -9,6 +9,8 @@ import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
+import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
+import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
@@ -28,7 +30,6 @@ import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockSer
 import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
@@ -36,7 +37,6 @@ import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequi
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
-import com.rodrilang.librarymanager.service.EditorialPriceService;
 import com.rodrilang.librarymanager.service.InventoryService;
 import com.rodrilang.librarymanager.util.PageableUtils;
 import com.rodrilang.librarymanager.util.TextNormalizer;
@@ -62,7 +62,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
-    private final EditorialPriceService editorialPriceService;
+    private final EffectiveEditorialPriceService effectiveEditorialPriceService;
     private final InventoryStockService inventoryStockService;
     private final PurchaseRequirementService purchaseRequirementService;
     private final BookstoreService bookstoreService;
@@ -568,28 +568,22 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     private Page<InventorySummaryResponse> toSummaryResponsePage(Page<Inventory> inventoryPage) {
-        List<Long> bookIds = inventoryPage.getContent()
-                .stream()
+        List<Long> bookIds = inventoryPage.getContent().stream()
                 .map(inventory -> inventory.getBook().getId())
                 .distinct()
                 .toList();
 
-        Map<Long, EditorialPrice> pricesByBookId = editorialPriceService.findCurrentByBookIds(bookIds);
+        Map<Long, EffectiveEditorialPrice> pricesByBookId = effectiveEditorialPriceService.findCurrentByBookIds(bookIds);
 
         return inventoryPage.map(inventory ->
-                inventoryMapper.toSummaryResponse(inventory, pricesByBookId.get(inventory.getBook().getId()))
-        );
+                inventoryMapper.toSummaryResponse(inventory, pricesByBookId.get(inventory.getBook().getId())));
     }
 
     private InventoryDetailResponse toDetailResponse(Inventory inventory) {
-        EditorialPrice editorialPrice = editorialPriceService.findCurrentByBookId(inventory.getBook().getId())
-                .orElse(null);
+        EffectiveEditorialPrice editorialPrice =
+                effectiveEditorialPriceService.findCurrentByBookId(inventory.getBook().getId()).orElse(null);
 
-        List<BookProviderResponse> providers =
-                providerBookService
-                        .getProvidersForBook(
-                                inventory.getBook().getId()
-                        );
+        List<BookProviderResponse> providers = providerBookService.getProvidersForBook(inventory.getBook().getId());
 
         return inventoryMapper.toDetailResponse(inventory, editorialPrice, providers);
     }

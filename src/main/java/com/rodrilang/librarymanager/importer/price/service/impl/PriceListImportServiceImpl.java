@@ -52,10 +52,9 @@ public class PriceListImportServiceImpl implements PriceListImportService {
             LocalDate validFrom,
             String idempotencyKey
     ) {
-        PriceListImportDateValidator.validateValidFrom(validFrom);
+        LocalDate normalizedValidFrom = PriceListImportDateValidator.normalizeAndValidateValidFrom(validFrom);
 
-        PriceListImportJob existingJob =
-                jobRepository.findByIdempotencyKey(idempotencyKey)
+        PriceListImportJob existingJob = jobRepository.findByIdempotencyKey(idempotencyKey)
                         .orElse(null);
 
         if (existingJob != null) {
@@ -69,20 +68,16 @@ public class PriceListImportServiceImpl implements PriceListImportService {
             throw new BusinessException("El proveedor seleccionado está inactivo.");
         }
 
-        PriceListImportConfig importConfig =
-                configRepository
-                        .findFirstByProviderIdAndActiveTrue(providerId)
-                        .orElseThrow(() ->
-                                new BusinessException(
-                                        "El proveedor seleccionado no tiene una configuración de importación activa."
-                                )
+        PriceListImportConfig importConfig = configRepository.findFirstByProviderIdAndActiveTrue(providerId)
+                        .orElseThrow(() -> new BusinessException(
+                                "El proveedor seleccionado no tiene una configuración de importación activa.")
                         );
 
         return createAndStartJob(
                 provider,
                 importConfig,
                 file,
-                validFrom,
+                normalizedValidFrom,
                 idempotencyKey
         );
     }
@@ -148,7 +143,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
 
             case STAGING -> 5;
 
-            case BOOKS ->  calculateBooksProgress(job);
+            case BOOKS -> calculateBooksProgress(job);
 
             case PRICES -> calculatePricesProgress(job);
 
@@ -198,6 +193,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                             .provider(provider)
                             .importConfig(importConfig)
                             .validFrom(validFrom)
+                            .originalFileName(file.getOriginalFilename())
 
                             .status(PriceListImportJobStatus.PENDING)
                             .phase(PriceListImportPhase.STAGING)
