@@ -17,6 +17,7 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +31,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ImportContextFactory {
@@ -45,6 +47,10 @@ public class ImportContextFactory {
     private final ProviderBookRepository providerBookRepository;
 
     public ImportContext create(List<PriceListRow> rows, PriceListProvider provider) {
+        long startedAt = System.nanoTime();
+
+        long stepStartedAt = System.nanoTime();
+
         Set<String> isbn13Values = new LinkedHashSet<>();
         Set<String> isbn10Values = new LinkedHashSet<>();
         Set<String> externalCodes = new LinkedHashSet<>();
@@ -66,7 +72,17 @@ public class ImportContextFactory {
             }
         }
 
-        Map<String, Book> booksByIsbn13 = loadBooksByIsbn13(isbn13Values).stream()
+        long identifiersMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
+        List<Book> booksByIsbn13Loaded = loadBooksByIsbn13(isbn13Values);
+
+        long isbn13LookupMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
+        Map<String, Book> booksByIsbn13 = booksByIsbn13Loaded.stream()
                 .filter(book -> book.getIsbn13() != null)
                 .collect(Collectors.toMap(
                         Book::getIsbn13,
@@ -74,13 +90,27 @@ public class ImportContextFactory {
                         this::chooseCanonicalBook
                 ));
 
-        Map<String, Book> booksByIsbn10 = loadBooksByIsbn10(isbn10Values).stream()
+        long isbn13MappingMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
+        List<Book> booksByIsbn10Loaded = loadBooksByIsbn10(isbn10Values);
+
+        long isbn10LookupMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
+        Map<String, Book> booksByIsbn10 = booksByIsbn10Loaded.stream()
                 .filter(book -> book.getIsbn10() != null)
                 .collect(Collectors.toMap(
                         Book::getIsbn10,
                         Function.identity(),
                         this::chooseCanonicalBook
                 ));
+
+        long isbn10MappingMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
 
         Map<String, Book> booksByCanonicalIsbn = new HashMap<>();
         Map<String, IsbnBookConflict> conflicts = new HashMap<>();
@@ -93,10 +123,80 @@ public class ImportContextFactory {
                 registerCanonicalBook(book, booksByCanonicalIsbn, conflicts)
         );
 
+        long canonicalizationMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
         Map<String, Book> booksByExternalCode = loadBooksByExternalCode(provider, externalCodes);
 
+        long externalCodeLookupMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
         Map<String, Publisher> publishersByName = publisherResolver.loadPublishers(provider.getId(), rows);
+
+        long publishersMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
         Map<String, Author> authorsByName = authorResolver.loadAuthors(rows);
+
+        long authorsMs = elapsedMillis(stepStartedAt);
+
+        long totalMs = elapsedMillis(startedAt);
+
+        long measuredMs =
+                identifiersMs
+                        + isbn13LookupMs
+                        + isbn13MappingMs
+                        + isbn10LookupMs
+                        + isbn10MappingMs
+                        + canonicalizationMs
+                        + externalCodeLookupMs
+                        + publishersMs
+                        + authorsMs;
+
+        log.info(
+                "Price list import context timing. "
+                        + "providerId={} "
+                        + "rows={} "
+                        + "isbn13Values={} "
+                        + "isbn10Values={} "
+                        + "externalCodes={} "
+                        + "booksByIsbn13={} "
+                        + "booksByIsbn10={} "
+                        + "conflicts={} "
+                        + "identifiers={}ms "
+                        + "isbn13Lookup={}ms "
+                        + "isbn13Mapping={}ms "
+                        + "isbn10Lookup={}ms "
+                        + "isbn10Mapping={}ms "
+                        + "canonicalization={}ms "
+                        + "externalCodeLookup={}ms "
+                        + "publishers={}ms "
+                        + "authors={}ms "
+                        + "other={}ms "
+                        + "total={}ms",
+                provider.getId(),
+                rows.size(),
+                isbn13Values.size(),
+                isbn10Values.size(),
+                externalCodes.size(),
+                booksByIsbn13.size(),
+                booksByIsbn10.size(),
+                conflicts.size(),
+                identifiersMs,
+                isbn13LookupMs,
+                isbn13MappingMs,
+                isbn10LookupMs,
+                isbn10MappingMs,
+                canonicalizationMs,
+                externalCodeLookupMs,
+                publishersMs,
+                authorsMs,
+                Math.max(0L, totalMs - measuredMs),
+                totalMs
+        );
 
         return new ImportContext(
                 provider,
@@ -215,5 +315,9 @@ public class ImportContextFactory {
         }
 
         return books;
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 }

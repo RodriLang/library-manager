@@ -162,6 +162,29 @@ public class PriceListImportJobProgressServiceImpl implements PriceListImportJob
         job.setPhase(phase);
     }
 
+    @Override
+    @Transactional
+    public void recordPhaseDuration(Long jobId, PriceListImportPhase phase, long durationMs) {
+        PriceListImportJob job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new BusinessException("No se encontró el trabajo de importación."));
+
+        switch (phase) {
+            case STAGING -> job.setStagingDurationMs(durationMs);
+            case BOOKS -> job.setBooksDurationMs(durationMs);
+            case PRICES -> job.setPricesDurationMs(durationMs);
+            case COMPLETED -> throw new IllegalArgumentException("COMPLETED no representa una fase medible.");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void recordTotalDuration(Long jobId, long durationMs) {
+        PriceListImportJob job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new BusinessException("No se encontró el trabajo de importación."));
+
+        job.setTotalDurationMs(durationMs);
+    }
+
     private PriceListImportJob getJob(Long jobId) {
         return jobRepository.findById(jobId)
                 .orElseThrow(() -> new BusinessException("No se encontró la importación solicitada."));

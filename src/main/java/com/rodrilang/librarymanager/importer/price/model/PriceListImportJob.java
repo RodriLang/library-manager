@@ -128,6 +128,18 @@ public class PriceListImportJob {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "staging_duration_ms")
+    private Long stagingDurationMs;
+
+    @Column(name = "books_duration_ms")
+    private Long booksDurationMs;
+
+    @Column(name = "prices_duration_ms")
+    private Long pricesDurationMs;
+
+    @Column(name = "total_duration_ms")
+    private Long totalDurationMs;
+
     @PrePersist
     private void prePersist() {
 

@@ -36,4 +36,8 @@ public interface PriceListImportJobProgressService {
     void saveErrors(Long jobId, List<PriceListImportError> errors);
 
     void updatePhase(Long jobId, PriceListImportPhase phase);
+
+    void recordPhaseDuration(Long jobId, PriceListImportPhase phase, long durationMs);
+
+    void recordTotalDuration(Long jobId, long durationMs);
 }
