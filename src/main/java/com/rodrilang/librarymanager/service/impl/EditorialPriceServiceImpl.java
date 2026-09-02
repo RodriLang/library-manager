@@ -248,10 +248,30 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         / 1_000_000
         );
 
-        Map<Long, EditorialPriceImportProjection> persistedByBookId = editorialPriceRepository
-                .findForImport(bookIds, job.getProvider().getId(), job.getValidFrom(), EditorialPriceOrigin.PRICE_LIST)
-                .stream()
-                .collect(Collectors.toMap(EditorialPriceImportProjection::getBookId, Function.identity()));
+        long persistedLoadStartedAt = System.nanoTime();
+
+        Map<Long, EditorialPriceImportProjection> persistedByBookId =
+                editorialPriceRepository
+                        .findForImport(
+                                bookIds,
+                                job.getProvider().getId(),
+                                job.getValidFrom(),
+                                EditorialPriceOrigin.PRICE_LIST
+                        )
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        EditorialPriceImportProjection::getBookId,
+                                        Function.identity()
+                                )
+                        );
+
+        log.info(
+                "Persisted editorial prices reloaded. jobId={} books={} time={}ms",
+                jobId,
+                persistedByBookId.size(),
+                elapsedMs(persistedLoadStartedAt)
+        );
 
         List<PriceListImportItemInsertRow> importItems =
                 prices.stream()
@@ -304,22 +324,56 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
                         })
                         .toList();
 
-        importItemBatchRepository.insertBatch(
+        long auditStartedAt = System.nanoTime();
+
+        importItemBatchRepository.insertBatch(jobId, importItems);
+
+        log.info(
+                "Import item batch completed. jobId={} rows={} time={}ms",
                 jobId,
-                importItems
+                importItems.size(),
+                elapsedMs(auditStartedAt)
         );
+
+        List<Long> affectedBookIds = operationByBookId
+                .entrySet()
+                .stream()
+                .filter(entry -> entry.getValue() != PriceListImportItemOperation.UNCHANGED)
+                .map(Map.Entry::getKey)
+                .toList();
+
+        long effectiveStartedAt = System.nanoTime();
 
         EffectiveEditorialPriceRefreshResult effectiveRefresh =
                 effectiveEditorialPriceService.refreshForBooks(
-                        bookIds,
+                        affectedBookIds,
                         job.getValidFrom()
                 );
+
+        log.info(
+                "Effective refresh completed. jobId={} books={} changed={} conflicts={} time={}ms",
+                jobId,
+                affectedBookIds.size(),
+                effectiveRefresh.changedBookIds().size(),
+                effectiveRefresh.conflictedBookIds().size(),
+                elapsedMs(effectiveStartedAt)
+        );
+
+        long inventoryStartedAt = System.nanoTime();
 
         InventoryEditorialPriceSyncResult inventorySyncResult =
                 inventoryEditorialPriceSyncRepository.syncCurrentPrices(
                         effectiveRefresh.changedBookIds(),
                         LocalDate.now(ZoneId.of("America/Argentina/Buenos_Aires"))
                 );
+
+        log.info(
+                "Inventory sync completed. jobId={} books={} updated={} time={}ms",
+                jobId,
+                effectiveRefresh.changedBookIds().size(),
+                inventorySyncResult.updatedInventories(),
+                elapsedMs(inventoryStartedAt)
+        );
 
         log.info(
                 "Resolved price inventory sync completed. "
@@ -416,5 +470,9 @@ public class EditorialPriceServiceImpl implements EditorialPriceService {
         }
 
         return EditorialPriceChange.UNCHANGED;
+    }
+
+    private long elapsedMs(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 }
