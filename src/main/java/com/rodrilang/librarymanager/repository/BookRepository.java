@@ -523,4 +523,41 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     List<Long> lockByIds(
             @Param("bookIds") Collection<Long> bookIds
     );
+
+    @EntityGraph(attributePaths = "publisher")
+    @Query("""
+        SELECT book
+        FROM Book book
+        WHERE book.isbn13 IN :isbn13Values
+          AND book.active = true
+        """)
+    List<Book> findForPriceImportByIsbn13In(
+            @Param("isbn13Values")
+            Collection<String> isbn13Values
+    );
+
+    @EntityGraph(attributePaths = "publisher")
+    @Query("""
+        SELECT book
+        FROM Book book
+        WHERE book.isbn10 IN :isbn10Values
+          AND book.active = true
+        """)
+    List<Book> findForPriceImportByIsbn10In(
+            @Param("isbn10Values")
+            Collection<String> isbn10Values
+    );
+
+    @Query(
+            value = """
+                SELECT DISTINCT ba.book_id
+                FROM book_authors ba
+                WHERE ba.book_id IN (:bookIds)
+                """,
+            nativeQuery = true
+    )
+    List<Long> findBookIdsWithAuthors(
+            @Param("bookIds")
+            Collection<Long> bookIds
+    );
 }

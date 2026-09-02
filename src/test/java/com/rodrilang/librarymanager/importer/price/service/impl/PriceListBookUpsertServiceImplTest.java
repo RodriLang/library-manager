@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -76,6 +77,7 @@ class PriceListBookUpsertServiceImplTest {
                 ),
                 new HashMap<>(),
                 new HashMap<>(),
+                new HashSet<>(),
                 new HashMap<>(),
                 new HashMap<>()
         );

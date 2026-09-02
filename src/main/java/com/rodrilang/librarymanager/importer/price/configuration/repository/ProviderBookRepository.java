@@ -30,7 +30,10 @@ public interface ProviderBookRepository
 
     Optional<ProviderBook> findByProviderIdAndBookId(Long providerId, Long bookId);
 
-    @EntityGraph(attributePaths = "book")
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.publisher"
+    })
     List<ProviderBook> findByProviderIdAndExternalCodeIn(Long providerId, Collection<String> externalCodes);
 
     @Override
