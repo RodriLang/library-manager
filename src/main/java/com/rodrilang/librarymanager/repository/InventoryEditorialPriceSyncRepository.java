@@ -25,7 +25,8 @@ public class InventoryEditorialPriceSyncRepository {
 
         String sql = """
                 UPDATE inventory i
-                SET sale_price = current_price.price
+                SET sale_price = current_price.price,
+                    updated_at = clock_timestamp()
                 FROM (
                     SELECT DISTINCT ON (eep.book_id)
                            eep.book_id,

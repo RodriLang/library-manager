@@ -36,7 +36,9 @@ public class EditorialPriceBatchRepository {
                     currency,
                     valid_from,
                     origin,
-                    active
+                    active,
+                    created_at,
+                    updated_at
                 )
                 VALUES (
                     :bookId,
@@ -45,7 +47,9 @@ public class EditorialPriceBatchRepository {
                     'ARS',
                     :validFrom,
                     'PRICE_LIST',
-                    TRUE
+                    TRUE,
+                    clock_timestamp(),
+                    clock_timestamp()
                 )
                 """;
 
@@ -71,12 +75,15 @@ public class EditorialPriceBatchRepository {
     }
 
     public void updateBatch(List<EditorialPriceUpdateRow> rows) {
-        if (rows == null || rows.isEmpty()) return;
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
 
         String sql = """
                 UPDATE editorial_prices
                 SET price = :price,
-                    active = TRUE
+                    active = TRUE,
+                    updated_at = clock_timestamp()
                 WHERE id = :editorialPriceId
                   AND origin = 'PRICE_LIST'
                 """;

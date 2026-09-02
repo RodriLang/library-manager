@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.editorialprice.service.impl;
 
+import com.rodrilang.librarymanager.editorialprice.dto.internal.EffectiveEditorialPriceInsertRow;
 import com.rodrilang.librarymanager.editorialprice.dto.internal.EffectiveEditorialPriceRefreshResult;
 import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceAuthority;
 import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceOrigin;
@@ -9,6 +10,7 @@ import com.rodrilang.librarymanager.editorialprice.enums.EffectiveEditorialPrice
 import com.rodrilang.librarymanager.editorialprice.model.EditorialPriceResolution;
 import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.editorialprice.repository.EditorialPriceResolutionRepository;
+import com.rodrilang.librarymanager.editorialprice.repository.EffectiveEditorialPriceBatchRepository;
 import com.rodrilang.librarymanager.editorialprice.repository.EffectiveEditorialPriceRepository;
 import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.model.EditorialPrice;
@@ -54,6 +56,7 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
     private final BookRepository bookRepository;
     private final EditorialPriceRepository editorialPriceRepository;
     private final EffectiveEditorialPriceRepository effectivePriceRepository;
+    private final EffectiveEditorialPriceBatchRepository effectivePriceBatchRepository;
     private final EditorialPriceResolutionRepository resolutionRepository;
 
     @Override
@@ -227,7 +230,7 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                 elapsedMs(invalidateStartedAt)
         );
 
-        List<EffectiveEditorialPrice> toInsert = new ArrayList<>();
+        List<EffectiveEditorialPriceInsertRow> toInsert = new ArrayList<>();
 
         Set<Long> conflictedBookIds = new LinkedHashSet<>();
 
@@ -323,20 +326,28 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                     continue;
                 }
 
-                EffectiveEditorialPrice effective =
-                        EffectiveEditorialPrice.builder()
-                                .book(bookRepository.getReferenceById(bookId))
-                                .price(candidate.price())
-                                .currency(candidate.currency())
-                                .validFrom(validFrom)
-                                .determinationType(candidate.determinationType())
-                                .authority(candidate.authority())
-                                .selectedEditorialPrice(candidate.selectedSource())
-                                .resolution(candidate.resolution())
-                                .active(true)
-                                .build();
+                Long selectedEditorialPriceId =
+                        candidate.selectedSource() != null
+                                ? candidate.selectedSource().getId()
+                                : null;
 
-                toInsert.add(effective);
+                Long resolutionId =
+                        candidate.resolution() != null
+                                ? candidate.resolution().getId()
+                                : null;
+
+                toInsert.add(
+                        new EffectiveEditorialPriceInsertRow(
+                                bookId,
+                                candidate.price(),
+                                candidate.currency(),
+                                validFrom,
+                                candidate.determinationType(),
+                                candidate.authority(),
+                                selectedEditorialPriceId,
+                                resolutionId
+                        )
+                );
 
                 runningPrice = new RunningPrice(candidate.price(), candidate.currency());
             }
@@ -359,13 +370,10 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
 
         long persistenceStartedAt = System.nanoTime();
 
-        if (!toInsert.isEmpty()) {
-            effectivePriceRepository.saveAllAndFlush(toInsert);
-        }
+        effectivePriceBatchRepository.insertBatch(toInsert);
 
         log.info(
-                "Effective refresh persistence completed. "
-                        + "rows={} time={}ms",
+                "Effective refresh persistence completed. rows={} time={}ms",
                 toInsert.size(),
                 elapsedMs(persistenceStartedAt)
         );
