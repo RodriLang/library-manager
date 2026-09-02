@@ -4,7 +4,6 @@ import com.rodrilang.librarymanager.model.Author;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
@@ -51,29 +50,5 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
     Page<Author> searchByName(
             String name,
             Pageable pageable
-    );
-
-    @Modifying
-    @Query(
-            value = """
-                    INSERT INTO authors (
-                        name,
-                        name_normalized,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (
-                        :name,
-                        :nameNormalized,
-                        NOW(),
-                        NOW()
-                    )
-                    ON CONFLICT (name_normalized) DO NOTHING
-                    """,
-            nativeQuery = true
-    )
-    void insertIfAbsent(
-            String name,
-            String nameNormalized
     );
 }

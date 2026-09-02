@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.importer.price.resolver;
 
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
+import com.rodrilang.librarymanager.importer.price.repository.AuthorBatchRepository;
 import com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.repository.AuthorRepository;
@@ -25,10 +26,10 @@ import static org.springframework.util.StringUtils.hasText;
 public class AuthorResolver {
 
     private final AuthorRepository authorRepository;
+    private final AuthorBatchRepository authorBatchRepository;
 
-    public Map<String, Author> loadAuthors(
-            List<PriceListRow> rows
-    ) {
+    public Map<String, Author> loadAuthors(List<PriceListRow> rows) {
+
         Map<String, String> originalNamesByNormalizedName =
                 rows.stream()
                         .map(PriceListRow::authorName)
@@ -46,48 +47,44 @@ public class AuthorResolver {
             return new HashMap<>();
         }
 
-        Set<String> normalizedNames =
-                originalNamesByNormalizedName.keySet();
+        Set<String> normalizedNames = originalNamesByNormalizedName.keySet();
 
-        Map<String, Author> authorsByName =
-                loadExistingAuthors(normalizedNames);
+        Map<String, Author> authorsByName = loadExistingAuthors(normalizedNames);
 
-        originalNamesByNormalizedName
-                .entrySet()
-                .stream()
-                .filter(entry ->
-                        !authorsByName.containsKey(
-                                entry.getKey()
+        Map<String, String> missingAuthors =
+                originalNamesByNormalizedName
+                        .entrySet()
+                        .stream()
+                        .filter(entry ->
+                                !authorsByName.containsKey(
+                                        entry.getKey()
+                                )
                         )
-                )
-                .forEach(entry ->
-                        authorRepository.insertIfAbsent(
-                                entry.getValue(),
-                                entry.getKey()
-                        )
-                );
+                        .collect(
+                                Collectors.toMap(
+                                        Map.Entry::getKey,
+                                        Map.Entry::getValue
+                                )
+                        );
+
+        if (missingAuthors.isEmpty()) {
+            return authorsByName;
+        }
+
+        authorBatchRepository.insertIfAbsentBatch(missingAuthors);
 
         return loadExistingAuthors(normalizedNames);
     }
 
-    public Set<Author> resolve(
-            PriceListRow row,
-            ImportContext context
-    ) {
-        Set<Author> authors =
-                new LinkedHashSet<>();
+    public Set<Author> resolve(PriceListRow row, ImportContext context) {
+
+        Set<Author> authors = new LinkedHashSet<>();
 
         if (!hasText(row.authorName())) {
             return authors;
         }
 
-        Author author =
-                context.authorsByName()
-                        .get(
-                                normalizeForMatch(
-                                        row.authorName()
-                                )
-                        );
+        Author author = context.authorsByName().get(normalizeForMatch(row.authorName()));
 
         if (author != null) {
             authors.add(author);
@@ -96,9 +93,8 @@ public class AuthorResolver {
         return authors;
     }
 
-    private Map<String, Author> loadExistingAuthors(
-            Set<String> normalizedNames
-    ) {
+    private Map<String, Author> loadExistingAuthors(Set<String> normalizedNames) {
+
         return authorRepository
                 .findByNameNormalizedIn(
                         normalizedNames
