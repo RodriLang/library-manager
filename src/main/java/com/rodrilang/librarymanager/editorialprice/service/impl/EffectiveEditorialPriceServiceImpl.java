@@ -70,6 +70,8 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
             throw new IllegalArgumentException("La fecha de vigencia afectada es obligatoria.");
         }
 
+        long totalStartedAt = System.nanoTime();
+
         List<Long> bookIds = requestedBookIds
                 .stream()
                 .filter(id -> id != null && id > 0)
@@ -81,14 +83,30 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
             return emptyResult();
         }
 
+        log.info(
+                "Effective refresh started. books={} from={}",
+                bookIds.size(),
+                affectedValidFrom
+        );
+
         /*
          * Serializa el resolver por libro.
          * Dos imports de providers diferentes pueden afectar
          * exactamente el mismo libro.
          */
+        long lockStartedAt = System.nanoTime();
+
         bookRepository.lockByIds(bookIds);
 
+        log.info(
+                "Effective refresh books locked. books={} time={}ms",
+                bookIds.size(),
+                elapsedMs(lockStartedAt)
+        );
+
         LocalDate today = LocalDate.now(ANAQUEL_ZONE);
+
+        long currentBeforeStartedAt = System.nanoTime();
 
         Map<Long, PriceSnapshot> currentBefore =
                 toCurrentSnapshotMap(
@@ -97,6 +115,16 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                                 today
                         )
                 );
+
+        log.info(
+                "Effective refresh current-before loaded. "
+                        + "books={} currentPrices={} time={}ms",
+                bookIds.size(),
+                currentBefore.size(),
+                elapsedMs(currentBeforeStartedAt)
+        );
+
+        long baselineStartedAt = System.nanoTime();
 
         Map<Long, EffectiveEditorialPrice> baselineByBookId =
                 effectivePriceRepository
@@ -112,7 +140,27 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                                 )
                         );
 
+        log.info(
+                "Effective refresh baselines loaded. "
+                        + "books={} baselines={} time={}ms",
+                bookIds.size(),
+                baselineByBookId.size(),
+                elapsedMs(baselineStartedAt)
+        );
+
+        long sourcePricesStartedAt = System.nanoTime();
+
         List<EditorialPrice> sourcePrices = editorialPriceRepository.findActiveFrom(bookIds, affectedValidFrom);
+
+        log.info(
+                "Effective refresh source prices loaded. "
+                        + "books={} sourcePrices={} time={}ms",
+                bookIds.size(),
+                sourcePrices.size(),
+                elapsedMs(sourcePricesStartedAt)
+        );
+
+        long officialBeforeStartedAt = System.nanoTime();
 
         Set<Long> booksWithOfficialBefore =
                 new LinkedHashSet<>(
@@ -124,16 +172,46 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                                 )
                 );
 
+        log.info(
+                "Effective refresh official-before loaded. "
+                        + "books={} booksWithOfficialBefore={} time={}ms",
+                bookIds.size(),
+                booksWithOfficialBefore.size(),
+                elapsedMs(officialBeforeStartedAt)
+        );
+
+        long resolutionsStartedAt = System.nanoTime();
+
         List<EditorialPriceResolution> resolutions = resolutionRepository.findActiveFrom(bookIds, affectedValidFrom);
+
+        log.info(
+                "Effective refresh resolutions loaded. "
+                        + "books={} resolutions={} time={}ms",
+                bookIds.size(),
+                resolutions.size(),
+                elapsedMs(resolutionsStartedAt)
+        );
+
+        long groupingStartedAt = System.nanoTime();
 
         Map<Long, Map<LocalDate, List<EditorialPrice>>> sourcesByBook = groupSources(sourcePrices);
 
         Map<Long, Map<LocalDate, EditorialPriceResolution>> resolutionsByBook = groupResolutions(resolutions);
 
+        log.info(
+                "Effective refresh data grouped. "
+                        + "sourceBooks={} resolutionBooks={} time={}ms",
+                sourcesByBook.size(),
+                resolutionsByBook.size(),
+                elapsedMs(groupingStartedAt)
+        );
+
         /*
          * Recalculamos el sufijo temporal completo desde la fecha
          * afectada. Esto también soporta correcciones históricas.
          */
+        long invalidateStartedAt = System.nanoTime();
+
         effectivePriceRepository.invalidateFrom(
                 bookIds,
                 affectedValidFrom,
@@ -141,9 +219,24 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                 EffectiveEditorialPriceInvalidationReason.SUPERSEDED_CORRECTION
         );
 
+        log.info(
+                "Effective refresh previous rows invalidated. "
+                        + "books={} from={} time={}ms",
+                bookIds.size(),
+                affectedValidFrom,
+                elapsedMs(invalidateStartedAt)
+        );
+
         List<EffectiveEditorialPrice> toInsert = new ArrayList<>();
 
         Set<Long> conflictedBookIds = new LinkedHashSet<>();
+
+        long resolveStartedAt = System.nanoTime();
+
+        int evaluatedDates = 0;
+        int candidateCount = 0;
+        int skippedSamePrice = 0;
+        int skippedWithoutCandidate = 0;
 
         for (Long bookId : bookIds) {
             EffectiveEditorialPrice baseline = baselineByBookId.get(bookId);
@@ -168,6 +261,8 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
             dates.addAll(resolutionsByDate.keySet());
 
             for (LocalDate validFrom : dates) {
+                evaluatedDates++;
+
                 List<EditorialPrice> sources = sourcesByDate.getOrDefault(validFrom, List.of());
 
                 List<EditorialPrice> officialSources = sources.stream()
@@ -205,8 +300,11 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                      * No adoptamos nada nuevo.
                      * El precio efectivo anterior continúa vigente.
                      */
+                    skippedWithoutCandidate++;
                     continue;
                 }
+
+                candidateCount++;
 
                 if (
                         runningPrice != null
@@ -221,6 +319,7 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                      * OPCIÓN A:
                      * mismo importe efectivo => no insertamos otra fila.
                      */
+                    skippedSamePrice++;
                     continue;
                 }
 
@@ -243,12 +342,48 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
             }
         }
 
+        log.info(
+                "Effective refresh resolution completed. "
+                        + "books={} evaluatedDates={} candidates={} "
+                        + "toInsert={} skippedSamePrice={} "
+                        + "skippedWithoutCandidate={} conflicts={} time={}ms",
+                bookIds.size(),
+                evaluatedDates,
+                candidateCount,
+                toInsert.size(),
+                skippedSamePrice,
+                skippedWithoutCandidate,
+                conflictedBookIds.size(),
+                elapsedMs(resolveStartedAt)
+        );
+
+        long persistenceStartedAt = System.nanoTime();
+
         if (!toInsert.isEmpty()) {
             effectivePriceRepository.saveAllAndFlush(toInsert);
         }
 
+        log.info(
+                "Effective refresh persistence completed. "
+                        + "rows={} time={}ms",
+                toInsert.size(),
+                elapsedMs(persistenceStartedAt)
+        );
+
+        long currentAfterStartedAt = System.nanoTime();
+
         Map<Long, PriceSnapshot> currentAfter =
                 toCurrentSnapshotMap(effectivePriceRepository.findCurrentByBookIds(bookIds, today));
+
+        log.info(
+                "Effective refresh current-after loaded. "
+                        + "books={} currentPrices={} time={}ms",
+                bookIds.size(),
+                currentAfter.size(),
+                elapsedMs(currentAfterStartedAt)
+        );
+
+        long comparisonStartedAt = System.nanoTime();
 
         Set<Long> changedBookIds = new LinkedHashSet<>();
 
@@ -259,14 +394,25 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
         }
 
         log.info(
+                "Effective refresh current comparison completed. "
+                        + "books={} changedCurrent={} time={}ms",
+                bookIds.size(),
+                changedBookIds.size(),
+                elapsedMs(comparisonStartedAt)
+        );
+
+        log.info(
                 "Effective editorial prices refreshed. "
-                        + "books={} from={} inserted={} "
-                        + "changedCurrent={} conflicts={}",
+                        + "books={} from={} sourcePrices={} "
+                        + "inserted={} changedCurrent={} conflicts={} "
+                        + "totalTime={}ms",
                 bookIds.size(),
                 affectedValidFrom,
+                sourcePrices.size(),
                 toInsert.size(),
                 changedBookIds.size(),
-                conflictedBookIds.size()
+                conflictedBookIds.size(),
+                elapsedMs(totalStartedAt)
         );
 
         return new EffectiveEditorialPriceRefreshResult(
@@ -586,5 +732,9 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
             PriceCandidate candidate,
             boolean officialConflict
     ) {
+    }
+
+    private static long elapsedMs(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 }
