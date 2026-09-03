@@ -33,6 +33,7 @@ public class TiendanubeJobEnqueueService {
     private void validate(TiendanubeJobEnqueueCommand command) {
         Objects.requireNonNull(command, "command no puede ser null");
         Objects.requireNonNull(command.bookstoreId(), "bookstoreId no puede ser null");
+        Objects.requireNonNull(command.tiendanubeStoreId(), "tiendanubeStoreId no puede ser null");
         Objects.requireNonNull(command.storeId(), "storeId no puede ser null");
         Objects.requireNonNull(command.inventoryId(), "inventoryId no puede ser null");
         Objects.requireNonNull(command.type(), "type no puede ser null");

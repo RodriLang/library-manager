@@ -75,7 +75,7 @@ class TiendanubeJobExecutorTest {
 
     private TiendanubeJobExecutionContext context(TiendanubeJobType type) {
         return new TiendanubeJobExecutionContext(
-                1L, 10L, 1, 7, 2L, 3L, 4L, type, TiendanubeJobSource.AUTOMATIC, UUID.randomUUID()
+                1L, 10L, 1, 7, 2L, 30L, 3L, 4L, type, TiendanubeJobSource.AUTOMATIC, UUID.randomUUID()
         );
     }
 }

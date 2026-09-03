@@ -47,6 +47,7 @@ public class TiendanubeJobAttemptService {
                 attemptNumber,
                 job.getMaxAttempts(),
                 job.getBookstoreId(),
+                job.getTiendanubeStoreId(),
                 job.getStoreId(),
                 job.getInventoryId(),
                 job.getType(),

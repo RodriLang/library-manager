@@ -29,7 +29,8 @@ import java.util.UUID;
         indexes = {
                 @Index(name = "idx_tiendanube_sync_jobs_claim", columnList = "status,next_attempt_at,lease_until,id"),
                 @Index(name = "idx_tiendanube_sync_jobs_inventory", columnList = "inventory_id,created_at"),
-                @Index(name = "idx_tiendanube_sync_jobs_store", columnList = "store_id,status,created_at")
+                @Index(name = "idx_tiendanube_sync_jobs_store", columnList = "store_id,status,created_at"),
+                @Index(name = "idx_tiendanube_sync_jobs_internal_store", columnList = "tiendanube_store_id,status,created_at")
         }
 )
 @Getter
@@ -45,6 +46,9 @@ public class TiendanubeSyncJob {
 
     @Column(name = "bookstore_id", nullable = false)
     private Long bookstoreId;
+
+    @Column(name = "tiendanube_store_id", nullable = false)
+    private Long tiendanubeStoreId;
 
     @Column(name = "store_id", nullable = false)
     private Long storeId;

@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.Tiendanube
 
 public record TiendanubeJobEnqueueCommand(
         Long bookstoreId,
+        Long tiendanubeStoreId,
         Long storeId,
         Long inventoryId,
         TiendanubeJobType type,
@@ -12,8 +13,8 @@ public record TiendanubeJobEnqueueCommand(
         Integer maxAttempts
 ) {
 
-    public TiendanubeJobEnqueueCommand(Long bookstoreId, Long storeId, Long inventoryId, TiendanubeJobType type,
-                                       TiendanubeJobSource source) {
-        this(bookstoreId, storeId, inventoryId, type, source, null);
+    public TiendanubeJobEnqueueCommand(Long bookstoreId, Long tiendanubeStoreId, Long storeId, Long inventoryId,
+                                       TiendanubeJobType type, TiendanubeJobSource source) {
+        this(bookstoreId, tiendanubeStoreId, storeId, inventoryId, type, source, null);
     }
 }

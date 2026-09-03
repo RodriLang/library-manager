@@ -97,6 +97,7 @@ class TiendanubeJobClaimServiceTest {
         return TiendanubeSyncJob.builder()
                 .id(1L)
                 .bookstoreId(2L)
+                .tiendanubeStoreId(30L)
                 .storeId(3L)
                 .inventoryId(4L)
                 .type(TiendanubeJobType.SYNC_STOCK)

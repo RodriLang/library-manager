@@ -11,6 +11,7 @@ public record TiendanubeJobExecutionContext(
         int attemptNumber,
         int maxAttempts,
         Long bookstoreId,
+        Long tiendanubeStoreId,
         Long storeId,
         Long inventoryId,
         TiendanubeJobType type,

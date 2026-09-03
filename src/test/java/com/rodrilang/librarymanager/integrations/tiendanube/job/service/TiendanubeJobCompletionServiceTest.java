@@ -104,6 +104,7 @@ class TiendanubeJobCompletionServiceTest {
         TiendanubeSyncJob job = TiendanubeSyncJob.builder()
                 .id(1L)
                 .bookstoreId(2L)
+                .tiendanubeStoreId(30L)
                 .storeId(3L)
                 .inventoryId(4L)
                 .type(TiendanubeJobType.SYNC_STOCK)
@@ -125,7 +126,7 @@ class TiendanubeJobCompletionServiceTest {
                 .startedAt(Instant.now())
                 .build();
         TiendanubeJobExecutionContext context = new TiendanubeJobExecutionContext(
-                1L, 10L, attemptNumber, maxAttempts, 2L, 3L, 4L,
+                1L, 10L, attemptNumber, maxAttempts, 2L, 30L, 3L, 4L,
                 TiendanubeJobType.SYNC_STOCK, TiendanubeJobSource.AUTOMATIC, token
         );
 

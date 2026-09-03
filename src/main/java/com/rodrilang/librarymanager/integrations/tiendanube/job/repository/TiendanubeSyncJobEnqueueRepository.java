@@ -18,6 +18,7 @@ public class TiendanubeSyncJobEnqueueRepository {
         String sql = """
                 INSERT INTO tiendanube_sync_jobs (
                     bookstore_id,
+                    tiendanube_store_id,
                     store_id,
                     inventory_id,
                     type,
@@ -30,6 +31,7 @@ public class TiendanubeSyncJobEnqueueRepository {
                     updated_at
                 ) VALUES (
                     :bookstoreId,
+                    :tiendanubeStoreId,
                     :storeId,
                     :inventoryId,
                     :type,
@@ -44,7 +46,15 @@ public class TiendanubeSyncJobEnqueueRepository {
                 ON CONFLICT (inventory_id, type)
                     WHERE status IN ('PENDING', 'RETRY_WAIT')
                 DO UPDATE SET
+                    bookstore_id = EXCLUDED.bookstore_id,
+                    tiendanube_store_id = EXCLUDED.tiendanube_store_id,
+                    store_id = EXCLUDED.store_id,
                     source = EXCLUDED.source,
+                    attempt_count = CASE
+                        WHEN tiendanube_sync_jobs.tiendanube_store_id <> EXCLUDED.tiendanube_store_id THEN 0
+                        ELSE tiendanube_sync_jobs.attempt_count
+                    END,
+                    max_attempts = EXCLUDED.max_attempts,
                     next_attempt_at = LEAST(tiendanube_sync_jobs.next_attempt_at, EXCLUDED.next_attempt_at),
                     updated_at = EXCLUDED.updated_at
                 RETURNING id
@@ -52,6 +62,7 @@ public class TiendanubeSyncJobEnqueueRepository {
 
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("bookstoreId", command.bookstoreId())
+                .addValue("tiendanubeStoreId", command.tiendanubeStoreId())
                 .addValue("storeId", command.storeId())
                 .addValue("inventoryId", command.inventoryId())
                 .addValue("type", command.type().name())
