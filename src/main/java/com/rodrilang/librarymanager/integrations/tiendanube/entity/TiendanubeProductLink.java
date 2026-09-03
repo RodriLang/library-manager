@@ -51,6 +51,15 @@ public class TiendanubeProductLink {
     @Column(name = "last_synced_cover_url", columnDefinition = "TEXT")
     private String lastSyncedCoverUrl;
 
+    @Column(name = "pending_cover_url", columnDefinition = "TEXT")
+    private String pendingCoverUrl;
+
+    @Column(name = "pending_cover_existing_image_ids", columnDefinition = "TEXT")
+    private String pendingCoverExistingImageIds;
+
+    @Column(name = "pending_cover_started_at")
+    private Instant pendingCoverStartedAt;
+
     @Column(name = "sku")
     private String sku;
 

@@ -21,5 +21,11 @@ public interface TiendanubeProductMatchingService {
             List<TiendanubeProductResponse> products
     );
 
+    RemoteInventoryMatch findRemoteMatch(
+            String isbn,
+            String titleSearch,
+            List<TiendanubeProductResponse> products
+    );
+
     List<Book> findBookCandidates(TiendanubeProductResponse product);
 }
