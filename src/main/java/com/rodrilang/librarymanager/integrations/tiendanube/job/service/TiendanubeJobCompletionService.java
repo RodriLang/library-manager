@@ -23,6 +23,7 @@ public class TiendanubeJobCompletionService {
 
     private static final String STALE_ATTEMPT_ERROR_TYPE = "STALE_ATTEMPT";
     private static final String STALE_ATTEMPT_ERROR_MESSAGE = "El job ya fue reclamado por otro worker.";
+    private static final String SUPERSEDED_ERROR_TYPE = "SUPERSEDED_BY_PENDING_JOB";
 
     private final TiendanubeSyncJobRepository jobRepository;
     private final TiendanubeSyncAttemptRepository attemptRepository;
@@ -71,8 +72,22 @@ public class TiendanubeJobCompletionService {
         }
 
         if (retryPolicy.shouldRetry(failure, context.attemptNumber(), context.maxAttempts())) {
+            if (jobRepository.existsPendingSuccessor(context.inventoryId(), context.type().name(), context.jobId())) {
+                job.setStatus(TiendanubeJobStatus.CANCELLED);
+                job.setCompletedAt(now);
+                job.setLastErrorType(SUPERSEDED_ERROR_TYPE);
+                job.setLastErrorMessage("Un job pendiente más nuevo reemplazó este reintento. Último error: " + failure.message());
+                attempt.setStatus(TiendanubeJobAttemptStatus.FAILED);
+
+                log.info(
+                        "Tiendanube job retry omitted because a newer pending job supersedes it. jobId={} type={} inventoryId={}",
+                        context.jobId(), context.type(), context.inventoryId()
+                );
+                return;
+            }
+
             job.setStatus(TiendanubeJobStatus.RETRY_WAIT);
-            job.setNextAttemptAt(now.plus(retryPolicy.nextDelay(context.attemptNumber())));
+            job.setNextAttemptAt(now.plus(retryPolicy.nextDelay(failure, context.attemptNumber())));
             attempt.setStatus(TiendanubeJobAttemptStatus.RETRY_SCHEDULED);
             return;
         }

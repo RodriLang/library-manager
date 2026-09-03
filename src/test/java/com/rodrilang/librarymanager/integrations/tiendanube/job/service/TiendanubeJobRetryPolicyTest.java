@@ -16,7 +16,7 @@ class TiendanubeJobRetryPolicyTest {
     @Test
     void shouldRetryRetryableFailureWhileAttemptsRemain() {
         TiendanubeJobFailure failure = new TiendanubeJobFailure(
-                "TIMEOUT", "Timeout", null, TiendanubeJobFailureDisposition.RETRY
+                "TIMEOUT", "Timeout", null, TiendanubeJobFailureDisposition.RETRY, null
         );
 
         assertTrue(policy.shouldRetry(failure, 1, 7));
@@ -26,10 +26,10 @@ class TiendanubeJobRetryPolicyTest {
     @Test
     void shouldNotRetryFailedOrBlockedFailure() {
         TiendanubeJobFailure failed = new TiendanubeJobFailure(
-                "VALIDATION", "Invalid", 422, TiendanubeJobFailureDisposition.FAIL
+                "VALIDATION", "Invalid", 422, TiendanubeJobFailureDisposition.FAIL, null
         );
         TiendanubeJobFailure blocked = new TiendanubeJobFailure(
-                "UNAUTHORIZED", "Unauthorized", 401, TiendanubeJobFailureDisposition.BLOCK
+                "UNAUTHORIZED", "Unauthorized", 401, TiendanubeJobFailureDisposition.BLOCK, null
         );
 
         assertFalse(policy.shouldRetry(failed, 1, 7));
@@ -42,5 +42,18 @@ class TiendanubeJobRetryPolicyTest {
 
         assertTrue(delay.compareTo(Duration.ofSeconds(12)) >= 0);
         assertTrue(delay.compareTo(Duration.ofSeconds(18)) <= 0);
+    }
+
+    @Test
+    void explicitRetryAfterTakesPrecedenceOverBackoff() {
+        TiendanubeJobFailure failure = new TiendanubeJobFailure(
+                "RATE_LIMIT:429", "Too many requests", 429,
+                TiendanubeJobFailureDisposition.RETRY, Duration.ofMillis(600)
+        );
+
+        Duration delay = policy.nextDelay(failure, 3);
+
+        assertTrue(delay.compareTo(Duration.ofMillis(650)) >= 0);
+        assertTrue(delay.compareTo(Duration.ofMillis(850)) <= 0);
     }
 }

@@ -17,20 +17,25 @@ public class TiendanubeJobScheduler {
 
     private final TiendanubeJobClaimService claimService;
     private final TiendanubeJobProcessor processor;
+    private final TiendanubeJobWorkerExecutor workerExecutor;
 
     @Scheduled(
-            fixedDelayString = "${tiendanube.jobs.poll-delay-ms:5000}",
+            fixedDelayString = "${tiendanube.jobs.poll-delay-ms:1000}",
             initialDelayString = "${tiendanube.jobs.initial-delay-ms:5000}"
     )
     public void processPendingJobs() {
         List<TiendanubeClaimedJob> jobs = claimService.claimNextBatch();
 
         for (TiendanubeClaimedJob job : jobs) {
-            try {
-                processor.process(job);
-            } catch (RuntimeException exception) {
-                log.error("Unexpected Tiendanube job processor error. jobId={}", job.jobId(), exception);
-            }
+            workerExecutor.execute(() -> process(job));
+        }
+    }
+
+    private void process(TiendanubeClaimedJob job) {
+        try {
+            processor.process(job);
+        } catch (RuntimeException exception) {
+            log.error("Unexpected Tiendanube job processor error. jobId={}", job.jobId(), exception);
         }
     }
 }

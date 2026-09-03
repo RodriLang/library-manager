@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.job.service;
 
+import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.config.TiendanubeJobProperties;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.dto.TiendanubeClaimedJob;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.entity.TiendanubeSyncJob;
@@ -7,6 +8,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.Tiendanube
 import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.TiendanubeJobStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.repository.TiendanubeSyncAttemptRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.repository.TiendanubeSyncJobRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -28,6 +32,7 @@ public class TiendanubeJobClaimService {
 
     private final TiendanubeSyncJobRepository jobRepository;
     private final TiendanubeSyncAttemptRepository attemptRepository;
+    private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeJobProperties properties;
 
     @Transactional
@@ -40,11 +45,35 @@ public class TiendanubeJobClaimService {
         }
 
         List<TiendanubeSyncJob> jobs = jobRepository.findAllByIds(ids).stream()
-                .sorted(Comparator.comparingInt(job -> ids.indexOf(job.getId())))
+                .sorted(Comparator
+                        .comparing(TiendanubeSyncJob::getTiendanubeStoreId)
+                        .thenComparing(TiendanubeSyncJob::getNextAttemptAt)
+                        .thenComparing(TiendanubeSyncJob::getId))
                 .toList();
-        List<TiendanubeClaimedJob> claimed = new ArrayList<>(jobs.size());
+        List<TiendanubeClaimedJob> claimed = new ArrayList<>(properties.getBatchSize());
+        Set<Long> claimedStores = new HashSet<>();
 
         for (TiendanubeSyncJob job : jobs) {
+            if (claimed.size() >= properties.getBatchSize()) {
+                break;
+            }
+
+            Long tiendanubeStoreId = job.getTiendanubeStoreId();
+
+            if (claimedStores.contains(tiendanubeStoreId)) {
+                continue;
+            }
+
+            TiendanubeStore store = storeRepository.findByIdForUpdate(tiendanubeStoreId).orElse(null);
+
+            if (store == null || !store.isActive() || !store.isTokenValid()) {
+                continue;
+            }
+
+            if (jobRepository.existsActiveProcessingForStore(tiendanubeStoreId, job.getId(), now)) {
+                continue;
+            }
+
             if (job.getStatus() == TiendanubeJobStatus.PROCESSING) {
                 attemptRepository.markProcessingAttempts(
                         job.getId(),
@@ -67,6 +96,7 @@ public class TiendanubeJobClaimService {
             job.setLeaseUntil(now.plus(properties.getLeaseDuration()));
             job.setProcessingToken(processingToken);
             claimed.add(new TiendanubeClaimedJob(job.getId(), processingToken));
+            claimedStores.add(tiendanubeStoreId);
         }
 
         return claimed;

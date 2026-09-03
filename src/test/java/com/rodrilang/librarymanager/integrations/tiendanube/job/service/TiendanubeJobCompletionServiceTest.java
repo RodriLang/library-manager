@@ -55,7 +55,7 @@ class TiendanubeJobCompletionServiceTest {
         Fixture fixture = fixture(1, 7);
         TiendanubeJobCompletionService service = service(fixture);
         TiendanubeJobFailure failure = new TiendanubeJobFailure(
-                "TIMEOUT", "Timeout", null, TiendanubeJobFailureDisposition.RETRY
+                "TIMEOUT", "Timeout", null, TiendanubeJobFailureDisposition.RETRY, null
         );
 
         service.fail(fixture.context(), failure);
@@ -67,11 +67,29 @@ class TiendanubeJobCompletionServiceTest {
     }
 
     @Test
+    void cancelsRetryWhenNewerPendingJobAlreadyExists() {
+        Fixture fixture = fixture(1, 7);
+        TiendanubeJobCompletionService service = service(fixture);
+        TiendanubeJobFailure failure = new TiendanubeJobFailure(
+                "TIMEOUT", "Timeout", null, TiendanubeJobFailureDisposition.RETRY, null
+        );
+        when(jobRepository.existsPendingSuccessor(4L, TiendanubeJobType.SYNC_STOCK.name(), 1L)).thenReturn(true);
+
+        service.fail(fixture.context(), failure);
+
+        assertEquals(TiendanubeJobStatus.CANCELLED, fixture.job().getStatus());
+        assertEquals(TiendanubeJobAttemptStatus.FAILED, fixture.attempt().getStatus());
+        assertEquals("SUPERSEDED_BY_PENDING_JOB", fixture.job().getLastErrorType());
+        assertNotNull(fixture.job().getCompletedAt());
+        assertNull(fixture.job().getProcessingToken());
+    }
+
+    @Test
     void blocksJobWhenFailureRequiresReconnect() {
         Fixture fixture = fixture(1, 7);
         TiendanubeJobCompletionService service = service(fixture);
         TiendanubeJobFailure failure = new TiendanubeJobFailure(
-                "UNAUTHORIZED", "Unauthorized", 401, TiendanubeJobFailureDisposition.BLOCK
+                "UNAUTHORIZED", "Unauthorized", 401, TiendanubeJobFailureDisposition.BLOCK, null
         );
 
         service.fail(fixture.context(), failure);

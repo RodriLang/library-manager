@@ -6,6 +6,9 @@ public record TiendanubePublicationSnapshot(
         TiendanubeLinkedInventorySnapshot linkedInventory,
         TiendanubeUpdateProductRequest productRequest,
         String coverUrl,
-        String lastSyncedCoverUrl
+        String lastSyncedCoverUrl,
+        Long lastSyncedImageId,
+        String pendingCoverUrl,
+        String pendingCoverExistingImageIds
 ) {
 }

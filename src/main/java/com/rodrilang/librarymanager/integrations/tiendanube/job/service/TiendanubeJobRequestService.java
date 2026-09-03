@@ -29,8 +29,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TiendanubeJobRequestService {
 
-    private static final int UNSAFE_OPERATION_MAX_ATTEMPTS = 1;
-
     private final InventoryRepository inventoryRepository;
     private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
@@ -163,8 +161,6 @@ public class TiendanubeJobRequestService {
     }
 
     private Long enqueue(Inventory inventory, TiendanubeStore store, TiendanubeJobType type, TiendanubeJobSource source) {
-        Integer maxAttempts = isUnsafeUntilStage3(type) ? UNSAFE_OPERATION_MAX_ATTEMPTS : null;
-
         return enqueueService.enqueue(new TiendanubeJobEnqueueCommand(
                 inventory.getBookstore().getId(),
                 store.getId(),
@@ -172,7 +168,7 @@ public class TiendanubeJobRequestService {
                 inventory.getId(),
                 type,
                 source,
-                maxAttempts
+                null
         ));
     }
 
@@ -230,12 +226,6 @@ public class TiendanubeJobRequestService {
 
     private boolean isUsable(TiendanubeStore store) {
         return store != null && store.isActive() && store.isTokenValid();
-    }
-
-    private boolean isUnsafeUntilStage3(TiendanubeJobType type) {
-        return type == TiendanubeJobType.PUBLISH
-                || type == TiendanubeJobType.SYNC_PUBLICATION
-                || type == TiendanubeJobType.DELETE_PUBLICATION;
     }
 
     private void validateLinkedType(TiendanubeJobType type) {

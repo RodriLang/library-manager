@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.integrations.tiendanube.job.dto.execution.TiendanubeCoverSyncResult;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.dto.execution.TiendanubeLinkedInventorySnapshot;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -39,7 +40,7 @@ public class TiendanubeJobResultService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void registerPublicationSuccess(TiendanubeLinkedInventorySnapshot snapshot, String coverUrl, Long imageId) {
+    public void registerPublicationSuccess(TiendanubeLinkedInventorySnapshot snapshot, TiendanubeCoverSyncResult cover) {
         TiendanubeProductLink link = requireActiveLink(snapshot.linkId());
         Inventory inventory = requireInventory(snapshot.inventoryId());
 
@@ -47,11 +48,12 @@ public class TiendanubeJobResultService {
             link.setSku(snapshot.resolvedSku());
         }
 
-        if (coverUrl != null) {
-            link.setLastSyncedCoverUrl(coverUrl);
-            link.setTiendanubeImageId(imageId);
+        if (cover.changed()) {
+            link.setLastSyncedCoverUrl(cover.coverUrl());
+            link.setTiendanubeImageId(cover.imageId());
         }
 
+        clearPendingCoverSync(link);
         link.setLastSyncedAt(Instant.now());
         link.setLastError(null);
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.LINKED);
@@ -110,7 +112,8 @@ public class TiendanubeJobResultService {
             return;
         }
 
-        Long imageId = product.images() == null || product.images().isEmpty() ? null : product.images().getFirst().id();
+        boolean hasImage = product.images() != null && !product.images().isEmpty();
+        Long imageId = hasImage ? product.images().getFirst().id() : null;
 
         TiendanubeProductLink link = TiendanubeProductLink.builder()
                 .inventory(inventory)
@@ -118,7 +121,7 @@ public class TiendanubeJobResultService {
                 .tiendanubeProductId(product.id())
                 .tiendanubeVariantId(variant.id())
                 .tiendanubeImageId(imageId)
-                .lastSyncedCoverUrl(coverUrl == null || coverUrl.isBlank() ? null : coverUrl)
+                .lastSyncedCoverUrl(hasImage && coverUrl != null && !coverUrl.isBlank() ? coverUrl : null)
                 .sku(variant.sku() == null || variant.sku().isBlank() ? fallbackSku : variant.sku())
                 .active(true)
                 .lastSyncedAt(Instant.now())
@@ -177,8 +180,16 @@ public class TiendanubeJobResultService {
 
         link.setActive(false);
         link.setLastError(null);
+        clearPendingCoverSync(link);
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED);
         inventory.setTiendanubePriceSyncEnabled(false);
+    }
+
+
+    private void clearPendingCoverSync(TiendanubeProductLink link) {
+        link.setPendingCoverUrl(null);
+        link.setPendingCoverExistingImageIds(null);
+        link.setPendingCoverStartedAt(null);
     }
 
     private Inventory requireInventory(Long inventoryId) {

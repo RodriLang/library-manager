@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,7 +45,7 @@ class TiendanubeJobRequestServiceTest {
     private Bookstore bookstore;
 
     @Test
-    void manualPublishMarksPendingAndUsesSingleAttemptUntilStage3() {
+    void manualPublishUsesDefaultRetryPolicyAfterStage3() {
         TiendanubeStore store = TiendanubeStore.builder()
                 .id(30L)
                 .storeId(3L)
@@ -71,7 +72,7 @@ class TiendanubeJobRequestServiceTest {
         assertEquals(3L, captor.getValue().storeId());
         assertEquals(TiendanubeJobType.PUBLISH, captor.getValue().type());
         assertEquals(TiendanubeJobSource.MANUAL, captor.getValue().source());
-        assertEquals(1, captor.getValue().maxAttempts());
+        assertNull(captor.getValue().maxAttempts());
     }
 
     private TiendanubeJobRequestService service() {

@@ -44,7 +44,10 @@ public class TiendanubeJobExecutionDataService {
                             linked,
                             productRequestFactory.updateProduct(link.getInventory()),
                             link.getInventory().getBook().getCoverUrl(),
-                            link.getLastSyncedCoverUrl()
+                            link.getLastSyncedCoverUrl(),
+                            link.getTiendanubeImageId(),
+                            link.getPendingCoverUrl(),
+                            link.getPendingCoverExistingImageIds()
                     );
                 });
     }

@@ -23,12 +23,21 @@ public class TiendanubeJobRetryPolicy {
         return failure.disposition() == TiendanubeJobFailureDisposition.RETRY && attemptNumber < maxAttempts;
     }
 
-    public Duration nextDelay(int attemptNumber) {
+    public Duration nextDelay(TiendanubeJobFailure failure, int attemptNumber) {
+        if (failure.retryAfter() != null && !failure.retryAfter().isNegative() && !failure.retryAfter().isZero()) {
+            return failure.retryAfter().plusMillis(ThreadLocalRandom.current().nextLong(50, 251));
+        }
+
         int index = Math.min(Math.max(attemptNumber - 1, 0), DELAYS.length - 1);
         Duration base = DELAYS[index];
         long jitterBound = Math.max(1, base.toMillis() / 5);
         long jitter = ThreadLocalRandom.current().nextLong(-jitterBound, jitterBound + 1);
-
         return base.plusMillis(jitter);
+    }
+
+    public Duration nextDelay(int attemptNumber) {
+        return nextDelay(new TiendanubeJobFailure(
+                "LEGACY_RETRY", "Legacy retry", null, TiendanubeJobFailureDisposition.RETRY, null
+        ), attemptNumber);
     }
 }
