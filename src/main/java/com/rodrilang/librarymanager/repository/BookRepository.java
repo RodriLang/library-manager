@@ -275,28 +275,28 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             value = """
                     SELECT b.*
                     FROM books b
-                    LEFT JOIN editorial_prices ep ON ep.book_id = b.id
-                      AND ep.active = true
-                      AND ep.valid_from = (
-                          SELECT MAX(ep2.valid_from)
-                          FROM editorial_prices ep2
-                          WHERE ep2.book_id = b.id
-                            AND ep2.active = true
-                            AND ep2.valid_from <= CURRENT_DATE
-                      )
-                    WHERE b.active = true
+                    LEFT JOIN (
+                        SELECT DISTINCT ON (eep.book_id)
+                               eep.book_id,
+                               eep.price
+                        FROM effective_editorial_prices eep
+                        WHERE eep.active = TRUE
+                          AND eep.valid_from <= CURRENT_DATE
+                        ORDER BY eep.book_id, eep.valid_from DESC, eep.id DESC
+                    ) current_price ON current_price.book_id = b.id
+                    WHERE b.active = TRUE
                       AND NOT EXISTS (
                           SELECT 1
                           FROM bookstore_excluded_publishers bep
                           WHERE bep.bookstore_id = :bookstoreId
                             AND bep.publisher_id = b.publisher_id
                       )
-                    ORDER BY ep.price ASC NULLS LAST
+                    ORDER BY current_price.price ASC NULLS LAST, b.title_sort ASC, b.id ASC
                     """,
             countQuery = """
                     SELECT COUNT(*)
                     FROM books b
-                    WHERE b.active = true
+                    WHERE b.active = TRUE
                       AND NOT EXISTS (
                           SELECT 1
                           FROM bookstore_excluded_publishers bep
@@ -306,10 +306,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     """,
             nativeQuery = true
     )
-    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceAsc(
-            @Param("bookstoreId") Long bookstoreId,
-            Pageable pageable
-    );
+    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceAsc(@Param("bookstoreId") Long bookstoreId, Pageable pageable);
 
     @Query("""
             SELECT b
@@ -360,28 +357,28 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             value = """
                     SELECT b.*
                     FROM books b
-                    LEFT JOIN editorial_prices ep ON ep.book_id = b.id
-                      AND ep.active = true
-                      AND ep.valid_from = (
-                          SELECT MAX(ep2.valid_from)
-                          FROM editorial_prices ep2
-                          WHERE ep2.book_id = b.id
-                            AND ep2.active = true
-                            AND ep2.valid_from <= CURRENT_DATE
-                      )
-                    WHERE b.active = true
+                    LEFT JOIN (
+                        SELECT DISTINCT ON (eep.book_id)
+                               eep.book_id,
+                               eep.price
+                        FROM effective_editorial_prices eep
+                        WHERE eep.active = TRUE
+                          AND eep.valid_from <= CURRENT_DATE
+                        ORDER BY eep.book_id, eep.valid_from DESC, eep.id DESC
+                    ) current_price ON current_price.book_id = b.id
+                    WHERE b.active = TRUE
                       AND NOT EXISTS (
                           SELECT 1
                           FROM bookstore_excluded_publishers bep
                           WHERE bep.bookstore_id = :bookstoreId
                             AND bep.publisher_id = b.publisher_id
                       )
-                    ORDER BY ep.price DESC NULLS LAST
+                    ORDER BY current_price.price DESC NULLS LAST, b.title_sort ASC, b.id ASC
                     """,
             countQuery = """
                     SELECT COUNT(*)
                     FROM books b
-                    WHERE b.active = true
+                    WHERE b.active = TRUE
                       AND NOT EXISTS (
                           SELECT 1
                           FROM bookstore_excluded_publishers bep
@@ -391,10 +388,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                     """,
             nativeQuery = true
     )
-    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceDesc(
-            @Param("bookstoreId") Long bookstoreId,
-            Pageable pageable
-    );
+    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceDesc(@Param("bookstoreId") Long bookstoreId, Pageable pageable);
 
     @Query("""
             SELECT b
@@ -514,5 +508,56 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             """)
     List<BookAuthorNameProjection> findAuthorNamesByBookIds(
             @Param("bookIds") Collection<Long> bookIds
+    );
+
+    @Query(
+            value = """
+                    SELECT id
+                    FROM books
+                    WHERE id IN (:bookIds)
+                    ORDER BY id
+                    FOR UPDATE
+                    """,
+            nativeQuery = true
+    )
+    List<Long> lockByIds(
+            @Param("bookIds") Collection<Long> bookIds
+    );
+
+    @EntityGraph(attributePaths = "publisher")
+    @Query("""
+        SELECT book
+        FROM Book book
+        WHERE book.isbn13 IN :isbn13Values
+          AND book.active = true
+        """)
+    List<Book> findForPriceImportByIsbn13In(
+            @Param("isbn13Values")
+            Collection<String> isbn13Values
+    );
+
+    @EntityGraph(attributePaths = "publisher")
+    @Query("""
+        SELECT book
+        FROM Book book
+        WHERE book.isbn10 IN :isbn10Values
+          AND book.active = true
+        """)
+    List<Book> findForPriceImportByIsbn10In(
+            @Param("isbn10Values")
+            Collection<String> isbn10Values
+    );
+
+    @Query(
+            value = """
+                SELECT DISTINCT ba.book_id
+                FROM book_authors ba
+                WHERE ba.book_id IN (:bookIds)
+                """,
+            nativeQuery = true
+    )
+    List<Long> findBookIdsWithAuthors(
+            @Param("bookIds")
+            Collection<Long> bookIds
     );
 }

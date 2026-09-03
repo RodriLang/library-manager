@@ -67,6 +67,9 @@ public class PriceListImportJob {
     @Column(name = "valid_from", nullable = false)
     private LocalDate validFrom;
 
+    @Column(name = "original_file_name", length = 500)
+    private String originalFileName;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PriceListImportJobStatus status;
@@ -124,6 +127,18 @@ public class PriceListImportJob {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Column(name = "staging_duration_ms")
+    private Long stagingDurationMs;
+
+    @Column(name = "books_duration_ms")
+    private Long booksDurationMs;
+
+    @Column(name = "prices_duration_ms")
+    private Long pricesDurationMs;
+
+    @Column(name = "total_duration_ms")
+    private Long totalDurationMs;
 
     @PrePersist
     private void prePersist() {

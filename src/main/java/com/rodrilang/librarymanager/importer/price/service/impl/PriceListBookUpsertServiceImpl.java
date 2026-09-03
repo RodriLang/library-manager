@@ -14,6 +14,7 @@ import com.rodrilang.librarymanager.importer.price.resolver.PublisherResolver;
 import com.rodrilang.librarymanager.importer.price.service.PriceListBookUpsertService;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
+import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
@@ -21,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.Set;
 
 import static com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils.formatNullable;
 import static com.rodrilang.librarymanager.importer.price.util.PriceListNormalizationUtils.hasText;
@@ -172,10 +174,18 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
             book.setPublisher(publisherResolver.resolve(row, context));
         }
 
-        if ((book.getAuthors() == null || book.getAuthors().isEmpty()) && hasText(row.authorName())) {
-            book.setAuthors(authorResolver.resolve(row, context));
-        }
+        if (!hasAuthors(book, context) && hasText(row.authorName())) {
 
+            Set<Author> authors = authorResolver.resolve(row, context);
+
+            if (!authors.isEmpty()) {
+                book.setAuthors(authors);
+
+                if (book.getId() != null) {
+                    context.bookIdsWithAuthors().add(book.getId());
+                }
+            }
+        }
         updateMetadata(book, row.metadata());
 
     }
@@ -299,5 +309,13 @@ public class PriceListBookUpsertServiceImpl implements PriceListBookUpsertServic
                 && metadata.publicationMonth() != null) {
             book.setPublicationMonth(metadata.publicationMonth());
         }
+    }
+
+    private boolean hasAuthors(Book book, ImportContext context) {
+        if (book.getId() != null) {
+            return context.bookIdsWithAuthors().contains(book.getId());
+        }
+
+        return book.getAuthors() != null && !book.getAuthors().isEmpty();
     }
 }

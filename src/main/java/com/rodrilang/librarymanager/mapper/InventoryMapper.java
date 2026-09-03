@@ -5,8 +5,8 @@ import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
+import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.model.Author;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Inventory;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
@@ -37,13 +37,13 @@ public abstract class InventoryMapper {
     )
     public abstract InventoryDetailResponse toDetailResponse(
             Inventory inventory,
-            EditorialPrice editorialPrice,
+            EffectiveEditorialPrice editorialPrice,
             List<BookProviderResponse> providers
     );
 
     protected BookDetailResponse toBookDetailResponse(
             Inventory inventory,
-            EditorialPrice editorialPrice,
+            EffectiveEditorialPrice editorialPrice,
             List<BookProviderResponse> providers
     ) {
         if (inventory == null || inventory.getBook() == null) {
@@ -67,7 +67,7 @@ public abstract class InventoryMapper {
     @Mapping(target = "editorialPrice", source = "editorialPrice.price")
     @Mapping(target = "editorialPriceValidFrom", source = "editorialPrice.validFrom")
     @Mapping(target = "authorNames", expression = "java(toAuthorNames(inventory))")
-    public abstract InventorySummaryResponse toSummaryResponse(Inventory inventory, EditorialPrice editorialPrice);
+    public abstract InventorySummaryResponse toSummaryResponse(Inventory inventory, EffectiveEditorialPrice editorialPrice);
 
     protected List<String> toAuthorNames(Inventory inventory) {
         if (inventory == null || inventory.getBook() == null || inventory.getBook().getAuthors() == null) {

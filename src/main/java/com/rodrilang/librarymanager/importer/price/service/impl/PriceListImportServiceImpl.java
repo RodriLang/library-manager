@@ -5,21 +5,17 @@ import com.rodrilang.librarymanager.importer.price.configuration.model.PriceList
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListImportConfigRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
-import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobErrorResponse;
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobStatusResponse;
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportStartResponse;
 import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatus;
-import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobErrorRepository;
 import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.importer.price.service.PriceListAsyncProcessor;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
 import com.rodrilang.librarymanager.importer.price.storage.PriceListImportFileStorage;
 import com.rodrilang.librarymanager.importer.price.validator.PriceListImportDateValidator;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -29,16 +25,12 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class PriceListImportServiceImpl implements PriceListImportService {
 
-    private static final int MAX_STATUS_ERRORS = 100;
-
     private final PriceListImportJobRepository jobRepository;
-    private final PriceListImportJobErrorRepository errorRepository;
     private final PriceListAsyncProcessor asyncProcessor;
     private final PriceListProviderRepository providerRepository;
     private final PriceListImportConfigRepository configRepository;
@@ -52,10 +44,9 @@ public class PriceListImportServiceImpl implements PriceListImportService {
             LocalDate validFrom,
             String idempotencyKey
     ) {
-        PriceListImportDateValidator.validateValidFrom(validFrom);
+        LocalDate normalizedValidFrom = PriceListImportDateValidator.normalizeAndValidateValidFrom(validFrom);
 
-        PriceListImportJob existingJob =
-                jobRepository.findByIdempotencyKey(idempotencyKey)
+        PriceListImportJob existingJob = jobRepository.findByIdempotencyKey(idempotencyKey)
                         .orElse(null);
 
         if (existingJob != null) {
@@ -69,20 +60,16 @@ public class PriceListImportServiceImpl implements PriceListImportService {
             throw new BusinessException("El proveedor seleccionado está inactivo.");
         }
 
-        PriceListImportConfig importConfig =
-                configRepository
-                        .findFirstByProviderIdAndActiveTrue(providerId)
-                        .orElseThrow(() ->
-                                new BusinessException(
-                                        "El proveedor seleccionado no tiene una configuración de importación activa."
-                                )
+        PriceListImportConfig importConfig = configRepository.findFirstByProviderIdAndActiveTrue(providerId)
+                        .orElseThrow(() -> new BusinessException(
+                                "El proveedor seleccionado no tiene una configuración de importación activa.")
                         );
 
         return createAndStartJob(
                 provider,
                 importConfig,
                 file,
-                validFrom,
+                normalizedValidFrom,
                 idempotencyKey
         );
     }
@@ -92,11 +79,6 @@ public class PriceListImportServiceImpl implements PriceListImportService {
     public PriceListImportJobStatusResponse getStatus(Long jobId) {
         PriceListImportJob job = jobRepository.findById(jobId)
                 .orElseThrow(() -> new BusinessException("No se encontró la importación solicitada."));
-
-        List<PriceListImportJobErrorResponse> errors =
-                shouldIncludeErrors(job.getStatus())
-                        ? loadErrors(jobId)
-                        : List.of();
 
         return new PriceListImportJobStatusResponse(
                 job.getId(),
@@ -114,8 +96,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                 job.getSkippedRows(),
                 calculateProgress(job),
                 job.getErrorCount(),
-                job.getErrorMessage(),
-                errors
+                job.getErrorMessage()
         );
     }
 
@@ -148,38 +129,12 @@ public class PriceListImportServiceImpl implements PriceListImportService {
 
             case STAGING -> 5;
 
-            case BOOKS ->  calculateBooksProgress(job);
+            case BOOKS -> calculateBooksProgress(job);
 
             case PRICES -> calculatePricesProgress(job);
 
             case COMPLETED -> 100;
         };
-    }
-
-    private boolean shouldIncludeErrors(
-            PriceListImportJobStatus status
-    ) {
-        return status == PriceListImportJobStatus.COMPLETED || status == PriceListImportJobStatus.FAILED;
-    }
-
-    private List<PriceListImportJobErrorResponse> loadErrors(Long jobId) {
-        Pageable firstPage = PageRequest.of(0, MAX_STATUS_ERRORS);
-
-        return errorRepository
-                .findByJobIdOrderByRowNumberAsc(
-                        jobId,
-                        firstPage
-                )
-                .stream()
-                .map(error ->
-                        new PriceListImportJobErrorResponse(
-                                error.getRowNumber(),
-                                error.getIsbn(),
-                                error.getMessage(),
-                                error.getSeverity()
-                        )
-                )
-                .toList();
     }
 
     private PriceListImportStartResponse createAndStartJob(
@@ -198,6 +153,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
                             .provider(provider)
                             .importConfig(importConfig)
                             .validFrom(validFrom)
+                            .originalFileName(file.getOriginalFilename())
 
                             .status(PriceListImportJobStatus.PENDING)
                             .phase(PriceListImportPhase.STAGING)

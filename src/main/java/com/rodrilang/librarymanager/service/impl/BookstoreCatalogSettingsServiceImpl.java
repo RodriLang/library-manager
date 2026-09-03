@@ -4,6 +4,8 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PublisherConfigurationDetailResponse;
 import com.rodrilang.librarymanager.dto.response.PublisherConfigurationResponse;
+import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
+import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.PublisherCatalogSort;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
@@ -11,7 +13,6 @@ import com.rodrilang.librarymanager.mapper.BookMapper;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.BookstoreExcludedPublisher;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.BookstoreExcludedPublisherRepository;
@@ -20,7 +21,6 @@ import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.repository.projection.PublisherCatalogConfigurationProjection;
 import com.rodrilang.librarymanager.repository.projection.PublisherConfigurationDetailProjection;
 import com.rodrilang.librarymanager.service.BookstoreCatalogSettingsService;
-import com.rodrilang.librarymanager.service.EditorialPriceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -40,7 +40,7 @@ public class BookstoreCatalogSettingsServiceImpl implements BookstoreCatalogSett
     private final BookstoreExcludedPublisherRepository excludedPublisherRepository;
     private final BookRepository bookRepository;
     private final BookMapper bookMapper;
-    private final EditorialPriceService editorialPriceService;
+    private final EffectiveEditorialPriceService effectiveEditorialPriceService;
 
     @Override
     @Transactional(readOnly = true)
@@ -148,18 +148,10 @@ public class BookstoreCatalogSettingsServiceImpl implements BookstoreCatalogSett
     }
 
     private Page<BookSummaryResponse> toBookSummaryResponsePage(Page<Book> books) {
-        List<Long> bookIds = books.getContent()
-                .stream()
-                .map(Book::getId)
-                .toList();
+        List<Long> bookIds = books.getContent().stream().map(Book::getId).toList();
 
-        Map<Long, EditorialPrice> pricesByBookId = editorialPriceService.findCurrentByBookIds(bookIds);
+        Map<Long, EffectiveEditorialPrice> pricesByBookId = effectiveEditorialPriceService.findCurrentByBookIds(bookIds);
 
-        return books.map(book ->
-                bookMapper.toSummaryResponse(
-                        book,
-                        pricesByBookId.get(book.getId())
-                )
-        );
+        return books.map(book -> bookMapper.toSummaryResponse(book, pricesByBookId.get(book.getId())));
     }
 }

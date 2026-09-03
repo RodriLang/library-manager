@@ -49,6 +49,16 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
     @Override
     public void process(Long jobId, Path filePath) {
+
+        long processStartedAt = System.nanoTime();
+
+        Long stagingDurationMs = null;
+        Long booksDurationMs = null;
+        Long pricesDurationMs = null;
+
+        ImportStatistics finalStatistics = null;
+        boolean completed = false;
+
         try {
             progressService.markProcessing(jobId);
 
@@ -58,6 +68,8 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
 
             StreamingConfigurablePriceListParser parser = parserResolver.resolveStreaming(job);
 
+            long stagingStartedAt = System.nanoTime();
+
             PriceListStagingStatistics staging =
                     stagingService.stage(
                             jobId,
@@ -65,6 +77,12 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                             job.getImportConfig(),
                             parser
                     );
+
+            stagingDurationMs = elapsedMillis(stagingStartedAt);
+
+            recordPhaseDurationSafely(jobId, PriceListImportPhase.STAGING, stagingDurationMs);
+
+            log.info("Price list import phase completed. jobId={} phase=STAGING duration={}ms", jobId, stagingDurationMs);
 
             PriceListImportSafetySummary safetySummary =
                     new PriceListImportSafetySummary(
@@ -100,79 +118,64 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                     staging.rowsWithAbsurdPrice()
             );
 
-            long classifiedRows =
-                    staging.validRows()
-                            + staging.invalidRows()
-                            + staging.duplicateRows();
+            long classifiedRows = staging.validRows() + staging.invalidRows() + staging.duplicateRows();
 
             log.info(
-                    "Staging balance. "
-                            + "processableRows={} classifiedRows={}",
-                    staging.processableRows(),
-                    classifiedRows
+                    "Staging balance. processableRows={} classifiedRows={}",
+                    staging.processableRows(), classifiedRows
             );
 
             safetyValidator.validate(safetySummary);
 
             progressService.updateTotalRows(
                     jobId,
-                    Math.toIntExact(
-                            staging.validRows()
-                    ),
-                    Math.toIntExact(
-                            staging.invalidRows()
-                    )
+                    Math.toIntExact(staging.validRows()),
+                    Math.toIntExact(staging.invalidRows())
             );
 
-            progressService.updatePhase(
-                    jobId,
-                    PriceListImportPhase.BOOKS
-            );
+            progressService.updatePhase(jobId, PriceListImportPhase.BOOKS);
 
-            BookProcessingStatistics bookStatistics =
-                    processBookBatches(
-                            jobId,
-                            staging.validRows(),
-                            staging.invalidRows()
-                    );
+            long booksStartedAt = System.nanoTime();
+
+            BookProcessingStatistics bookStatistics = processBookBatches(jobId, staging.validRows(), staging.invalidRows());
+
+            booksDurationMs = elapsedMillis(booksStartedAt);
+
+            recordPhaseDurationSafely(jobId, PriceListImportPhase.BOOKS, booksDurationMs);
 
             log.info(
-                    "Book phase completed. "
-                            + "jobId={} processedRows={} "
-                            + "createdBooks={}",
-                    jobId,
-                    bookStatistics.processedRows(),
-                    bookStatistics.createdBooks()
+                    "Price list import phase completed. jobId={} phase=BOOKS duration={}ms processedRows={} createdBooks={}",
+                    jobId, booksDurationMs, bookStatistics.processedRows(), bookStatistics.createdBooks()
             );
 
-            progressService.updatePhase(
-                    jobId,
-                    PriceListImportPhase.PRICES
-            );
+            progressService.updatePhase(jobId, PriceListImportPhase.PRICES);
 
             progressService.initializePriceProgress(jobId);
 
+            long pricesStartedAt = System.nanoTime();
+
             PriceImportCounters priceCounters = resolvedPriceProcessor.process(jobId);
 
+            pricesDurationMs = elapsedMillis(pricesStartedAt);
+
+            recordPhaseDurationSafely(jobId, PriceListImportPhase.PRICES, pricesDurationMs);
+
             log.info(
-                    "Resolved price phase completed. "
-                            + "jobId={} createdPrices={} "
-                            + "updatedPrices={} "
-                            + "unchangedPrices={} "
-                            + "skippedRows={}",
+                    "Price list import phase completed. "
+                            + "jobId={} phase=PRICES duration={}ms "
+                            + "createdPrices={} updatedPrices={} "
+                            + "unchangedPrices={} skippedRows={}",
                     jobId,
+                    pricesDurationMs,
                     priceCounters.createdPrices(),
                     priceCounters.updatedPrices(),
                     priceCounters.unchangedPrices(),
                     priceCounters.skippedRows()
             );
 
-            int duplicateBookRows =
-                    bookStatistics.processedRows()
-                            - bookStatistics.processedBooks();
+            int duplicateBookRows = bookStatistics.processedRows() - bookStatistics.processedBooks();
 
-            ImportStatistics finalStatistics =
-                    new ImportStatistics(
+            finalStatistics = new ImportStatistics(
                             bookStatistics.processedRows(),
                             bookStatistics.processedBooks(),
                             duplicateBookRows,
@@ -184,68 +187,102 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                             Math.toIntExact(staging.invalidRows())
                     );
 
-            validateFinalStatistics(
-                    jobId,
-                    finalStatistics
-            );
+            validateFinalStatistics(jobId, finalStatistics);
 
-            progressService.updateProgress(
-                    jobId,
-                    finalStatistics
-            );
+            progressService.updateProgress(jobId, finalStatistics);
 
-            progressService.markCompleted(
-                    jobId,
-                    finalStatistics
-            );
+            progressService.markCompleted(jobId, finalStatistics);
 
-            log.info(
-                    "Price list import completed. "
-                            + "jobId={} "
-                            + "processedRows={} "
-                            + "processedBooks={} "
-                            + "createdBooks={} "
-                            + "createdPrices={} "
-                            + "updatedPrices={} "
-                            + "unchangedPrices={} "
-                            + "skippedPrices={} "
-                            + "invalidRows={}",
-                    jobId,
-                    finalStatistics.processedRows(),
-                    finalStatistics.processedBooks(),
-                    finalStatistics.createdBooks(),
-                    finalStatistics.createdPrices(),
-                    finalStatistics.updatedPrices(),
-                    finalStatistics.unchangedPrices(),
-                    finalStatistics.skippedPrices(),
-                    finalStatistics.errors()
-            );
+            completed = true;
 
         } catch (PriceListImportCancelledException exception) {
 
             progressService.markCancelled(jobId);
 
-            log.info(
-                    "Price list import cancelled. jobId={}",
-                    jobId
-            );
+            log.info("Price list import cancelled. jobId={}", jobId);
 
         } catch (Exception exception) {
-            log.error(
-                    "Price list import failed. jobId={}",
-                    jobId,
-                    exception
-            );
+            log.error("Price list import failed. jobId={}", jobId, exception);
 
-            progressService.markFailed(
-                    jobId,
-                    safeMessage(exception)
-            );
+            progressService.markFailed(jobId, safeMessage(exception));
 
         } finally {
+            long totalDurationMs = elapsedMillis(processStartedAt);
+
+            try {
+                progressService.recordTotalDuration(
+                        jobId,
+                        totalDurationMs
+                );
+            } catch (Exception exception) {
+                log.warn(
+                        "Could not persist price list import total duration. "
+                                + "jobId={} duration={}ms",
+                        jobId,
+                        totalDurationMs,
+                        exception
+                );
+            }
+
+            if (completed && finalStatistics != null) {
+                log.info(
+                        "Price list import completed. "
+                                + "jobId={} "
+                                + "processedRows={} "
+                                + "processedBooks={} "
+                                + "createdBooks={} "
+                                + "createdPrices={} "
+                                + "updatedPrices={} "
+                                + "unchangedPrices={} "
+                                + "skippedPrices={} "
+                                + "invalidRows={} "
+                                + "staging={}ms "
+                                + "books={}ms "
+                                + "prices={}ms "
+                                + "total={}ms "
+                                + "overhead={}ms",
+                        jobId,
+                        finalStatistics.processedRows(),
+                        finalStatistics.processedBooks(),
+                        finalStatistics.createdBooks(),
+                        finalStatistics.createdPrices(),
+                        finalStatistics.updatedPrices(),
+                        finalStatistics.unchangedPrices(),
+                        finalStatistics.skippedPrices(),
+                        finalStatistics.errors(),
+                        stagingDurationMs,
+                        booksDurationMs,
+                        pricesDurationMs,
+                        totalDurationMs,
+                        calculateOverhead(
+                                totalDurationMs,
+                                stagingDurationMs,
+                                booksDurationMs,
+                                pricesDurationMs
+                        )
+                );
+            } else {
+                log.info(
+                        "Price list import timing summary. "
+                                + "jobId={} completed=false "
+                                + "staging={}ms books={}ms prices={}ms "
+                                + "total={}ms overhead={}ms",
+                        jobId,
+                        stagingDurationMs,
+                        booksDurationMs,
+                        pricesDurationMs,
+                        totalDurationMs,
+                        calculateOverhead(
+                                totalDurationMs,
+                                stagingDurationMs,
+                                booksDurationMs,
+                                pricesDurationMs
+                        )
+                );
+            }
 
             priceStagingRepository.deleteByJobId(jobId);
-
+            stagingRepository.deleteByJobId(jobId);
             fileStorage.deleteQuietly(filePath);
         }
     }
@@ -278,26 +315,17 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                 break;
             }
 
-            PriceListBatchResult result =
-                    batchService.processBatch(
-                            batch,
-                            jobId
-                    );
+            PriceListBatchResult result = batchService.processBatch(batch, jobId);
 
-            processedRows +=
-                    result.processedRows();
+            processedRows += result.processedRows();
 
-            processedBooks +=
-                    result.stagedBooks();
+            processedBooks += result.stagedBooks();
 
-            createdBooks +=
-                    result.createdBooks();
+            createdBooks += result.createdBooks();
 
-            int duplicateBookRows =
-                    processedRows - processedBooks;
+            int duplicateBookRows = processedRows - processedBooks;
 
-            afterId =
-                    batch.getLast().id();
+            afterId = batch.getLast().id();
 
             ImportStatistics currentStatistics =
                     new ImportStatistics(
@@ -314,22 +342,11 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                             )
                     );
 
-            progressService.updateProgress(
-                    jobId,
-                    currentStatistics
-            );
+            progressService.updateProgress(jobId, currentStatistics);
 
             log.info(
-                    "Book import batch completed. "
-                            + "jobId={} "
-                            + "processedRows={}/{} "
-                            + "processedBooks={} "
-                            + "createdBooks={}",
-                    jobId,
-                    processedRows,
-                    totalValidRows,
-                    processedBooks,
-                    createdBooks
+                    "Book import batch completed. jobId={} processedRows={}/{} processedBooks={} createdBooks={}",
+                    jobId, processedRows, totalValidRows, processedBooks, createdBooks
             );
         }
 
@@ -348,10 +365,7 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                 : message;
     }
 
-    private void validateFinalStatistics(
-            Long jobId,
-            ImportStatistics statistics
-    ) {
+    private void validateFinalStatistics(Long jobId, ImportStatistics statistics) {
         int accountedBooks =
                 statistics.createdPrices()
                         + statistics.updatedPrices()
@@ -372,6 +386,43 @@ public class PriceListImportProcessorImpl implements PriceListImportProcessor {
                     statistics.updatedPrices(),
                     statistics.unchangedPrices(),
                     statistics.skippedPrices()
+            );
+        }
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
+    private long calculateOverhead(
+            long totalDurationMs,
+            Long stagingDurationMs,
+            Long booksDurationMs,
+            Long pricesDurationMs
+    ) {
+        long measuredPhases =
+                valueOrZero(stagingDurationMs)
+                        + valueOrZero(booksDurationMs)
+                        + valueOrZero(pricesDurationMs);
+
+        return Math.max(0L, totalDurationMs - measuredPhases);
+    }
+
+    private long valueOrZero(Long value) {
+        return value == null ? 0L : value;
+    }
+
+    private void recordPhaseDurationSafely(Long jobId, PriceListImportPhase phase, long durationMs) {
+        try {
+            progressService.recordPhaseDuration(jobId, phase, durationMs);
+        } catch (Exception exception) {
+            log.warn(
+                    "Could not persist price list import phase duration. "
+                            + "jobId={} phase={} duration={}ms",
+                    jobId,
+                    phase,
+                    durationMs,
+                    exception
             );
         }
     }

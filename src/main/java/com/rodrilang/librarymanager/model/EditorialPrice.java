@@ -1,8 +1,12 @@
 package com.rodrilang.librarymanager.model;
 
+import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceOrigin;
+import com.rodrilang.librarymanager.editorialprice.enums.ExternalPriceSourceType;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
@@ -11,7 +15,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -19,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 @Getter
@@ -27,13 +31,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(
-        name = "editorial_prices",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_editorial_prices_book_source_valid_from",
-                columnNames = {"book_id", "source", "valid_from"}
-        )
-)
+@Table(name = "editorial_prices")
 public class EditorialPrice extends AuditableEntity {
 
     @Id
@@ -57,9 +55,40 @@ public class EditorialPrice extends AuditableEntity {
     )
     private PriceListProvider provider;
 
+    @Column(name = "valid_from", nullable = false)
     private LocalDate validFrom;
+
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false, length = 30)
+    private EditorialPriceOrigin origin = EditorialPriceOrigin.PRICE_LIST;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "external_source_type", length = 30)
+    private ExternalPriceSourceType externalSourceType;
+
+    @Column(name = "source_name")
+    private String sourceName;
+
+    @Column(name = "source_url", length = 1000)
+    private String sourceUrl;
+
+    @Column(name = "source_note", columnDefinition = "text")
+    private String sourceNote;
+
+    @Column(name = "created_by_username")
+    private String createdByUsername;
 
     @Builder.Default
     @Column(nullable = false)
-    private Boolean active = true;
+    private boolean active = true;
+
+    @Column(name = "deactivated_at")
+    private Instant deactivatedAt;
+
+    @Column(name = "deactivated_by_username")
+    private String deactivatedByUsername;
+
+    @Column(name = "deactivation_note", columnDefinition = "text")
+    private String deactivationNote;
 }

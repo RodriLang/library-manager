@@ -18,95 +18,61 @@ public class InventoryEditorialPriceSyncRepository {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
-    public InventoryEditorialPriceSyncResult syncCurrentPrices(
-            Collection<Long> bookIds,
-            LocalDate currentDate
-    ) {
+    public InventoryEditorialPriceSyncResult syncCurrentPrices(Collection<Long> bookIds, LocalDate currentDate) {
         if (bookIds == null || bookIds.isEmpty()) {
-            return new InventoryEditorialPriceSyncResult(
-                    0,
-                    List.of()
-            );
+            return new InventoryEditorialPriceSyncResult(0, List.of());
         }
 
         String sql = """
                 UPDATE inventory i
-                SET sale_price = current_price.price
+                SET sale_price = current_price.price,
+                    updated_at = clock_timestamp()
                 FROM (
-                    SELECT DISTINCT ON (ep.book_id)
-                        ep.book_id,
-                        ep.price
-                    FROM editorial_prices ep
-                    WHERE ep.book_id IN (:bookIds)
-                      AND ep.active = TRUE
-                      AND ep.valid_from <= :currentDate
-                    ORDER BY
-                        ep.book_id,
-                        ep.valid_from DESC,
-                        ep.id DESC
+                    SELECT DISTINCT ON (eep.book_id)
+                           eep.book_id,
+                           eep.price
+                    FROM effective_editorial_prices eep
+                    WHERE eep.book_id IN (:bookIds)
+                      AND eep.active = TRUE
+                      AND eep.valid_from <= :currentDate
+                    ORDER BY eep.book_id, eep.valid_from DESC, eep.id DESC
                 ) current_price
                 WHERE i.book_id = current_price.book_id
                   AND i.editorial_price_sync_enabled = TRUE
                   AND i.active = TRUE
                   AND i.sale_price IS DISTINCT FROM current_price.price
-                RETURNING
-                    i.id,
-                    i.tiendanube_price_sync_enabled,
-                    i.tiendanube_status
+                RETURNING i.id, i.tiendanube_price_sync_enabled, i.tiendanube_status
                 """;
 
         long startedAt = System.nanoTime();
 
-        List<SyncedInventoryRow> updated =
-                jdbcTemplate.query(
-                        sql,
-                        new MapSqlParameterSource()
-                                .addValue("bookIds", bookIds)
-                                .addValue("currentDate", currentDate),
-                        (rs, rowNum) ->
-                                new SyncedInventoryRow(
-                                        rs.getLong("id"),
-                                        rs.getBoolean(
-                                                "tiendanube_price_sync_enabled"
-                                        ),
-                                        rs.getString(
-                                                "tiendanube_status"
-                                        )
-                                )
-                );
+        List<SyncedInventoryRow> updated = jdbcTemplate.query(
+                sql,
+                new MapSqlParameterSource().addValue("bookIds", bookIds).addValue("currentDate", currentDate),
+                (rs, rowNum) -> new SyncedInventoryRow(
+                        rs.getLong("id"),
+                        rs.getBoolean("tiendanube_price_sync_enabled"),
+                        rs.getString("tiendanube_status")
+                )
+        );
 
-        List<Long> tiendanubeSyncInventoryIds =
-                updated.stream()
-                        .filter(SyncedInventoryRow::tiendanubePriceSyncEnabled)
-                        .filter(row ->
-                                "LINKED".equals(
-                                        row.tiendanubeStatus()
-                                )
-                        )
-                        .map(SyncedInventoryRow::inventoryId)
-                        .toList();
+        List<Long> tiendanubeSyncInventoryIds = updated.stream()
+                .filter(SyncedInventoryRow::tiendanubePriceSyncEnabled)
+                .filter(row -> "LINKED".equals(row.tiendanubeStatus()))
+                .map(SyncedInventoryRow::inventoryId)
+                .toList();
 
         log.info(
-                "Inventory editorial price sync completed. "
-                        + "books={} updatedInventories={} "
-                        + "tiendanubeSync={} time={}ms",
+                "Inventory editorial price sync completed. books={} updatedInventories={} tiendanubeSync={} time={}ms",
                 bookIds.size(),
                 updated.size(),
                 tiendanubeSyncInventoryIds.size(),
-                (System.nanoTime() - startedAt)
-                        / 1_000_000
+                (System.nanoTime() - startedAt) / 1_000_000
         );
 
-        return new InventoryEditorialPriceSyncResult(
-                updated.size(),
-                tiendanubeSyncInventoryIds
-        );
+        return new InventoryEditorialPriceSyncResult(updated.size(), tiendanubeSyncInventoryIds);
     }
 
-    private record SyncedInventoryRow(
-            Long inventoryId,
-            boolean tiendanubePriceSyncEnabled,
-            String tiendanubeStatus
-    ) {
+    private record SyncedInventoryRow(Long inventoryId, boolean tiendanubePriceSyncEnabled, String tiendanubeStatus) {
     }
 }
