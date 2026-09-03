@@ -10,6 +10,7 @@ import com.rodrilang.librarymanager.model.Publisher;
 import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 import static com.rodrilang.librarymanager.util.TextNormalizer.normalizeForMatch;
 import static org.springframework.util.StringUtils.hasText;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class PublisherResolver {
@@ -33,6 +35,10 @@ public class PublisherResolver {
             Long providerId,
             List<PriceListRow> rows
     ) {
+        long startedAt = System.nanoTime();
+
+        long stepStartedAt = System.nanoTime();
+
         Map<String, String> originalNamesByNormalizedName =
                 rows.stream()
                         .map(PriceListRow::publisherName)
@@ -46,12 +52,41 @@ public class PublisherResolver {
                                 )
                         );
 
+        long namesPreparationMs =
+                elapsedMillis(stepStartedAt);
+
         if (originalNamesByNormalizedName.isEmpty()) {
+            long totalMs = elapsedMillis(startedAt);
+
+            log.info(
+                    "Publisher resolver timing. "
+                            + "providerId={} "
+                            + "names=0 "
+                            + "mappings=0 "
+                            + "mappedPublishers=0 "
+                            + "withoutMapping=0 "
+                            + "newPublishers=0 "
+                            + "namesPreparation={}ms "
+                            + "mappingLookup=0ms "
+                            + "mappingResolution=0ms "
+                            + "publisherLookup=0ms "
+                            + "newPublishersPreparation=0ms "
+                            + "newPublishersPersistence=0ms "
+                            + "other={}ms "
+                            + "total={}ms",
+                    providerId,
+                    namesPreparationMs,
+                    Math.max(0L, totalMs - namesPreparationMs),
+                    totalMs
+            );
+
             return new HashMap<>();
         }
 
         Set<String> normalizedNames =
                 originalNamesByNormalizedName.keySet();
+
+        stepStartedAt = System.nanoTime();
 
         Map<String, ProviderPublisherMapping> mappingsByExternalName =
                 mappingRepository
@@ -67,8 +102,11 @@ public class PublisherResolver {
                                 )
                         );
 
-        Map<String, Publisher> publishersByName =
-                new HashMap<>();
+        long mappingLookupMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
+        Map<String, Publisher> publishersByName = new HashMap<>();
 
         Set<String> normalizedNamesWithoutMapping =
                 normalizedNames.stream()
@@ -77,22 +115,33 @@ public class PublisherResolver {
                         )
                         .collect(Collectors.toSet());
 
-        mappingsByExternalName.forEach(
-                (externalNameNormalized, mapping) -> {
+        int mappedPublishers = 0;
 
-                    if (mapping.getResolutionType() == ProviderPublisherMappingType.MAP) {
+        for (Map.Entry<String, ProviderPublisherMapping> entry
+                : mappingsByExternalName.entrySet()) {
 
-                        if (mapping.getPublisher() == null) {
-                            throw new IllegalStateException(
-                                    "Provider publisher mapping %d is MAP but has no publisher"
-                                            .formatted(mapping.getId())
-                            );
-                        }
+            ProviderPublisherMapping mapping = entry.getValue();
 
-                        publishersByName.put(externalNameNormalized, mapping.getPublisher());
-                    }
-                }
-        );
+            if (mapping.getResolutionType() != ProviderPublisherMappingType.MAP) {
+                continue;
+            }
+
+            if (mapping.getPublisher() == null) {
+                throw new IllegalStateException(
+                        "Provider publisher mapping %d is MAP but has no publisher"
+                                .formatted(mapping.getId())
+                );
+            }
+
+            publishersByName.put(entry.getKey(), mapping.getPublisher());
+
+            mappedPublishers++;
+        }
+
+        long mappingResolutionMs =
+                elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
 
         if (!normalizedNamesWithoutMapping.isEmpty()) {
             publisherRepository
@@ -104,6 +153,10 @@ public class PublisherResolver {
                             )
                     );
         }
+
+        long publisherLookupMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
 
         List<Publisher> newPublishers =
                 normalizedNamesWithoutMapping.stream()
@@ -120,6 +173,10 @@ public class PublisherResolver {
                         )
                         .toList();
 
+        long newPublishersPreparationMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
         if (!newPublishers.isEmpty()) {
             publisherRepository
                     .saveAll(newPublishers)
@@ -130,6 +187,53 @@ public class PublisherResolver {
                             )
                     );
         }
+
+        long newPublishersPersistenceMs = elapsedMillis(stepStartedAt);
+
+        long totalMs = elapsedMillis(startedAt);
+
+        long measuredMs =
+                namesPreparationMs
+                        + mappingLookupMs
+                        + mappingResolutionMs
+                        + publisherLookupMs
+                        + newPublishersPreparationMs
+                        + newPublishersPersistenceMs;
+
+        log.info(
+                "Publisher resolver timing. "
+                        + "providerId={} "
+                        + "names={} "
+                        + "mappings={} "
+                        + "mappedPublishers={} "
+                        + "withoutMapping={} "
+                        + "newPublishers={} "
+                        + "namesPreparation={}ms "
+                        + "mappingLookup={}ms "
+                        + "mappingResolution={}ms "
+                        + "publisherLookup={}ms "
+                        + "newPublishersPreparation={}ms "
+                        + "newPublishersPersistence={}ms "
+                        + "other={}ms "
+                        + "total={}ms",
+                providerId,
+                normalizedNames.size(),
+                mappingsByExternalName.size(),
+                mappedPublishers,
+                normalizedNamesWithoutMapping.size(),
+                newPublishers.size(),
+                namesPreparationMs,
+                mappingLookupMs,
+                mappingResolutionMs,
+                publisherLookupMs,
+                newPublishersPreparationMs,
+                newPublishersPersistenceMs,
+                Math.max(
+                        0L,
+                        totalMs - measuredMs
+                ),
+                totalMs
+        );
 
         return publishersByName;
     }
@@ -143,5 +247,9 @@ public class PublisherResolver {
         }
 
         return context.publishersByName().get(normalizeForMatch(row.publisherName()));
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 }

@@ -131,6 +131,10 @@ public class ImportContextFactory {
 
         Map<String, Book> booksByExternalCode = loadBooksByExternalCode(provider, externalCodes);
 
+        long externalCodeLookupMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
+
         Set<Long> existingBookIds = new HashSet<>();
 
         booksByIsbn13.values().stream()
@@ -148,7 +152,9 @@ public class ImportContextFactory {
                 .filter(Objects::nonNull)
                 .forEach(existingBookIds::add);
 
-        long authorsPresenceStartedAt = System.nanoTime();
+        long authorsPresencePreparationMs = elapsedMillis(stepStartedAt);
+
+        stepStartedAt = System.nanoTime();
 
         Set<Long> bookIdsWithAuthors =
                 existingBookIds.isEmpty()
@@ -157,9 +163,7 @@ public class ImportContextFactory {
                         bookRepository.findBookIdsWithAuthors(existingBookIds)
                 );
 
-        long authorsPresenceLookupMs = elapsedMillis(authorsPresenceStartedAt);
-
-        long externalCodeLookupMs = elapsedMillis(stepStartedAt);
+        long authorsPresenceLookupMs = elapsedMillis(stepStartedAt);
 
         stepStartedAt = System.nanoTime();
 
@@ -183,6 +187,8 @@ public class ImportContextFactory {
                         + isbn10MappingMs
                         + canonicalizationMs
                         + externalCodeLookupMs
+                        + authorsPresencePreparationMs
+                        + authorsPresenceLookupMs
                         + publishersMs
                         + authorsMs;
 
@@ -203,9 +209,10 @@ public class ImportContextFactory {
                         + "isbn10Mapping={}ms "
                         + "canonicalization={}ms "
                         + "externalCodeLookup={}ms "
+                        + "authorsPresencePreparation={}ms "
+                        + "authorsPresenceLookup={}ms "
                         + "publishers={}ms "
                         + "authors={}ms "
-                        + "authorsPresenceLookup={}ms "
                         + "other={}ms "
                         + "total={}ms",
                 provider.getId(),
@@ -223,9 +230,10 @@ public class ImportContextFactory {
                 isbn10MappingMs,
                 canonicalizationMs,
                 externalCodeLookupMs,
+                authorsPresencePreparationMs,
+                authorsPresenceLookupMs,
                 publishersMs,
                 authorsMs,
-                authorsPresenceLookupMs,
                 Math.max(0L, totalMs - measuredMs),
                 totalMs
         );
