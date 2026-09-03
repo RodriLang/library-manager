@@ -144,6 +144,11 @@ public class PriceListImportHistoryServiceImpl implements PriceListImportHistory
                 job.getStartedAt(),
                 job.getFinishedAt(),
 
+                job.getStagingDurationMs(),
+                job.getBooksDurationMs(),
+                job.getPricesDurationMs(),
+                job.getTotalDurationMs(),
+
                 job.getTotalRows(),
                 job.getProcessedRows(),
                 job.getProcessedBooks(),
@@ -403,6 +408,7 @@ public class PriceListImportHistoryServiceImpl implements PriceListImportHistory
                 job.getOriginalFileName(),
 
                 job.getStatus(),
+                job.getPhase(),
                 job.getValidFrom(),
 
                 job.getCreatedAt(),
@@ -410,7 +416,9 @@ public class PriceListImportHistoryServiceImpl implements PriceListImportHistory
                 job.getFinishedAt(),
 
                 job.getTotalRows(),
+                job.getProcessedRows(),
                 job.getProcessedBooks(),
+                job.getProcessedPrices(),
 
                 job.getCreatedBooks(),
 
@@ -420,6 +428,8 @@ public class PriceListImportHistoryServiceImpl implements PriceListImportHistory
 
                 job.getSkippedRows(),
                 job.getErrorCount(),
+
+                job.getTotalDurationMs(),
 
                 summary.firstPrices(),
                 summary.increasedPrices(),

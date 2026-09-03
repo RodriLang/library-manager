@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.dto.response;
 
+import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatus;
 
 import java.time.Instant;
@@ -17,6 +18,8 @@ public record PriceListImportHistoryItemResponse(
 
         PriceListImportJobStatus status,
 
+        PriceListImportPhase phase,
+
         LocalDate validFrom,
 
         Instant createdAt,
@@ -27,7 +30,11 @@ public record PriceListImportHistoryItemResponse(
 
         int totalRows,
 
+        int processedRows,
+
         int processedBooks,
+
+        int processedPrices,
 
         int createdBooks,
 
@@ -40,6 +47,8 @@ public record PriceListImportHistoryItemResponse(
         int skippedRows,
 
         int errorCount,
+
+        Long totalDurationMs,
 
         int firstPrices,
 

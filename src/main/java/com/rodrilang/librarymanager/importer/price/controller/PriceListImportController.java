@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.importer.price.controller;
 
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobStatusResponse;
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportStartResponse;
+import com.rodrilang.librarymanager.importer.price.service.PriceListImportHistoryService;
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ import java.time.LocalDate;
 public class PriceListImportController {
 
     private final PriceListImportService priceListImportService;
+    private final PriceListImportHistoryService priceListImportHistoryService;
 
     @PostMapping(
             value = "/import",

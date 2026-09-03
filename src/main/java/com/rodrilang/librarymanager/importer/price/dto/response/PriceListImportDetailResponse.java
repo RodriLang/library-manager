@@ -28,6 +28,14 @@ public record PriceListImportDetailResponse(
 
         Instant finishedAt,
 
+        Long stagingDurationMs,
+
+        Long booksDurationMs,
+
+        Long pricesDurationMs,
+
+        Long totalDurationMs,
+
         int totalRows,
 
         int processedRows,
