@@ -3,10 +3,12 @@ package com.rodrilang.librarymanager.cover.service;
 import com.rodrilang.librarymanager.cover.entity.BookCover;
 import com.rodrilang.librarymanager.cover.enums.BookCoverSource;
 import com.rodrilang.librarymanager.cover.repository.BookCoverRepository;
-import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.BookPublicationChangedEvent;
 import com.rodrilang.librarymanager.media.storage.StoredImage;
+import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,7 @@ public class BookCoverPersistenceService {
 
     private final BookRepository bookRepository;
     private final BookCoverRepository bookCoverRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public BookCover persistNewPrimaryCover(
@@ -27,11 +30,7 @@ public class BookCoverPersistenceService {
     ) {
         Book book = bookRepository
                 .findById(bookId)
-                .orElseThrow(
-                        () -> new IllegalArgumentException(
-                                "No se encontró el libro con id " + bookId
-                        )
-                );
+                .orElseThrow(() -> new IllegalArgumentException("No se encontró el libro con id " + bookId));
 
         bookCoverRepository.clearPrimaryCover(bookId);
 
@@ -44,40 +43,32 @@ public class BookCoverPersistenceService {
                 true
         );
 
-        BookCover savedCover =
-                bookCoverRepository.saveAndFlush(cover);
+        BookCover savedCover = bookCoverRepository.saveAndFlush(cover);
 
         book.updateCover(savedCover.getSecureUrl(), savedCover.getSource().name());
         bookRepository.saveAndFlush(book);
+
+        publishPublicationChanged(bookId);
 
         return savedCover;
     }
 
     @Transactional
-    public BookCover selectExistingAsPrimary(
-            Long bookId,
-            Long coverId
-    ) {
+    public BookCover selectExistingAsPrimary(Long bookId, Long coverId) {
         Book book = bookRepository
                 .findById(bookId)
-                .orElseThrow(
-                        () -> new IllegalArgumentException(
-                                "No se encontró el libro con id " + bookId
-                        )
-                );
+                .orElseThrow(() -> new IllegalArgumentException("No se encontró el libro con id " + bookId));
 
         BookCover cover = bookCoverRepository
                 .findById(coverId)
-                .orElseThrow(
-                        () -> new IllegalArgumentException(
-                                "No se encontró la portada con id " + coverId
-                        )
-                );
+                .orElseThrow(() -> new IllegalArgumentException("No se encontró la portada con id " + coverId));
 
         if (!cover.belongsToBook(bookId)) {
-            throw new IllegalArgumentException(
-                    "La portada no pertenece al libro indicado"
-            );
+            throw new IllegalArgumentException("La portada no pertenece al libro indicado");
+        }
+
+        if (cover.isPrimaryCover()) {
+            return cover;
         }
 
         bookCoverRepository.clearPrimaryCover(bookId);
@@ -87,6 +78,8 @@ public class BookCoverPersistenceService {
 
         bookCoverRepository.saveAndFlush(cover);
         bookRepository.saveAndFlush(book);
+
+        publishPublicationChanged(bookId);
 
         return cover;
     }
@@ -112,51 +105,41 @@ public class BookCoverPersistenceService {
                 true
         );
 
-        BookCover savedCover =
-                bookCoverRepository.saveAndFlush(cover);
+        BookCover savedCover = bookCoverRepository.saveAndFlush(cover);
 
-        book.completeCoverCandidate(
-                savedCover.getSecureUrl(),
-                source.name()
-        );
-
+        book.completeCoverCandidate(savedCover.getSecureUrl(), source.name());
         bookRepository.saveAndFlush(book);
+
+        publishPublicationChanged(bookId);
 
         return savedCover;
     }
 
     @Transactional
-    public BookCover completeUsingExistingCover(
-            Long bookId,
-            Long coverId
-    ) {
+    public BookCover completeUsingExistingCover(Long bookId, Long coverId) {
         Book book = findBook(bookId);
 
         BookCover cover = bookCoverRepository
                 .findById(coverId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "No se encontró la portada " + coverId
-                        )
-                );
+                .orElseThrow(() -> new IllegalArgumentException("No se encontró la portada " + coverId));
 
         if (!cover.belongsToBook(bookId)) {
-            throw new IllegalArgumentException(
-                    "La portada no pertenece al libro indicado"
-            );
+            throw new IllegalArgumentException("La portada no pertenece al libro indicado");
+        }
+
+        if (cover.isPrimaryCover()) {
+            return cover;
         }
 
         bookCoverRepository.clearPrimaryCover(bookId);
 
         cover.markAsPrimary();
-
-        book.completeCoverCandidate(
-                cover.getSecureUrl(),
-                cover.getSource().name()
-        );
+        book.completeCoverCandidate(cover.getSecureUrl(), cover.getSource().name());
 
         bookCoverRepository.saveAndFlush(cover);
         bookRepository.saveAndFlush(book);
+
+        publishPublicationChanged(bookId);
 
         return cover;
     }
@@ -164,10 +147,10 @@ public class BookCoverPersistenceService {
     private Book findBook(Long bookId) {
         return bookRepository
                 .findById(bookId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "No se encontró el libro " + bookId
-                        )
-                );
+                .orElseThrow(() -> new IllegalArgumentException("No se encontró el libro " + bookId));
+    }
+
+    private void publishPublicationChanged(Long bookId) {
+        eventPublisher.publishEvent(new BookPublicationChangedEvent(bookId));
     }
 }

@@ -87,6 +87,28 @@ public class TiendanubeJobRequestService {
     }
 
     @Transactional
+    public List<Long> enqueueAutomaticPublicationSyncByBookId(Long bookId) {
+        List<TiendanubeProductLink> links = productLinkRepository.findAllByInventoryBookIdAndActiveTrue(bookId);
+
+        if (links.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, TiendanubeStore> stores = activeStoresByRemoteId(links);
+
+        return links.stream()
+                .filter(link -> canQueueLinkedOperation(link, TiendanubeJobType.SYNC_PUBLICATION))
+                .filter(link -> isUsable(stores.get(link.getTiendanubeStoreId())))
+                .map(link -> enqueueLinked(
+                        link,
+                        stores.get(link.getTiendanubeStoreId()),
+                        TiendanubeJobType.SYNC_PUBLICATION,
+                        TiendanubeJobSource.AUTOMATIC
+                ))
+                .toList();
+    }
+
+    @Transactional
     public Long enqueueManualPublish(Long inventoryId) {
         Inventory inventory = requireInventory(inventoryId);
         TiendanubeStore store = requireUsableStore(inventory);

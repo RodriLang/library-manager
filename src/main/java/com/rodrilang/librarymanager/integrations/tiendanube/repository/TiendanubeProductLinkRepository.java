@@ -52,6 +52,12 @@ public interface TiendanubeProductLinkRepository extends JpaRepository<Tiendanub
 
     @EntityGraph(attributePaths = {
             "inventory",
+            "inventory.bookstore"
+    })
+    List<TiendanubeProductLink> findAllByInventoryBookIdAndActiveTrue(Long bookId);
+
+    @EntityGraph(attributePaths = {
+            "inventory",
             "inventory.book",
             "inventory.book.authors",
             "inventory.book.publisher"
