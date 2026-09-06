@@ -24,9 +24,11 @@ public class TiendanubeWebhookProcessor {
             );
 
             switch (event.event()) {
+                case "order/created" -> orderService.handleOrderCreated(request);
                 case "order/paid" -> orderService.handleOrderPaid(request);
                 case "order/cancelled" -> orderService.handleOrderCancelled(request);
-                default -> throw new IllegalStateException("Evento de webhook no soportado en procesamiento: " + event.event());
+                default ->
+                        throw new IllegalStateException("Evento de webhook no soportado en procesamiento: " + event.event());
             }
 
             completionService.complete(event);

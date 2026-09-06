@@ -36,35 +36,47 @@ class TiendanubeOrderPersistenceServiceTest {
     private InventoryService inventoryService;
 
     @Test
-    void duplicatePaidEventDoesNotApplyStockTwice() {
-        TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/paid", 20L);
+    void duplicateCreatedEventDoesNotApplyStockTwice() {
+        TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/created", 20L);
         TiendanubeOrderResponse order = order();
-        when(processedEventClaimRepository.tryClaim(eq(10L), eq(20L), eq("order/paid"), any(Instant.class)))
+        when(processedEventClaimRepository.tryClaimOrderStockDeduction(eq(10L), eq(20L), any(Instant.class)))
                 .thenReturn(false);
 
-        service().applyPaid(request, order);
+        service().applyCreated(request, order);
 
         verify(inventoryService, never()).recordTiendanubeSale(any(), any(), any());
         verify(productLinkRepository, never()).findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(any(), any());
     }
 
     @Test
-    void paidEventClaimsBusinessEventAndAppliesStock() {
-        TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/paid", 20L);
+    void createdEventClaimsBusinessEventAndAppliesStock() {
+        TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/created", 20L);
         TiendanubeOrderResponse order = order();
         Inventory inventory = org.mockito.Mockito.mock(Inventory.class);
         TiendanubeProductLink link = org.mockito.Mockito.mock(TiendanubeProductLink.class);
 
-        when(processedEventClaimRepository.tryClaim(eq(10L), eq(20L), eq("order/paid"), any(Instant.class)))
+        when(processedEventClaimRepository.tryClaimOrderStockDeduction(eq(10L), eq(20L), any(Instant.class)))
                 .thenReturn(true);
         when(productLinkRepository.findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(10L, 30L))
                 .thenReturn(Optional.of(link));
         when(link.getInventory()).thenReturn(inventory);
         when(inventory.getId()).thenReturn(40L);
 
-        service().applyPaid(request, order);
+        service().applyCreated(request, order);
 
         verify(inventoryService).recordTiendanubeSale(40L, 2, "20");
+    }
+
+    @Test
+    void paidEventIsOnlyFallbackWhenCreatedWasNotApplied() {
+        TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/paid", 20L);
+        TiendanubeOrderResponse order = order();
+        when(processedEventClaimRepository.tryClaimOrderStockDeduction(eq(10L), eq(20L), any(Instant.class)))
+                .thenReturn(false);
+
+        service().applyPaidFallback(request, order);
+
+        verify(inventoryService, never()).recordTiendanubeSale(any(), any(), any());
     }
 
     private TiendanubeOrderPersistenceService service() {

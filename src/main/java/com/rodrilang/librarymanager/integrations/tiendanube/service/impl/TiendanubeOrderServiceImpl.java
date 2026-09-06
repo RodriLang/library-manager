@@ -18,9 +18,15 @@ public class TiendanubeOrderServiceImpl implements TiendanubeOrderService {
     private final TiendanubeOrderPersistenceService persistenceService;
 
     @Override
+    public void handleOrderCreated(TiendanubeWebhookRequest request) {
+        TiendanubeOrderResponse order = loadOrder(request);
+        persistenceService.applyCreated(request, order);
+    }
+
+    @Override
     public void handleOrderPaid(TiendanubeWebhookRequest request) {
         TiendanubeOrderResponse order = loadOrder(request);
-        persistenceService.applyPaid(request, order);
+        persistenceService.applyPaidFallback(request, order);
     }
 
     @Override

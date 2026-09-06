@@ -288,6 +288,19 @@ public class TiendanubeClient {
                 .toEntity(TiendanubeProductResponse.class));
     }
 
+    public List<TiendanubeWebhookResponse> getWebhooks(Long storeId) {
+        TiendanubeStore store = getActiveStore(storeId);
+        TiendanubeWebhookResponse[] webhooks = executeBody(store, "obtener webhooks", () -> tiendanubeRestClient.get()
+                .uri(properties.endpoints().webhooks() + "?per_page=200", storeId)
+                .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .toEntity(TiendanubeWebhookResponse[].class));
+
+        return webhooks == null ? List.of() : Arrays.asList(webhooks);
+    }
+
     public TiendanubeWebhookResponse createWebhook(Long storeId, String event, String url) {
         TiendanubeStore store = getActiveStore(storeId);
         TiendanubeCreateWebhookRequest request = new TiendanubeCreateWebhookRequest(event, url);

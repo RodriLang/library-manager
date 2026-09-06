@@ -24,17 +24,33 @@ class TiendanubeOrderServiceImplTest {
     private TiendanubeOrderPersistenceService persistenceService;
 
     @Test
-    void fetchesOrderBeforeDelegatingPaidPersistence() {
+    void fetchesOrderBeforeDelegatingCreatedPersistence() {
+        TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/created", 20L);
+        TiendanubeOrderResponse order = order();
+        when(client.getOrder(10L, 20L)).thenReturn(order);
+
+        new TiendanubeOrderServiceImpl(client, persistenceService).handleOrderCreated(request);
+
+        verify(client).getOrder(10L, 20L);
+        verify(persistenceService).applyCreated(request, order);
+    }
+
+    @Test
+    void paidEventUsesIdempotentFallback() {
         TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/paid", 20L);
-        TiendanubeOrderResponse order = new TiendanubeOrderResponse(
-                20L,
-                List.of(new TiendanubeOrderProductResponse(50L, 30L, "sku", 1, "Libro"))
-        );
+        TiendanubeOrderResponse order = order();
         when(client.getOrder(10L, 20L)).thenReturn(order);
 
         new TiendanubeOrderServiceImpl(client, persistenceService).handleOrderPaid(request);
 
         verify(client).getOrder(10L, 20L);
-        verify(persistenceService).applyPaid(request, order);
+        verify(persistenceService).applyPaidFallback(request, order);
+    }
+
+    private TiendanubeOrderResponse order() {
+        return new TiendanubeOrderResponse(
+                20L,
+                List.of(new TiendanubeOrderProductResponse(50L, 30L, "sku", 1, "Libro"))
+        );
     }
 }
