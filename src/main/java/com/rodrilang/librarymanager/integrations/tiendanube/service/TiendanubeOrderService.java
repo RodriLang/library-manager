@@ -4,6 +4,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.Tiendanu
 
 public interface TiendanubeOrderService {
 
+    void handleOrderCreated(TiendanubeWebhookRequest request);
+
     void handleOrderPaid(TiendanubeWebhookRequest request);
 
     void handleOrderCancelled(TiendanubeWebhookRequest request);

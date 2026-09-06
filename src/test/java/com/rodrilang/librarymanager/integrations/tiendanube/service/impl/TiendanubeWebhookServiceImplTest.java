@@ -31,7 +31,7 @@ class TiendanubeWebhookServiceImplTest {
 
     @Test
     void persistsProcessableOrderEventAsPending() {
-        String payload = "{\"store_id\":10,\"event\":\"order/paid\",\"id\":20}";
+        String payload = "{\"store_id\":10,\"event\":\"order/created\",\"id\":20}";
         TiendanubeStore store = TiendanubeStore.builder().id(30L).storeId(10L).build();
         when(storeRepository.findByStoreId(10L)).thenReturn(Optional.of(store));
         when(webhookEventRepository.insert(any(), any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
@@ -42,7 +42,7 @@ class TiendanubeWebhookServiceImplTest {
         verify(webhookEventRepository).insert(
                 eq(30L),
                 eq(10L),
-                eq("order/paid"),
+                eq("order/created"),
                 eq(20L),
                 eq(payload),
                 eq(TiendanubeWebhookEventStatus.PENDING),

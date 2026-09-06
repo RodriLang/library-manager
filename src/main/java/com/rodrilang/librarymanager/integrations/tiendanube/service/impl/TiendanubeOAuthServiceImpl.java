@@ -9,6 +9,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeTokenResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeConnectionStatus;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeConnectedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeOAuthService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeOAuthStateService;
@@ -16,6 +17,7 @@ import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -33,6 +35,7 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
     private final TiendanubeOAuthStateService stateService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public TiendanubeAuthorizationResponse createAuthorizationUrl() {
@@ -82,6 +85,7 @@ public class TiendanubeOAuthServiceImpl implements TiendanubeOAuthService {
         store.setConnectedAt(now);
 
         storeRepository.save(store);
+        eventPublisher.publishEvent(new TiendanubeConnectedEvent(response.userId()));
     }
 
     @Override

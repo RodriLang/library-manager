@@ -23,6 +23,8 @@ public interface TiendanubeStoreRepository extends JpaRepository<TiendanubeStore
 
     List<TiendanubeStore> findAllByStoreIdInAndActiveTrue(Collection<Long> storeIds);
 
+    List<TiendanubeStore> findAllByActiveTrueAndTokenValidTrue();
+
     boolean existsByStoreIdAndActiveTrueAndTokenValidTrue(Long storeId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -26,22 +26,30 @@ public class TiendanubeOrderPersistenceService {
     private final InventoryService inventoryService;
 
     @Transactional
-    public void applyPaid(TiendanubeWebhookRequest request, TiendanubeOrderResponse order) {
-        apply(
-                request,
-                order,
-                "pagada",
-                (inventoryId, quantity) -> inventoryService.recordTiendanubeSale(
-                        inventoryId,
-                        quantity,
-                        String.valueOf(request.id())
-                )
-        );
+    public void applyCreated(TiendanubeWebhookRequest request, TiendanubeOrderResponse order) {
+        applyStockDeduction(request, order, "creada");
+    }
+
+    @Transactional
+    public void applyPaidFallback(TiendanubeWebhookRequest request, TiendanubeOrderResponse order) {
+        applyStockDeduction(request, order, "pagada-fallback");
     }
 
     @Transactional
     public void applyCancelled(TiendanubeWebhookRequest request, TiendanubeOrderResponse order) {
-        apply(
+        boolean claimed = processedEventClaimRepository.tryClaim(
+                request.storeId(),
+                request.id(),
+                request.event(),
+                Instant.now()
+        );
+
+        if (!claimed) {
+            logAlreadyApplied(request);
+            return;
+        }
+
+        applyProducts(
                 request,
                 order,
                 "cancelada",
@@ -53,26 +61,46 @@ public class TiendanubeOrderPersistenceService {
         );
     }
 
-    private void apply(TiendanubeWebhookRequest request, TiendanubeOrderResponse order, String eventDescription,
-                       BiConsumer<Long, Integer> stockOperation) {
-        boolean claimed = processedEventClaimRepository.tryClaim(
+    private void applyStockDeduction(TiendanubeWebhookRequest request, TiendanubeOrderResponse order,
+                                     String eventDescription) {
+        boolean claimed = processedEventClaimRepository.tryClaimOrderStockDeduction(
                 request.storeId(),
                 request.id(),
-                request.event(),
                 Instant.now()
         );
 
         if (!claimed) {
             log.info(
-                    "Evento Tiendanube ya aplicado. storeId={} orderId={} event={}",
+                    "Stock Tiendanube order already deducted. storeId={} orderId={} sourceEvent={}",
                     request.storeId(), request.id(), request.event()
             );
             return;
         }
 
+        applyProducts(
+                request,
+                order,
+                eventDescription,
+                (inventoryId, quantity) -> inventoryService.recordTiendanubeSale(
+                        inventoryId,
+                        quantity,
+                        String.valueOf(request.id())
+                )
+        );
+    }
+
+    private void applyProducts(TiendanubeWebhookRequest request, TiendanubeOrderResponse order, String eventDescription,
+                               BiConsumer<Long, Integer> stockOperation) {
         for (TiendanubeOrderProductResponse product : order.products()) {
             processProduct(request, product, eventDescription, stockOperation);
         }
+    }
+
+    private void logAlreadyApplied(TiendanubeWebhookRequest request) {
+        log.info(
+                "Evento Tiendanube ya aplicado. storeId={} orderId={} event={}",
+                request.storeId(), request.id(), request.event()
+        );
     }
 
     private void processProduct(TiendanubeWebhookRequest request, TiendanubeOrderProductResponse product,

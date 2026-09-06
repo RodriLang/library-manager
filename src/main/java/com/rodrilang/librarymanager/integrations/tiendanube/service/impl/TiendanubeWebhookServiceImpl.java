@@ -23,7 +23,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TiendanubeWebhookServiceImpl implements TiendanubeWebhookService {
 
-    private static final Set<String> PROCESSABLE_EVENTS = Set.of("order/paid", "order/cancelled");
+    private static final Set<String> PROCESSABLE_EVENTS = Set.of("order/created", "order/paid", "order/cancelled");
 
     private final ObjectMapper objectMapper;
     private final TiendanubeStoreRepository storeRepository;
