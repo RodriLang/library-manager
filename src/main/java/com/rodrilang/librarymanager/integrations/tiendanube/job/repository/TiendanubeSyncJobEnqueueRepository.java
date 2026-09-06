@@ -6,7 +6,9 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.sql.Types;
 import java.time.Instant;
+import java.time.ZoneOffset;
 
 @Repository
 @RequiredArgsConstructor
@@ -68,7 +70,7 @@ public class TiendanubeSyncJobEnqueueRepository {
                 .addValue("type", command.type().name())
                 .addValue("source", command.source().name())
                 .addValue("maxAttempts", maxAttempts)
-                .addValue("now", now);
+                .addValue("now", now.atOffset(ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE);
 
         return jdbcTemplate.queryForObject(sql, parameters, Long.class);
     }
