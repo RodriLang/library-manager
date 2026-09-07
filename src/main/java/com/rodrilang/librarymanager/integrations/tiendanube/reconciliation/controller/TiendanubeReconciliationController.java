@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.cont
 
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationItemResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationRepairResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationRunResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.service.TiendanubeReconciliationManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(
         name = "Tiendanube - Reconciliación",
-        description = "Detección de diferencias entre Anaquel y Tiendanube sin modificar datos"
+        description = "Detección y reparación segura de diferencias entre Anaquel y Tiendanube"
 )
 @RestController
 @RequestMapping("/api/integrations/tiendanube/management/reconciliation-runs")
@@ -51,5 +52,20 @@ public class TiendanubeReconciliationController {
             @PageableDefault(size = 50) Pageable pageable
     ) {
         return PageResponse.of(reconciliationService.getItems(runId, pageable));
+    }
+
+    @PostMapping("/{runId}/repair")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public TiendanubeReconciliationRepairResponse repairRun(@PathVariable Long runId) {
+        return reconciliationService.repairRun(runId);
+    }
+
+    @PostMapping("/{runId}/items/{itemId}/repair")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public TiendanubeReconciliationItemResponse repairItem(
+            @PathVariable Long runId,
+            @PathVariable Long itemId
+    ) {
+        return reconciliationService.repairItem(runId, itemId);
     }
 }
