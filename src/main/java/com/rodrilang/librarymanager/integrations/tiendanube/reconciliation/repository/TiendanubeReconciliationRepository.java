@@ -1,11 +1,15 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.repository;
 
+import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.TiendanubeJobStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeClaimedReconciliationRun;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationInventorySnapshot;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationIssue;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationItemResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationRepairCandidate;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationRunResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.enums.TiendanubeReconciliationIssueType;
+import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.enums.TiendanubeReconciliationRepairSource;
+import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.enums.TiendanubeReconciliationRepairStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.enums.TiendanubeReconciliationSource;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.enums.TiendanubeReconciliationStatus;
 import lombok.RequiredArgsConstructor;
@@ -327,26 +331,7 @@ public class TiendanubeReconciliationRepository {
                 .addValue("limit", pageable.getPageSize())
                 .addValue("offset", pageable.getOffset());
 
-        List<TiendanubeReconciliationItemResponse> content = jdbcTemplate.query("""
-                SELECT
-                    item.id,
-                    item.inventory_id,
-                    b.title,
-                    COALESCE(b.isbn_13, b.isbn_10) AS isbn,
-                    item.link_id,
-                    item.issue_type,
-                    item.product_id,
-                    item.variant_id,
-                    item.local_stock,
-                    item.remote_stock,
-                    item.local_price,
-                    item.remote_price,
-                    item.message,
-                    item.created_at
-                FROM tiendanube_reconciliation_items item
-                JOIN tiendanube_reconciliation_runs run ON run.id = item.run_id
-                JOIN inventory i ON i.id = item.inventory_id
-                JOIN books b ON b.id = i.book_id
+        List<TiendanubeReconciliationItemResponse> content = jdbcTemplate.query(itemSelectSql() + """
                 WHERE item.run_id = :runId
                   AND run.bookstore_id = :bookstoreId
                 ORDER BY item.id
@@ -364,6 +349,162 @@ public class TiendanubeReconciliationRepository {
                 .addValue("bookstoreId", bookstoreId), Long.class);
 
         return new PageImpl<>(content, pageable, total == null ? 0L : total);
+    }
+
+    public Optional<TiendanubeReconciliationItemResponse> findItem(Long runId, Long itemId, Long bookstoreId) {
+        return queryOne(itemSelectSql() + """
+                WHERE item.run_id = :runId
+                  AND item.id = :itemId
+                  AND run.bookstore_id = :bookstoreId
+                """, new MapSqlParameterSource()
+                .addValue("runId", runId)
+                .addValue("itemId", itemId)
+                .addValue("bookstoreId", bookstoreId), this::mapItem);
+    }
+
+    public List<TiendanubeReconciliationRepairCandidate> findRepairCandidates(Long runId, Long bookstoreId) {
+        return jdbcTemplate.query(repairCandidateSql() + """
+                WHERE item.run_id = :runId
+                  AND run.bookstore_id = :bookstoreId
+                ORDER BY item.id
+                """, new MapSqlParameterSource()
+                .addValue("runId", runId)
+                .addValue("bookstoreId", bookstoreId), this::mapRepairCandidate);
+    }
+
+    public Optional<TiendanubeReconciliationRepairCandidate> findRepairCandidate(
+            Long runId,
+            Long itemId,
+            Long bookstoreId
+    ) {
+        return queryOne(repairCandidateSql() + """
+                WHERE item.run_id = :runId
+                  AND item.id = :itemId
+                  AND run.bookstore_id = :bookstoreId
+                """, new MapSqlParameterSource()
+                .addValue("runId", runId)
+                .addValue("itemId", itemId)
+                .addValue("bookstoreId", bookstoreId), this::mapRepairCandidate);
+    }
+
+    public Optional<TiendanubeReconciliationRepairCandidate> findRepairCandidateForUpdate(
+            Long runId,
+            Long itemId,
+            Long bookstoreId
+    ) {
+        return queryOne(repairCandidateSql() + """
+                WHERE item.run_id = :runId
+                  AND item.id = :itemId
+                  AND run.bookstore_id = :bookstoreId
+                FOR UPDATE OF item
+                """, new MapSqlParameterSource()
+                .addValue("runId", runId)
+                .addValue("itemId", itemId)
+                .addValue("bookstoreId", bookstoreId), this::mapRepairCandidate);
+    }
+
+    public boolean markRepairQueued(
+            Long itemId,
+            TiendanubeReconciliationRepairSource source,
+            Long jobId,
+            Instant now
+    ) {
+        int updated = jdbcTemplate.update("""
+                UPDATE tiendanube_reconciliation_items
+                SET repair_source = :repairSource,
+                    repair_job_id = :repairJobId,
+                    repair_requested_at = :now,
+                    repair_error_type = NULL,
+                    repair_error_message = NULL
+                WHERE id = :itemId
+                  AND repair_requested_at IS NULL
+                """, new MapSqlParameterSource()
+                .addValue("itemId", itemId)
+                .addValue("repairSource", source.name())
+                .addValue("repairJobId", jobId)
+                .addValue("now", Timestamp.from(now)));
+
+        return updated == 1;
+    }
+
+    public boolean markRepairFailed(
+            Long itemId,
+            TiendanubeReconciliationRepairSource source,
+            String errorType,
+            String errorMessage,
+            Instant now
+    ) {
+        int updated = jdbcTemplate.update("""
+                UPDATE tiendanube_reconciliation_items
+                SET repair_source = :repairSource,
+                    repair_requested_at = :now,
+                    repair_error_type = :errorType,
+                    repair_error_message = :errorMessage
+                WHERE id = :itemId
+                  AND repair_requested_at IS NULL
+                """, new MapSqlParameterSource()
+                .addValue("itemId", itemId)
+                .addValue("repairSource", source.name())
+                .addValue("errorType", errorType)
+                .addValue("errorMessage", errorMessage)
+                .addValue("now", Timestamp.from(now)));
+
+        return updated == 1;
+    }
+
+    private String itemSelectSql() {
+        return """
+                SELECT
+                    item.id,
+                    item.inventory_id,
+                    b.title,
+                    COALESCE(b.isbn_13, b.isbn_10) AS isbn,
+                    item.link_id,
+                    item.issue_type,
+                    item.product_id,
+                    item.variant_id,
+                    item.local_stock,
+                    item.remote_stock,
+                    item.local_price,
+                    item.remote_price,
+                    item.message,
+                    item.repair_source,
+                    item.repair_job_id,
+                    item.repair_requested_at,
+                    item.repair_error_type,
+                    item.repair_error_message,
+                    job.status AS repair_job_status,
+                    job.attempt_count AS repair_attempt_count,
+                    job.max_attempts AS repair_max_attempts,
+                    job.last_error_type AS repair_job_error_type,
+                    job.last_error_message AS repair_job_error_message,
+                    job.completed_at AS repair_completed_at,
+                    item.created_at
+                FROM tiendanube_reconciliation_items item
+                JOIN tiendanube_reconciliation_runs run ON run.id = item.run_id
+                JOIN inventory i ON i.id = item.inventory_id
+                JOIN books b ON b.id = i.book_id
+                LEFT JOIN tiendanube_sync_jobs job ON job.id = item.repair_job_id
+                """;
+    }
+
+    private String repairCandidateSql() {
+        return """
+                SELECT
+                    item.id AS item_id,
+                    item.run_id,
+                    run.bookstore_id,
+                    run.tiendanube_store_id,
+                    run.store_id,
+                    item.inventory_id,
+                    item.link_id,
+                    item.product_id,
+                    item.variant_id,
+                    item.issue_type,
+                    item.repair_requested_at
+                FROM tiendanube_reconciliation_items item
+                JOIN tiendanube_reconciliation_runs run ON run.id = item.run_id
+                """;
     }
 
     private TiendanubeReconciliationRunResponse mapRun(ResultSet rs, int rowNum) throws SQLException {
@@ -384,13 +525,21 @@ public class TiendanubeReconciliationRepository {
     }
 
     private TiendanubeReconciliationItemResponse mapItem(ResultSet rs, int rowNum) throws SQLException {
+        TiendanubeReconciliationIssueType issueType = TiendanubeReconciliationIssueType.valueOf(rs.getString("issue_type"));
+        TiendanubeJobStatus jobStatus = enumValue(TiendanubeJobStatus.class, rs.getString("repair_job_status"));
+        Instant repairRequestedAt = instant(rs, "repair_requested_at");
+        String localRepairErrorType = rs.getString("repair_error_type");
+        String localRepairErrorMessage = rs.getString("repair_error_message");
+        String jobErrorType = rs.getString("repair_job_error_type");
+        String jobErrorMessage = rs.getString("repair_job_error_message");
+
         return new TiendanubeReconciliationItemResponse(
                 rs.getLong("id"),
                 rs.getLong("inventory_id"),
                 rs.getString("title"),
                 rs.getString("isbn"),
                 rs.getLong("link_id"),
-                TiendanubeReconciliationIssueType.valueOf(rs.getString("issue_type")),
+                issueType,
                 rs.getLong("product_id"),
                 rs.getLong("variant_id"),
                 integer(rs, "local_stock"),
@@ -398,8 +547,66 @@ public class TiendanubeReconciliationRepository {
                 rs.getBigDecimal("local_price"),
                 rs.getBigDecimal("remote_price"),
                 rs.getString("message"),
+                resolveRepairStatus(issueType, repairRequestedAt, jobStatus, localRepairErrorType),
+                enumValue(TiendanubeReconciliationRepairSource.class, rs.getString("repair_source")),
+                rs.getObject("repair_job_id", Long.class),
+                jobStatus,
+                rs.getObject("repair_attempt_count", Integer.class),
+                rs.getObject("repair_max_attempts", Integer.class),
+                jobErrorType != null ? jobErrorType : localRepairErrorType,
+                jobErrorMessage != null ? jobErrorMessage : localRepairErrorMessage,
+                repairRequestedAt,
+                instant(rs, "repair_completed_at"),
                 instant(rs, "created_at")
         );
+    }
+
+    private TiendanubeReconciliationRepairCandidate mapRepairCandidate(ResultSet rs, int rowNum) throws SQLException {
+        return new TiendanubeReconciliationRepairCandidate(
+                rs.getLong("item_id"),
+                rs.getLong("run_id"),
+                rs.getLong("bookstore_id"),
+                rs.getLong("tiendanube_store_id"),
+                rs.getLong("store_id"),
+                rs.getLong("inventory_id"),
+                rs.getLong("link_id"),
+                rs.getLong("product_id"),
+                rs.getLong("variant_id"),
+                TiendanubeReconciliationIssueType.valueOf(rs.getString("issue_type")),
+                instant(rs, "repair_requested_at")
+        );
+    }
+
+    private TiendanubeReconciliationRepairStatus resolveRepairStatus(
+            TiendanubeReconciliationIssueType issueType,
+            Instant repairRequestedAt,
+            TiendanubeJobStatus jobStatus,
+            String localRepairErrorType
+    ) {
+        if (issueType == TiendanubeReconciliationIssueType.REMOTE_PRODUCT_MISSING
+                || issueType == TiendanubeReconciliationIssueType.REMOTE_VARIANT_MISSING) {
+            return TiendanubeReconciliationRepairStatus.MANUAL_REVIEW;
+        }
+
+        if (repairRequestedAt == null) {
+            return TiendanubeReconciliationRepairStatus.DETECTED;
+        }
+
+        if (jobStatus == null) {
+            return localRepairErrorType != null
+                    ? TiendanubeReconciliationRepairStatus.REPAIR_FAILED
+                    : TiendanubeReconciliationRepairStatus.REPAIR_QUEUED;
+        }
+
+        return switch (jobStatus) {
+            case PENDING -> TiendanubeReconciliationRepairStatus.REPAIR_QUEUED;
+            case PROCESSING -> TiendanubeReconciliationRepairStatus.REPAIRING;
+            case RETRY_WAIT -> TiendanubeReconciliationRepairStatus.RETRY_WAIT;
+            case COMPLETED -> TiendanubeReconciliationRepairStatus.REPAIRED;
+            case BLOCKED -> TiendanubeReconciliationRepairStatus.REPAIR_BLOCKED;
+            case CANCELLED -> TiendanubeReconciliationRepairStatus.REPAIR_SUPERSEDED;
+            case FAILED -> TiendanubeReconciliationRepairStatus.REPAIR_FAILED;
+        };
     }
 
     private Integer integer(ResultSet rs, String column) throws SQLException {
@@ -410,6 +617,10 @@ public class TiendanubeReconciliationRepository {
     private Instant instant(ResultSet rs, String column) throws SQLException {
         Timestamp value = rs.getTimestamp(column);
         return value == null ? null : value.toInstant();
+    }
+
+    private <E extends Enum<E>> E enumValue(Class<E> type, String value) {
+        return value == null ? null : Enum.valueOf(type, value);
     }
 
     private <T> Optional<T> queryOne(

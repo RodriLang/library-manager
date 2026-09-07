@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.serv
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationItemResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationRepairResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationRunResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.repository.TiendanubeReconciliationRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,10 +18,19 @@ public class TiendanubeReconciliationManagementService {
 
     private final BookstoreContext bookstoreContext;
     private final TiendanubeReconciliationRequestService requestService;
+    private final TiendanubeReconciliationRepairService repairService;
     private final TiendanubeReconciliationRepository reconciliationRepository;
 
     public TiendanubeReconciliationRunResponse createManualRun() {
         return requestService.createManualRun();
+    }
+
+    public TiendanubeReconciliationRepairResponse repairRun(Long runId) {
+        return repairService.repairManualRun(runId);
+    }
+
+    public TiendanubeReconciliationItemResponse repairItem(Long runId, Long itemId) {
+        return repairService.repairManualItem(runId, itemId);
     }
 
     @Transactional(readOnly = true)
