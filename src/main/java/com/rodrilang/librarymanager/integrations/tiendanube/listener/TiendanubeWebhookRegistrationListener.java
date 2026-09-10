@@ -38,8 +38,8 @@ public class TiendanubeWebhookRegistrationListener {
     }
 
     @Scheduled(
-            fixedDelayString = "${tiendanube.webhook-registration.reconcile-delay-ms:21600000}",
-            initialDelayString = "${tiendanube.webhook-registration.initial-delay-ms:60000}"
+            cron = "${tiendanube.webhook-registration.cron:0 30 4 * * *}",
+            zone = "${app.scheduling.zone:America/Argentina/Buenos_Aires}"
     )
     public void reconcileRegistrations() {
         ensureExistingConnections();

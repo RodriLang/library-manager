@@ -3,6 +3,8 @@ package com.rodrilang.librarymanager.integrations.tiendanube.job.service;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.config.TiendanubeJobProperties;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.dto.TiendanubeJobEnqueueCommand;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.repository.TiendanubeSyncJobEnqueueRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,7 @@ public class TiendanubeJobEnqueueService {
 
     private final TiendanubeSyncJobEnqueueRepository enqueueRepository;
     private final TiendanubeJobProperties properties;
+    private final TiendanubeWorkNotifier workNotifier;
 
     @Transactional
     public Long enqueue(TiendanubeJobEnqueueCommand command) {
@@ -27,7 +30,9 @@ public class TiendanubeJobEnqueueService {
             throw new IllegalArgumentException("maxAttempts debe ser mayor o igual a 1");
         }
 
-        return enqueueRepository.enqueue(command, maxAttempts, Instant.now());
+        Long jobId = enqueueRepository.enqueue(command, maxAttempts, Instant.now());
+        workNotifier.notifyWork(TiendanubeWorkType.JOB);
+        return jobId;
     }
 
     private void validate(TiendanubeJobEnqueueCommand command) {

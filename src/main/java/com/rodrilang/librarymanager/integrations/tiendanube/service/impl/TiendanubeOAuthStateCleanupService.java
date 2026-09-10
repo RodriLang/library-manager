@@ -19,7 +19,10 @@ public class TiendanubeOAuthStateCleanupService {
 
     private final TiendanubeOAuthStateRepository stateRepository;
 
-    @Scheduled(cron = "0 0 3 * * *")
+    @Scheduled(
+            cron = "${tiendanube.oauth-state-cleanup.cron:0 5 3 * * *}",
+            zone = "${app.scheduling.zone:America/Argentina/Buenos_Aires}"
+    )
     @Transactional
     public void deleteOldStates() {
 

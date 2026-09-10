@@ -45,4 +45,9 @@ public class TiendanubeReconciliationClaimService {
 
         return claimed;
     }
+    @Transactional(readOnly = true)
+    public Optional<Instant> findNextWakeAt() {
+        return reconciliationRepository.findNextWakeAt(Instant.now());
+    }
+
 }

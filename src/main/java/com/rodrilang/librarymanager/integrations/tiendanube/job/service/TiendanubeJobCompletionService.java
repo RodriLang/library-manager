@@ -9,6 +9,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.Tiendanube
 import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.TiendanubeJobStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.repository.TiendanubeSyncAttemptRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.repository.TiendanubeSyncJobRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class TiendanubeJobCompletionService {
     private final TiendanubeSyncJobRepository jobRepository;
     private final TiendanubeSyncAttemptRepository attemptRepository;
     private final TiendanubeJobRetryPolicy retryPolicy;
+    private final TiendanubeWorkNotifier workNotifier;
 
     @Transactional
     public void complete(TiendanubeJobExecutionContext context) {
@@ -48,6 +51,7 @@ public class TiendanubeJobCompletionService {
         job.setCompletedAt(now);
         clearProcessingLease(job);
         clearJobError(job);
+        workNotifier.notifyWork(TiendanubeWorkType.JOB);
     }
 
     @Transactional
@@ -68,6 +72,7 @@ public class TiendanubeJobCompletionService {
         if (failure.disposition() == TiendanubeJobFailureDisposition.BLOCK) {
             job.setStatus(TiendanubeJobStatus.BLOCKED);
             attempt.setStatus(TiendanubeJobAttemptStatus.BLOCKED);
+            workNotifier.notifyWork(TiendanubeWorkType.JOB);
             return;
         }
 
@@ -83,18 +88,21 @@ public class TiendanubeJobCompletionService {
                         "Tiendanube job retry omitted because a newer pending job supersedes it. jobId={} type={} inventoryId={}",
                         context.jobId(), context.type(), context.inventoryId()
                 );
+                workNotifier.notifyWork(TiendanubeWorkType.JOB);
                 return;
             }
 
             job.setStatus(TiendanubeJobStatus.RETRY_WAIT);
             job.setNextAttemptAt(now.plus(retryPolicy.nextDelay(failure, context.attemptNumber())));
             attempt.setStatus(TiendanubeJobAttemptStatus.RETRY_SCHEDULED);
+            workNotifier.notifyWork(TiendanubeWorkType.JOB);
             return;
         }
 
         job.setStatus(TiendanubeJobStatus.FAILED);
         job.setCompletedAt(now);
         attempt.setStatus(TiendanubeJobAttemptStatus.FAILED);
+        workNotifier.notifyWork(TiendanubeWorkType.JOB);
     }
 
     private boolean ownsProcessingLease(TiendanubeSyncJob job, TiendanubeJobExecutionContext context) {

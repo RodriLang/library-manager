@@ -19,6 +19,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.management.repositor
 import com.rodrilang.librarymanager.integrations.tiendanube.management.repository.TiendanubeBulkOperationRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.repository.TiendanubeManagementInventoryRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -40,6 +42,7 @@ public class TiendanubeManagementService {
     private final TiendanubeManagementInventoryRepository inventoryRepository;
     private final TiendanubeBulkOperationRepository operationRepository;
     private final TiendanubeBulkOperationJdbcRepository bulkJdbcRepository;
+    private final TiendanubeWorkNotifier workNotifier;
 
     @Transactional(readOnly = true)
     public Page<TiendanubeManagedInventoryResponse> searchInventories(
@@ -154,6 +157,9 @@ public class TiendanubeManagementService {
 
         TiendanubeBulkOperation saved = operationRepository.saveAndFlush(operation);
         bulkJdbcRepository.insertItems(saved.getId(), inventoryIds, Instant.now());
+        if (!inventoryIds.isEmpty()) {
+            workNotifier.notifyWork(TiendanubeWorkType.BULK);
+        }
         return requireOperationResponse(saved.getId(), bookstoreId);
     }
 

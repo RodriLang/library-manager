@@ -9,6 +9,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.repository.Tiendanub
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeWebhookService;
 import com.rodrilang.librarymanager.integrations.tiendanube.webhook.enums.TiendanubeWebhookEventStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.webhook.repository.TiendanubeWebhookEventRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +30,7 @@ public class TiendanubeWebhookServiceImpl implements TiendanubeWebhookService {
     private final ObjectMapper objectMapper;
     private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeWebhookEventRepository webhookEventRepository;
+    private final TiendanubeWorkNotifier workNotifier;
 
     @Value("${tiendanube.webhook-inbox.max-attempts:12}")
     private int maxAttempts;
@@ -64,6 +67,10 @@ public class TiendanubeWebhookServiceImpl implements TiendanubeWebhookService {
                 errorType,
                 errorMessage
         );
+
+        if (status == TiendanubeWebhookEventStatus.PENDING) {
+            workNotifier.notifyWork(TiendanubeWorkType.WEBHOOK);
+        }
 
         log.info(
                 "Webhook Tiendanube persisted. eventId={} storeId={} event={} resourceId={} status={}",

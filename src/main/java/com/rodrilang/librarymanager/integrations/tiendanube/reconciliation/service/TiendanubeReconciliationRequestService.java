@@ -7,6 +7,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.T
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.enums.TiendanubeReconciliationSource;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.repository.TiendanubeReconciliationRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ public class TiendanubeReconciliationRequestService {
     private final BookstoreContext bookstoreContext;
     private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeReconciliationRepository reconciliationRepository;
+    private final TiendanubeWorkNotifier workNotifier;
 
     @Value("${tiendanube.reconciliation.enabled:false}")
     private boolean enabled;
@@ -57,6 +60,7 @@ public class TiendanubeReconciliationRequestService {
             Instant now
     ) {
         reconciliationRepository.createRun(bookstoreId, store.getId(), store.getStoreId(), source, now);
+        workNotifier.notifyWork(TiendanubeWorkType.RECONCILIATION);
 
         return reconciliationRepository.findActiveRun(bookstoreId, store.getId())
                 .orElseThrow(() -> new IllegalStateException("No se pudo crear ni recuperar la reconciliación de Tiendanube"));

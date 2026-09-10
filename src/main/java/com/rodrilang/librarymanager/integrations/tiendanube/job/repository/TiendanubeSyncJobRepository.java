@@ -46,6 +46,54 @@ public interface TiendanubeSyncJobRepository extends JpaRepository<TiendanubeSyn
             """, nativeQuery = true)
     List<Long> findClaimableIds(@Param("now") Instant now, @Param("batchSize") int batchSize);
 
+
+    @Query(value = """
+            SELECT MIN(next_wake_at)
+            FROM (
+                SELECT GREATEST(
+                           candidate.next_attempt_at,
+                           COALESCE(rate_limit.blocked_until, candidate.next_attempt_at),
+                           COALESCE(active_processing.lease_until, candidate.next_attempt_at)
+                       ) AS next_wake_at
+                FROM tiendanube_sync_jobs candidate
+                JOIN tiendanube_stores store
+                  ON store.id = candidate.tiendanube_store_id
+                 AND store.active = TRUE
+                 AND store.token_valid = TRUE
+                LEFT JOIN tiendanube_api_rate_limits rate_limit
+                       ON rate_limit.tiendanube_store_id = candidate.tiendanube_store_id
+                      AND rate_limit.remote_store_id = candidate.store_id
+                LEFT JOIN LATERAL (
+                    SELECT MIN(active.lease_until) AS lease_until
+                    FROM tiendanube_sync_jobs active
+                    WHERE active.tiendanube_store_id = candidate.tiendanube_store_id
+                      AND active.id <> candidate.id
+                      AND active.status = 'PROCESSING'
+                      AND active.lease_until IS NOT NULL
+                      AND active.lease_until > :now
+                ) active_processing ON TRUE
+                WHERE candidate.status IN ('PENDING', 'RETRY_WAIT')
+            
+                UNION ALL
+            
+                SELECT GREATEST(
+                           processing.lease_until,
+                           COALESCE(rate_limit.blocked_until, processing.lease_until)
+                       ) AS next_wake_at
+                FROM tiendanube_sync_jobs processing
+                JOIN tiendanube_stores store
+                  ON store.id = processing.tiendanube_store_id
+                 AND store.active = TRUE
+                 AND store.token_valid = TRUE
+                LEFT JOIN tiendanube_api_rate_limits rate_limit
+                       ON rate_limit.tiendanube_store_id = processing.tiendanube_store_id
+                      AND rate_limit.remote_store_id = processing.store_id
+                WHERE processing.status = 'PROCESSING'
+                  AND processing.lease_until IS NOT NULL
+            ) wakeups
+            """, nativeQuery = true)
+    Optional<Instant> findNextWakeAt(@Param("now") Instant now);
+
     @Query("SELECT job FROM TiendanubeSyncJob job WHERE job.id IN :ids")
     List<TiendanubeSyncJob> findAllByIds(@Param("ids") List<Long> ids);
 

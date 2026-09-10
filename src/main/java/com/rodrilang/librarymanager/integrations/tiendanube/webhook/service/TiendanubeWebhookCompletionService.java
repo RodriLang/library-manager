@@ -2,6 +2,8 @@ package com.rodrilang.librarymanager.integrations.tiendanube.webhook.service;
 
 import com.rodrilang.librarymanager.integrations.tiendanube.webhook.dto.TiendanubeClaimedWebhookEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.webhook.repository.TiendanubeWebhookEventRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,13 +19,17 @@ public class TiendanubeWebhookCompletionService {
 
     private final TiendanubeWebhookEventRepository repository;
     private final TiendanubeWebhookRetryPolicy retryPolicy;
+    private final TiendanubeWorkNotifier workNotifier;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void complete(TiendanubeClaimedWebhookEvent event) {
         int updated = repository.markCompleted(event.id(), event.processingToken(), Instant.now());
         if (updated != 1) {
             log.warn("Stale Tiendanube webhook completion ignored. eventId={}", event.id());
+            return;
         }
+
+        workNotifier.notifyWork(TiendanubeWorkType.WEBHOOK);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -71,7 +77,10 @@ public class TiendanubeWebhookCompletionService {
 
         if (updated != 1) {
             log.warn("Stale Tiendanube webhook failure ignored. eventId={}", event.id());
+            return;
         }
+
+        workNotifier.notifyWork(TiendanubeWorkType.WEBHOOK);
     }
 
     private String resolveMessage(RuntimeException exception) {

@@ -19,7 +19,8 @@ public class BookCoverProcessingScheduler {
     private final BookCoverProcessingService processingService;
 
     @Scheduled(
-            cron = "${anaquel.cover-processing.cron:0 0 3 * * MON}"
+            cron = "${anaquel.cover-processing.cron:0 0 6 * * MON}",
+            zone = "${app.scheduling.zone:America/Argentina/Buenos_Aires}"
     )
     public void processPendingCandidates() {
         processingService.processNextBatch();

@@ -3,6 +3,8 @@ package com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.serv
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeClaimedReconciliationRun;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.dto.TiendanubeReconciliationIssue;
 import com.rodrilang.librarymanager.integrations.tiendanube.reconciliation.repository.TiendanubeReconciliationRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import java.util.List;
 public class TiendanubeReconciliationCompletionService {
 
     private final TiendanubeReconciliationRepository reconciliationRepository;
+    private final TiendanubeWorkNotifier workNotifier;
 
     @Transactional
     public void complete(
@@ -40,6 +43,8 @@ public class TiendanubeReconciliationCompletionService {
         if (!updated) {
             throw new IllegalStateException("La reconciliación perdió su lease antes de completar: " + run.id());
         }
+
+        workNotifier.notifyWork(TiendanubeWorkType.RECONCILIATION);
     }
 
     @Transactional
@@ -60,6 +65,9 @@ public class TiendanubeReconciliationCompletionService {
 
         if (!updated) {
             log.warn("Ignoring stale Tiendanube reconciliation failure. runId={}", run.id());
+            return;
         }
+
+        workNotifier.notifyWork(TiendanubeWorkType.RECONCILIATION);
     }
 }

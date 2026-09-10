@@ -12,6 +12,9 @@ import com.rodrilang.librarymanager.integrations.tiendanube.management.repositor
 import com.rodrilang.librarymanager.integrations.tiendanube.management.repository.TiendanubeBulkOperationJdbcRepository.DispatchItem;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkSignal;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,8 +22,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -32,25 +36,45 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TiendanubeBulkOperationDispatcher {
 
+    private static final Duration ERROR_RETRY_DELAY = Duration.ofSeconds(30);
+
     private final TiendanubeBulkOperationJdbcRepository bulkRepository;
     private final InventoryRepository inventoryRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeJobEnqueueService enqueueService;
+    private final TiendanubeWorkSignal workSignal;
+    private final TiendanubeWorkNotifier workNotifier;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${tiendanube.bulk.dispatch-batch-size:50}")
     private int batchSize;
 
     @Scheduled(
-            fixedDelayString = "${tiendanube.bulk.dispatch-delay-ms:1000}",
+            fixedDelayString = "${tiendanube.work.tick-delay-ms:1000}",
             initialDelayString = "${tiendanube.bulk.initial-delay-ms:3000}"
     )
-    @Transactional
     public void dispatchPendingItems() {
-        List<DispatchItem> items = bulkRepository.claimPendingItems(batchSize);
+        if (!workSignal.shouldRun(TiendanubeWorkType.BULK)) {
+            return;
+        }
+
+        try {
+            Integer dispatched = transactionTemplate.execute(status -> dispatchNextBatch());
+            if (dispatched != null && dispatched >= Math.max(1, batchSize)) {
+                workNotifier.notifyWork(TiendanubeWorkType.BULK);
+            }
+        } catch (RuntimeException exception) {
+            workSignal.scheduleAt(TiendanubeWorkType.BULK, Instant.now().plus(ERROR_RETRY_DELAY));
+            log.error("Could not dispatch Tiendanube bulk items. A retry was scheduled in memory", exception);
+        }
+    }
+
+    private int dispatchNextBatch() {
+        List<DispatchItem> items = bulkRepository.claimPendingItems(Math.max(1, batchSize));
 
         if (items.isEmpty()) {
-            return;
+            return 0;
         }
 
         Map<Long, Inventory> inventories = inventoryRepository.findAllById(
@@ -79,6 +103,8 @@ public class TiendanubeBulkOperationDispatcher {
                     now
             );
         }
+
+        return items.size();
     }
 
     private void dispatch(

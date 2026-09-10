@@ -67,4 +67,9 @@ public class TiendanubeWebhookClaimService {
 
         return claimed;
     }
+    @Transactional(readOnly = true)
+    public java.util.Optional<Instant> findNextWakeAt() {
+        return repository.findNextWakeAt();
+    }
+
 }

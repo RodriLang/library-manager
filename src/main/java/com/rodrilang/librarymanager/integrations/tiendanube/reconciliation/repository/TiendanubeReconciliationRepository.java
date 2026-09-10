@@ -135,6 +135,41 @@ public class TiendanubeReconciliationRepository {
         ));
     }
 
+    public Optional<Instant> findNextWakeAt(Instant now) {
+        return jdbcTemplate.query("""
+                SELECT MIN(next_wake_at) AS next_wake_at
+                FROM (
+                    SELECT :now AS next_wake_at
+                    FROM tiendanube_reconciliation_runs run
+                    JOIN tiendanube_stores store ON store.id = run.tiendanube_store_id
+                    WHERE run.status = 'PENDING'
+                      AND store.active = TRUE
+                      AND store.token_valid = TRUE
+                      AND store.store_id = run.store_id
+                      AND store.bookstore_id = run.bookstore_id
+                
+                    UNION ALL
+                
+                    SELECT run.lease_expires_at AS next_wake_at
+                    FROM tiendanube_reconciliation_runs run
+                    JOIN tiendanube_stores store ON store.id = run.tiendanube_store_id
+                    WHERE run.status = 'PROCESSING'
+                      AND run.lease_expires_at IS NOT NULL
+                      AND store.active = TRUE
+                      AND store.token_valid = TRUE
+                      AND store.store_id = run.store_id
+                      AND store.bookstore_id = run.bookstore_id
+                ) wakeups
+                """, new MapSqlParameterSource("now", Timestamp.from(now)), rs -> {
+            if (!rs.next()) {
+                return Optional.empty();
+            }
+
+            Timestamp value = rs.getTimestamp("next_wake_at");
+            return value == null ? Optional.empty() : Optional.of(value.toInstant());
+        });
+    }
+
     public List<TiendanubeReconciliationInventorySnapshot> findInventorySnapshots(Long bookstoreId, Long storeId) {
         return jdbcTemplate.query("""
                 SELECT
