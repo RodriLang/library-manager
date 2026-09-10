@@ -33,18 +33,19 @@ public class TiendanubeProductController {
     private final TiendanubeProductSyncService productSyncService;
 
     @PostMapping("/inventories/{inventoryId}/publish")
-    @ResponseStatus(HttpStatus.CREATED)
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public TiendanubePublishResultResponse publishInventory(@PathVariable Long inventoryId) {
         return productService.publishInventory(inventoryId);
     }
 
     @PostMapping("/inventories/{inventoryId}/sync")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public void syncInventory(@PathVariable Long inventoryId) {
         productSyncService.syncPublication(inventoryId);
     }
 
     @PostMapping("/inventories/{inventoryId}/retry")
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public TiendanubeRetryResponse retryInventory(@PathVariable Long inventoryId) {
         return productService.retry(inventoryId);
     }
@@ -79,7 +80,7 @@ public class TiendanubeProductController {
     }
 
     @DeleteMapping("/inventories/{inventoryId}/publication")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public void deletePublication(
             @PathVariable Long inventoryId
     ) {

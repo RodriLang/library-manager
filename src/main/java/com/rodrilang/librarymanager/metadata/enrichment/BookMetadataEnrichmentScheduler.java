@@ -12,7 +12,10 @@ public class BookMetadataEnrichmentScheduler {
 
     private final BookMetadataEnrichmentService enrichmentService;
 
-    @Scheduled(cron = "0 0 3 * * *")
+    @Scheduled(
+            cron = "${anaquel.metadata-enrichment.cron:0 15 3 * * *}",
+            zone = "${app.scheduling.zone:America/Argentina/Buenos_Aires}"
+    )
     public void enrichPendingBooks() {
         int updated = enrichmentService.enrichPendingBooks(100);
         log.info("Enriquecimiento automático finalizado. Libros actualizados: {}", updated);

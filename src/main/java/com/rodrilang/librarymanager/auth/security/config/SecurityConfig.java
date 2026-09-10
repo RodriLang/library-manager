@@ -59,27 +59,11 @@ public class SecurityConfig {
                                 "/api/integrations/tiendanube/oauth/callback"
                         ).permitAll()
 
-                        .requestMatchers(
-                                "/v3/api-docs/**",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html"
-                        ).permitAll()
-
-                        .requestMatchers(
-                                "/actuator/health",
-                                "/actuator/health/**"
-                        ).permitAll()
-
-                        .requestMatchers(
-                                HttpMethod.GET,
-                                "/api/auth/invitations/**"
-                        ).permitAll()
-
-                        .requestMatchers(
-                                HttpMethod.POST,
-                                "/api/auth/invitations/*/register"
-                        ).permitAll()
-
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/invitations/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/invitations/*/register").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/integrations/tiendanube/webhooks").permitAll()
                         .anyRequest().authenticated()
                 )
 

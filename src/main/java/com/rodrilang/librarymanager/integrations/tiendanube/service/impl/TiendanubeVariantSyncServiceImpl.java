@@ -1,287 +1,34 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
-import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
-import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateVariantRequest;
-import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
-import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
-import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeRemoteResourceNotFoundException;
-import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
-import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
-import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeInventoryStateService;
+import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.TiendanubeJobType;
+import com.rodrilang.librarymanager.integrations.tiendanube.job.service.TiendanubeJobRequestService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeVariantSyncService;
-import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
-import com.rodrilang.librarymanager.model.Inventory;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TiendanubeVariantSyncServiceImpl implements TiendanubeVariantSyncService {
 
-    private static final String NO_LINK_INVENTORY_MESSAGE =
-            "Inventario sin vínculo activo con Tiendanube. inventoryId={}";
-
-    private final TiendanubeProductLinkRepository productLinkRepository;
-    private final TiendanubeStoreRepository storeRepository;
-    private final TiendanubeClient client;
-    private final TiendanubeInventoryStateService inventoryStateService;
+    private final TiendanubeJobRequestService jobRequestService;
 
     @Override
-    @Transactional
     public void syncStock(Long inventoryId) {
-        productLinkRepository.findByInventoryIdAndActiveTrue(inventoryId)
-                .ifPresentOrElse(
-                        this::syncStock,
-                        () -> log.info(NO_LINK_INVENTORY_MESSAGE, inventoryId)
-                );
+        jobRequestService.enqueueAutomaticLinked(inventoryId, TiendanubeJobType.SYNC_STOCK);
     }
 
     @Override
-    @Transactional
     public void syncPrice(Long inventoryId) {
-        productLinkRepository.findByInventoryIdAndActiveTrue(inventoryId)
-                .ifPresentOrElse(
-                        this::syncPrice,
-                        () -> log.info(NO_LINK_INVENTORY_MESSAGE, inventoryId)
-                );
+        jobRequestService.enqueueAutomaticLinked(inventoryId, TiendanubeJobType.SYNC_PRICE);
     }
 
     @Override
-    @Transactional
     public void syncVariant(Long inventoryId) {
-        productLinkRepository.findByInventoryIdAndActiveTrue(inventoryId)
-                .ifPresentOrElse(
-                        this::syncVariant,
-                        () -> log.info(NO_LINK_INVENTORY_MESSAGE, inventoryId)
-                );
+        jobRequestService.enqueueAutomaticLinked(inventoryId, TiendanubeJobType.SYNC_PUBLICATION);
     }
 
     @Override
-    @Transactional
     public void retrySync(Long inventoryId) {
-        TiendanubeProductLink link = productLinkRepository.findByInventoryIdAndActiveTrue(inventoryId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "El inventario no tiene un vínculo activo con Tiendanube"
-                ));
-
-        Inventory inventory = link.getInventory();
-
-        if (inventory.getTiendanubeStatus() != TiendanubeInventoryStatus.SYNC_ERROR) {
-            throw new IllegalStateException(
-                    "El inventario no se encuentra en estado SYNC_ERROR"
-            );
-        }
-
-        syncVariantInternal(link, true);
-    }
-
-    private void syncStock(TiendanubeProductLink link) {
-        Inventory inventory = link.getInventory();
-
-        if (!canSync(link)) {
-            return;
-        }
-
-        try {
-            client.updateStock(
-                    link.getTiendanubeStoreId(),
-                    link.getTiendanubeProductId(),
-                    link.getTiendanubeVariantId(),
-                    inventory.getStock()
-            );
-
-            registerSuccess(link);
-
-            log.info(
-                    "Stock sincronizado con Tiendanube. inventoryId={}, stock={}",
-                    inventory.getId(),
-                    inventory.getStock()
-            );
-
-        } catch (RuntimeException exception) {
-            handleFailure(link, exception);
-            throw exception;
-        }
-    }
-
-    private void syncPrice(TiendanubeProductLink link) {
-        Inventory inventory = link.getInventory();
-
-        if (!canSync(link)) {
-            return;
-        }
-
-        try {
-            TiendanubeUpdateVariantRequest request =
-                    new TiendanubeUpdateVariantRequest(
-                            null,
-                            null,
-                            inventory.getSalePrice(),
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null
-                    );
-
-            client.updateVariant(
-                    link.getTiendanubeStoreId(),
-                    link.getTiendanubeProductId(),
-                    link.getTiendanubeVariantId(),
-                    request
-            );
-
-            registerSuccess(link);
-
-            log.info("Precio sincronizado con Tiendanube. inventoryId={}, price={}",
-                    inventory.getId(), inventory.getSalePrice());
-
-        } catch (RuntimeException exception) {
-            handleFailure(link, exception);
-            throw exception;
-        }
-    }
-
-    private void syncVariant(TiendanubeProductLink link) {
-        syncVariantInternal(link, false);
-    }
-
-    private void syncVariantInternal(TiendanubeProductLink link, boolean allowSyncError) {
-        Inventory inventory = link.getInventory();
-
-        if (!canSync(link, allowSyncError)) {
-            return;
-        }
-
-        try {
-            String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
-            String sku = link.getSku();
-
-            if ((sku == null || sku.isBlank()) && isbn != null) {
-                sku = isbn;
-            }
-
-            TiendanubeUpdateVariantRequest request =
-                    new TiendanubeUpdateVariantRequest(
-                            sku,
-                            isbn,
-                            inventory.getSalePrice(),
-                            inventory.getStock(),
-                            true,
-                            inventory.getBook().getWeightGrams(),
-                            inventory.getBook().getWidthCm(),
-                            inventory.getBook().getHeightCm(),
-                            inventory.getBook().getDepthCm()
-                    );
-
-            client.updateVariant(
-                    link.getTiendanubeStoreId(),
-                    link.getTiendanubeProductId(),
-                    link.getTiendanubeVariantId(),
-                    request
-            );
-
-            if (link.getSku() == null || link.getSku().isBlank()) {
-                link.setSku(sku);
-            }
-
-            registerSuccess(link);
-            inventory.setTiendanubeStatus(TiendanubeInventoryStatus.LINKED);
-
-            log.info("Variante sincronizada con Tiendanube. inventoryId={}, price={}, stock={}",
-                    inventory.getId(), inventory.getSalePrice(), inventory.getStock());
-
-        } catch (RuntimeException exception) {
-            handleFailure(link, exception);
-            throw exception;
-        }
-    }
-
-    private boolean canSync(TiendanubeProductLink link) {
-        return canSync(link, false);
-    }
-
-    private boolean canSync(TiendanubeProductLink link, boolean allowSyncError) {
-        Inventory inventory = link.getInventory();
-        TiendanubeInventoryStatus status = inventory.getTiendanubeStatus();
-
-        boolean validStatus =
-                status == TiendanubeInventoryStatus.LINKED
-                        || (allowSyncError
-                        && status == TiendanubeInventoryStatus.SYNC_ERROR);
-
-        if (!validStatus) {
-            log.info(
-                    "Sincronización omitida por estado. inventoryId={}, status={}",
-                    inventory.getId(),
-                    status
-            );
-
-            return false;
-        }
-
-        boolean connected =
-                storeRepository.existsByStoreIdAndActiveTrueAndTokenValidTrue(
-                                link.getTiendanubeStoreId()
-                        );
-
-        if (!connected) {
-            log.info(
-                    "Sincronización omitida porque Tiendanube no está conectada. inventoryId={}, storeId={}",
-                    inventory.getId(),
-                    link.getTiendanubeStoreId()
-            );
-
-            return false;
-        }
-
-        return true;
-    }
-
-    private void registerSuccess(TiendanubeProductLink link) {
-        link.setLastSyncedAt(Instant.now());
-        link.setLastError(null);
-    }
-
-    private void handleFailure(TiendanubeProductLink link, RuntimeException exception) {
-        if (exception instanceof TiendanubeRemoteResourceNotFoundException) {
-            inventoryStateService.updateStatus(
-                    link.getInventory().getId(),
-                    TiendanubeInventoryStatus.REMOTE_PRODUCT_NOT_FOUND
-            );
-
-            log.warn("Producto remoto no encontrado en Tiendanube. inventoryId={}, productId={}, variantId={}",
-                    link.getInventory().getId(),
-                    link.getTiendanubeProductId(),
-                    link.getTiendanubeVariantId());
-
-            return;
-        }
-
-        registerFailure(link, exception);
-    }
-
-    private void registerFailure(TiendanubeProductLink link, RuntimeException exception) {
-        String error = exception.getMessage() != null
-                ? exception.getMessage()
-                : exception.getClass().getSimpleName();
-
-        inventoryStateService.markSyncError(
-                link.getInventory().getId(),
-                link.getId(),
-                error
-        );
-
-        log.error("Error sincronizando variante con Tiendanube. inventoryId={}, productId={}, variantId={}",
-                link.getInventory().getId(),
-                link.getTiendanubeProductId(),
-                link.getTiendanubeVariantId(),
-                exception);
+        jobRequestService.enqueueManualLinked(inventoryId, TiendanubeJobType.SYNC_PUBLICATION);
     }
 }

@@ -63,7 +63,20 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
             Inventory inventory,
             List<TiendanubeProductResponse> products
     ) {
-        List<RemoteInventoryMatch> exactMatches = findExactRemoteMatches(products, inventory);
+        return findRemoteMatch(
+                TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn()),
+                inventory.getBook().getTitleSearch(),
+                products
+        );
+    }
+
+    @Override
+    public RemoteInventoryMatch findRemoteMatch(
+            String isbn,
+            String titleSearch,
+            List<TiendanubeProductResponse> products
+    ) {
+        List<RemoteInventoryMatch> exactMatches = findExactRemoteMatches(products, isbn);
 
         if (exactMatches.size() == 1) {
             return exactMatches.getFirst();
@@ -73,7 +86,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
             return new RemoteInventoryMatch(null, null, TiendanubeMatchType.MULTIPLE_MATCHES);
         }
 
-        List<RemoteInventoryMatch> textualMatches = findTextualRemoteMatches(products, inventory);
+        List<RemoteInventoryMatch> textualMatches = findTextualRemoteMatches(products, titleSearch);
 
         if (textualMatches.size() == 1) {
             return textualMatches.getFirst();
@@ -332,10 +345,8 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
 
     private List<RemoteInventoryMatch> findExactRemoteMatches(
             List<TiendanubeProductResponse> products,
-            Inventory inventory
+            String isbn
     ) {
-        String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
-
         if (isbn == null) {
             return List.of();
         }
@@ -370,12 +381,10 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
 
     private List<RemoteInventoryMatch> findTextualRemoteMatches(
             List<TiendanubeProductResponse> products,
-            Inventory inventory
+            String titleSearch
     ) {
-        Book book = inventory.getBook();
-
         return products.stream()
-                .filter(product -> matchesRemoteProductText(product, book))
+                .filter(product -> matchesRemoteProductText(product, titleSearch))
                 .flatMap(product -> product.variants() == null
                         ? Stream.empty()
                         : product.variants().stream()
@@ -387,7 +396,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
                 .toList();
     }
 
-    private boolean matchesRemoteProductText(TiendanubeProductResponse product, Book book) {
+    private boolean matchesRemoteProductText(TiendanubeProductResponse product, String titleSearch) {
         String productName = getProductName(product);
         String remoteSearchName = TextNormalizer.normalizeForSearch(productName);
 
@@ -395,7 +404,7 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
             return false;
         }
 
-        return titleScore(remoteSearchName, book.getTitleSearch()) >= MIN_TITLE_SCORE;
+        return titleScore(remoteSearchName, titleSearch) >= MIN_TITLE_SCORE;
     }
 
     private BookMatchScore scoreCandidate(

@@ -14,6 +14,7 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
+import com.rodrilang.librarymanager.integrations.tiendanube.event.BookPublicationChangedEvent;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.mapper.BookMapper;
@@ -31,6 +32,7 @@ import com.rodrilang.librarymanager.util.PageableUtils;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -58,6 +60,7 @@ public class BookServiceImpl implements BookService {
     private final BookstoreContext bookstoreContext;
     private final IsbnService isbnService;
     private final ProviderBookService providerBookService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     @Override
@@ -158,7 +161,11 @@ public class BookServiceImpl implements BookService {
             book.setAuthors(authorService.getEntitiesByIds(request.authorIds()));
         }
 
-        return toDetailResponse(bookRepository.save(book));
+        Book saved = bookRepository.save(book);
+
+        eventPublisher.publishEvent(new BookPublicationChangedEvent(saved.getId()));
+
+        return toDetailResponse(saved);
     }
 
     @Transactional(readOnly = true)

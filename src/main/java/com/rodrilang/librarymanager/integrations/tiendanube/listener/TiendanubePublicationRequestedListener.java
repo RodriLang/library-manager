@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.listener;
 
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
-import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductService;
+import com.rodrilang.librarymanager.integrations.tiendanube.job.service.TiendanubeJobRequestService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,15 +13,12 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class TiendanubePublicationRequestedListener {
 
-    private final TiendanubeProductService productService;
+    private final TiendanubeJobRequestService jobRequestService;
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT, fallbackExecution = true)
     public void handle(TiendanubePublicationRequestedEvent event) {
-        try {
-            productService.publishInventory(event.inventoryId());
-        } catch (RuntimeException exception) {
-            log.error("No se pudo publicar automáticamente el inventario en Tiendanube. inventoryId={}",
-                    event.inventoryId(), exception);
-        }
+        jobRequestService.enqueueAutomaticPublish(event.inventoryId())
+                .ifPresent(jobId -> log.debug("Tiendanube publication job enqueued. jobId={} inventoryId={}",
+                        jobId, event.inventoryId()));
     }
 }

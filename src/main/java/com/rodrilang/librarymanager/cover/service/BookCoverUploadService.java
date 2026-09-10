@@ -34,43 +34,24 @@ public class BookCoverUploadService {
     private final ImageFolderResolver imageFolderResolver;
     private final ImageStorageService imageStorageService;
 
-    public BookCoverResponse uploadManualCover(
-            Long bookId,
-            MultipartFile file
-    ) {
-        ValidatedImage validatedImage =
-                imageValidator.validate(file);
+    public BookCoverResponse uploadManualCover(Long bookId, MultipartFile file) {
 
-        String contentHash = imageHashService.sha256(
-                validatedImage.content()
-        );
+        ValidatedImage validatedImage = imageValidator.validate(file);
 
-        Optional<BookCover> duplicate =
-                bookCoverRepository.findByBookIdAndContentHash(
-                        bookId,
-                        contentHash
-                );
+        String contentHash = imageHashService.sha256(validatedImage.content());
+
+        Optional<BookCover> duplicate = bookCoverRepository.findByBookIdAndContentHash(bookId, contentHash);
 
         if (duplicate.isPresent()) {
-            return handleDuplicate(
-                    bookId,
-                    duplicate.get()
-            );
+            return handleDuplicate(bookId, duplicate.get());
         }
 
-        StoredImage storedImage = uploadToStorage(
-                bookId,
-                validatedImage
-        );
+        StoredImage storedImage = uploadToStorage(bookId, validatedImage);
 
         try {
-            imageValidator.validateStoredDimensions(
-                    storedImage.width(),
-                    storedImage.height()
-            );
+            imageValidator.validateStoredDimensions(storedImage.width(), storedImage.height());
 
-            BookCover savedCover =
-                    persistenceService.persistNewPrimaryCover(
+            BookCover savedCover = persistenceService.persistNewPrimaryCover(
                             bookId,
                             storedImage,
                             BookCoverSource.MANUAL_UPLOAD,
@@ -79,36 +60,26 @@ public class BookCoverUploadService {
                     );
 
             return bookCoverMapper.toResponse(savedCover, bookId);
+
         } catch (RuntimeException exception) {
             deleteQuietly(storedImage.publicId());
             throw exception;
         }
     }
 
-    private BookCoverResponse handleDuplicate(
-            Long bookId,
-            BookCover existingCover
-    ) {
+    private BookCoverResponse handleDuplicate(Long bookId, BookCover existingCover) {
+
         BookCover selectedCover = existingCover;
 
-        if (
-                existingCover.isAvailable()
-                        && !existingCover.isPrimaryCover()
-        ) {
-            selectedCover =
-                    persistenceService.selectExistingAsPrimary(
-                            bookId,
-                            existingCover.getId()
-                    );
+        if (existingCover.isAvailable() && !existingCover.isPrimaryCover()) {
+            selectedCover = persistenceService.selectExistingAsPrimary(bookId, existingCover.getId());
         }
 
         return bookCoverMapper.toResponse(selectedCover, bookId);
     }
 
-    private StoredImage uploadToStorage(
-            Long bookId,
-            ValidatedImage validatedImage
-    ) {
+    private StoredImage uploadToStorage(Long bookId, ValidatedImage validatedImage) {
+
         String folder = imageFolderResolver.bookCovers(bookId);
 
         ImageUploadRequest request =
@@ -126,11 +97,7 @@ public class BookCoverUploadService {
         try {
             imageStorageService.delete(publicId);
         } catch (RuntimeException cleanupException) {
-            log.error(
-                    "No se pudo eliminar la imagen huérfana {}",
-                    publicId,
-                    cleanupException
-            );
+            log.error("No se pudo eliminar la imagen huérfana {}", publicId, cleanupException);
         }
     }
 }

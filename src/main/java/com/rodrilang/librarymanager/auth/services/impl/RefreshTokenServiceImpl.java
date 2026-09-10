@@ -61,7 +61,6 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
                 .orElseThrow(() -> new InvalidTokenException("El refresh token es inválido o fue revocado."));
 
         if (!currentToken.getExpiresAt().isAfter(now)) {
-
             throw new InvalidTokenException("El refresh token ha vencido.");
         }
 
@@ -97,36 +96,23 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
     @Override
     public void revokeAllForUser(Long userId) {
-        int revokedTokens =
-                refreshTokenRepository.revokeAllByUserId(userId, Instant.now());
-
-        log.debug(
-                "All refresh tokens revoked for userId={}. count={}",
-                userId,
-                revokedTokens
-        );
+        int revokedTokens = refreshTokenRepository.revokeAllByUserId(userId, Instant.now());
+        log.debug("All refresh tokens revoked for userId={}. count={}", userId, revokedTokens);
     }
 
     @Override
     public void revokeAllForBookstore(Long bookstoreId) {
-        int revokedTokens =
-                refreshTokenRepository.revokeAllByBookstoreId(
-                        bookstoreId,
-                        Instant.now()
-                );
-
-        log.debug(
-                "All refresh tokens revoked for bookstoreId={}. count={}",
-                bookstoreId,
-                revokedTokens
-        );
+        int revokedTokens = refreshTokenRepository.revokeAllByBookstoreId(bookstoreId, Instant.now());
+        log.debug("All refresh tokens revoked for bookstoreId={}. count={}", bookstoreId, revokedTokens);
     }
 
     @Override
-    @Scheduled(cron = "0 0 2 * * *")
+    @Scheduled(
+            cron = "${auth.refresh-token-cleanup.cron:0 0 3 * * *}",
+            zone = "${app.scheduling.zone:America/Argentina/Buenos_Aires}"
+    )
     public void cleanupExpiredTokens() {
         int deletedTokens = refreshTokenRepository.deleteByExpiresAtBefore(Instant.now());
-
         log.debug("Expired refresh tokens deleted. count={}", deletedTokens);
     }
 
@@ -151,7 +137,6 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
                 .build();
 
         refreshTokenRepository.save(refreshToken);
-
         log.debug("Refresh token generated for userId={}", user.getId());
 
         return rawToken;
