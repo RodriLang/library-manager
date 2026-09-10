@@ -12,6 +12,9 @@ import com.rodrilang.librarymanager.integrations.tiendanube.management.repositor
 import com.rodrilang.librarymanager.integrations.tiendanube.management.repository.TiendanubeBulkOperationJdbcRepository.DispatchItem;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.enums.TiendanubeWorkType;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkNotifier;
+import com.rodrilang.librarymanager.integrations.tiendanube.work.service.TiendanubeWorkSignal;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
@@ -21,6 +24,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Optional;
@@ -34,18 +38,52 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TiendanubeBulkOperationDispatcherTest {
 
-    @Mock private TiendanubeBulkOperationJdbcRepository bulkRepository;
-    @Mock private InventoryRepository inventoryRepository;
-    @Mock private TiendanubeProductLinkRepository productLinkRepository;
-    @Mock private TiendanubeStoreRepository storeRepository;
-    @Mock private TiendanubeJobEnqueueService enqueueService;
-    @Mock private Inventory inventory;
-    @Mock private Bookstore bookstore;
+    @Mock
+    private TiendanubeBulkOperationJdbcRepository bulkRepository;
+
+    @Mock
+    private InventoryRepository inventoryRepository;
+
+    @Mock
+    private TiendanubeProductLinkRepository productLinkRepository;
+
+    @Mock
+    private TiendanubeStoreRepository storeRepository;
+
+    @Mock
+    private TiendanubeJobEnqueueService enqueueService;
+
+    @Mock
+    private TiendanubeWorkSignal workSignal;
+
+    @Mock
+    private TiendanubeWorkNotifier workNotifier;
+
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
+    @Mock
+    private Inventory inventory;
+
+    @Mock
+    private Bookstore bookstore;
 
     @Test
     void publishCreatesBulkJobForUnlinkedInventory() {
-        DispatchItem item = new DispatchItem(1L, 10L, 20L, 2L, 30L, 40L, TiendanubeBulkAction.PUBLISH);
+        DispatchItem item = new DispatchItem(
+                1L,
+                10L,
+                20L,
+                2L,
+                30L,
+                40L,
+                TiendanubeBulkAction.PUBLISH
+        );
+
         TiendanubeStore store = store();
+
+        when(workSignal.shouldRun(TiendanubeWorkType.BULK)).thenReturn(true);
+        executeTransactionCallback();
 
         when(bulkRepository.claimPendingItems(10)).thenReturn(List.of(item));
         when(inventoryRepository.findAllById(List.of(10L))).thenReturn(List.of(inventory));
@@ -55,16 +93,23 @@ class TiendanubeBulkOperationDispatcherTest {
         when(bookstore.getId()).thenReturn(2L);
         when(productLinkRepository.findAllByInventoryIdInAndActiveTrue(any())).thenReturn(List.of());
         when(storeRepository.findAllById(List.of(30L))).thenReturn(List.of(store));
-        when(bulkRepository.findCoalescableJobId(10L, "PUBLISH", 2L, 30L, 40L)).thenReturn(Optional.empty());
+        when(bulkRepository.findCoalescableJobId(10L, "PUBLISH", 2L, 30L, 40L))
+                .thenReturn(Optional.empty());
         when(enqueueService.enqueue(any())).thenReturn(99L);
 
         dispatcher().dispatchPendingItems();
 
-        ArgumentCaptor<TiendanubeJobEnqueueCommand> captor = ArgumentCaptor.forClass(TiendanubeJobEnqueueCommand.class);
+        ArgumentCaptor<TiendanubeJobEnqueueCommand> captor =
+                ArgumentCaptor.forClass(TiendanubeJobEnqueueCommand.class);
+
         verify(enqueueService).enqueue(captor.capture());
         verify(inventory).setTiendanubeStatus(TiendanubeInventoryStatus.PENDING_PUBLICATION);
-        verify(bulkRepository).markQueued(org.mockito.ArgumentMatchers.eq(1L),
-                org.mockito.ArgumentMatchers.eq(99L), any());
+
+        verify(bulkRepository).markQueued(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(99L),
+                any()
+        );
 
         assertEquals(TiendanubeJobType.PUBLISH, captor.getValue().type());
         assertEquals(TiendanubeJobSource.BULK, captor.getValue().source());
@@ -72,8 +117,18 @@ class TiendanubeBulkOperationDispatcherTest {
 
     @Test
     void unlinkIsLocalAndDoesNotCreateRemoteJob() {
-        DispatchItem item = new DispatchItem(1L, 10L, 20L, 2L, 30L, 40L, TiendanubeBulkAction.UNLINK);
+        DispatchItem item = new DispatchItem(
+                1L,
+                10L,
+                20L,
+                2L,
+                30L,
+                40L,
+                TiendanubeBulkAction.UNLINK
+        );
+
         TiendanubeStore store = store();
+
         TiendanubeProductLink link = TiendanubeProductLink.builder()
                 .inventory(inventory)
                 .tiendanubeStoreId(40L)
@@ -81,6 +136,9 @@ class TiendanubeBulkOperationDispatcherTest {
                 .tiendanubeVariantId(60L)
                 .active(true)
                 .build();
+
+        when(workSignal.shouldRun(TiendanubeWorkType.BULK)).thenReturn(true);
+        executeTransactionCallback();
 
         when(bulkRepository.claimPendingItems(10)).thenReturn(List.of(item));
         when(inventoryRepository.findAllById(List.of(10L))).thenReturn(List.of(inventory));
@@ -96,7 +154,23 @@ class TiendanubeBulkOperationDispatcherTest {
         verify(enqueueService, never()).enqueue(any());
         verify(inventory).setTiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED);
         verify(inventory).setTiendanubePriceSyncEnabled(false);
-        verify(bulkRepository).markCompleted(org.mockito.ArgumentMatchers.eq(1L), any());
+
+        verify(bulkRepository).markCompleted(
+                org.mockito.ArgumentMatchers.eq(1L),
+                any()
+        );
+    }
+
+    @Test
+    void doesNotQueryDatabaseWhenNoBulkWorkIsSignaled() {
+        when(workSignal.shouldRun(TiendanubeWorkType.BULK)).thenReturn(false);
+
+        dispatcher().dispatchPendingItems();
+
+        verify(bulkRepository, never()).claimPendingItems(any(Integer.class));
+        verify(transactionTemplate, never()).execute(any());
+        verify(enqueueService, never()).enqueue(any());
+        verify(workNotifier, never()).notifyWork(any());
     }
 
     private TiendanubeBulkOperationDispatcher dispatcher() {
@@ -105,10 +179,24 @@ class TiendanubeBulkOperationDispatcherTest {
                 inventoryRepository,
                 productLinkRepository,
                 storeRepository,
-                enqueueService
+                enqueueService,
+                workSignal,
+                workNotifier,
+                transactionTemplate
         );
+
         ReflectionTestUtils.setField(dispatcher, "batchSize", 10);
+
         return dispatcher;
+    }
+
+    private void executeTransactionCallback() {
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            org.springframework.transaction.support.TransactionCallback<?> callback =
+                    invocation.getArgument(0);
+
+            return callback.doInTransaction(null);
+        });
     }
 
     private TiendanubeStore store() {
