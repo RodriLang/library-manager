@@ -6,8 +6,10 @@ import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
+import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
+import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 import com.rodrilang.librarymanager.service.InventoryService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -74,13 +76,30 @@ public class InventoryController {
     }
 
     @GetMapping
-    public ResponseEntity<PageResponse<InventorySummaryResponse>> getAll(
+    public ResponseEntity<PageResponse<InventorySummaryResponse>> find(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean force,
+            @RequestParam(defaultValue = "ALL") InventoryStockFilter stock,
             @ParameterObject
-            @PageableDefault(size = 20)
+            @PageableDefault(size = 30)
             Pageable pageable
     ) {
         return ResponseEntity.ok(
-                PageResponse.of(inventoryService.getAll(pageable))
+                PageResponse.of(
+                        inventoryService.find(
+                                q,
+                                force,
+                                stock,
+                                pageable
+                        )
+                )
+        );
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<InventoryStockSummaryResponse> getSummary() {
+        return ResponseEntity.ok(
+                inventoryService.getStockSummary()
         );
     }
 
@@ -99,19 +118,6 @@ public class InventoryController {
     ) {
         return ResponseEntity.ok(
                 inventoryService.getByBookId(bookId)
-        );
-    }
-
-    @GetMapping("/search")
-    public ResponseEntity<PageResponse<InventorySummaryResponse>> search(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "false") boolean force,
-            @ParameterObject
-            @PageableDefault(size = 20)
-            Pageable pageable
-    ) {
-        return ResponseEntity.ok(
-                PageResponse.of(inventoryService.search(q.trim(), force, pageable))
         );
     }
 

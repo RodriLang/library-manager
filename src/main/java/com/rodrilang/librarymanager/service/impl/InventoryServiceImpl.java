@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
+import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
@@ -15,6 +16,7 @@ import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
+import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
@@ -36,6 +38,7 @@ import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurch
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
 import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.repository.projection.InventoryStockSummaryProjection;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.InventoryService;
@@ -73,7 +76,8 @@ public class InventoryServiceImpl implements InventoryService {
 
     private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of(
             "title", "book.titleSort",
-            "salePrice", "salePrice"
+            "salePrice", "salePrice",
+            "stock", "stock"
     );
 
     @Transactional
@@ -351,30 +355,32 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Transactional(readOnly = true)
     @Override
-    public Page<InventorySummaryResponse> getAll(Pageable pageable) {
-        pageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
+    public Page<InventorySummaryResponse> find(
+            String query,
+            boolean force,
+            InventoryStockFilter stockFilter,
+            Pageable pageable
+    ) {
+        InventoryStockFilter resolvedStockFilter =
+                stockFilter != null ? stockFilter : InventoryStockFilter.ALL;
 
-        Page<Inventory> inventory = inventoryRepository.findAllByBookstoreIdAndActiveTrue(
-                bookstoreContext.getCurrentBookstoreId(),
-                pageable
-        );
+        Pageable normalizedPageable =
+                PageableUtils.mapSortProperties(
+                        pageable,
+                        INVENTORY_SORT_MAPPING
+                );
 
-        return toSummaryResponsePage(inventory);
-    }
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
-    @Transactional(readOnly = true)
-    @Override
-    public Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable) {
         if (query == null || query.isBlank()) {
-            Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
-
-            Page<Inventory> inventory = inventoryRepository.findAllByBookstoreIdAndActiveTrue(
-                    bookstoreContext.getCurrentBookstoreId(),
-                    normalizedPageable
-            );
+            Page<Inventory> inventory =
+                    inventoryRepository.findPage(
+                            bookstoreId,
+                            resolvedStockFilter.name(),
+                            normalizedPageable
+                    );
 
             return toSummaryResponsePage(inventory);
-
         }
 
         String normalizedQuery = query.trim();
@@ -386,40 +392,43 @@ public class InventoryServiceImpl implements InventoryService {
             int minimumLength = identifierQuery ? 8 : 3;
 
             if (normalizedQuery.length() < minimumLength) {
-                return Page.empty(pageable);
+                return Page.empty(normalizedPageable);
             }
         }
 
         Page<Inventory> inventory;
 
-        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-
         if (identifierQuery) {
-            String normalizedIdentifier =
-                    normalizeSearchIdentifier(normalizedQuery);
-
-            if (normalizedIdentifier == null) {
-                return Page.empty(pageable);
-            }
-
-            inventory = inventoryRepository.searchByIsbn(
+            inventory = searchByIdentifier(
                     bookstoreId,
-                    normalizedIdentifier,
-                    pageable
+                    normalizedQuery,
+                    resolvedStockFilter,
+                    normalizedPageable
             );
         } else {
-            String searchQuery = TextNormalizer.normalizeForSearch(normalizedQuery);
-            String fullTextQuery = TextNormalizer.normalizeForFullTextSearch(normalizedQuery);
-
-            inventory = inventoryRepository.searchText(
+            inventory = searchByText(
                     bookstoreId,
-                    searchQuery,
-                    fullTextQuery,
-                    pageable
+                    normalizedQuery,
+                    resolvedStockFilter,
+                    normalizedPageable
             );
         }
 
         return toSummaryResponsePage(inventory);
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public InventoryStockSummaryResponse getStockSummary() {
+        InventoryStockSummaryProjection summary =
+                inventoryRepository.getStockSummary(bookstoreContext.getCurrentBookstoreId());
+
+        return new InventoryStockSummaryResponse(
+                summary.getTotal(),
+                summary.getAvailable(),
+                summary.getLowStock(),
+                summary.getOutOfStock()
+        );
     }
 
     @Transactional
@@ -555,6 +564,48 @@ public class InventoryServiceImpl implements InventoryService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
                 ));
+    }
+
+    private Page<Inventory> searchByIdentifier(
+            Long bookstoreId,
+            String query,
+            InventoryStockFilter stockFilter,
+            Pageable pageable
+    ) {
+        String normalizedIdentifier =
+                normalizeSearchIdentifier(query);
+
+        if (normalizedIdentifier == null) {
+            return Page.empty(pageable);
+        }
+
+        return inventoryRepository.searchByIsbn(
+                bookstoreId,
+                normalizedIdentifier,
+                stockFilter.name(),
+                pageable
+        );
+    }
+
+    private Page<Inventory> searchByText(
+            Long bookstoreId,
+            String query,
+            InventoryStockFilter stockFilter,
+            Pageable pageable
+    ) {
+        String searchQuery =
+                TextNormalizer.normalizeForSearch(query);
+
+        String fullTextQuery =
+                TextNormalizer.normalizeForFullTextSearch(query);
+
+        return inventoryRepository.searchText(
+                bookstoreId,
+                searchQuery,
+                fullTextQuery,
+                stockFilter.name(),
+                pageable
+        );
     }
 
     private String normalizeSearchIdentifier(String value) {

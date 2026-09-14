@@ -6,7 +6,9 @@ import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
+import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
+import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -26,9 +28,9 @@ public interface InventoryService {
 
     InventoryDetailResponse getByBookId(Long bookId);
 
-    Page<InventorySummaryResponse> getAll(Pageable pageable);
+    Page<InventorySummaryResponse> find(String query, boolean force, InventoryStockFilter stockFilter, Pageable pageable);
 
-    Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable);
+    InventoryStockSummaryResponse getStockSummary();
 
     void deactivate(Long bookId);
 

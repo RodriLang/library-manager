@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.repository;
 
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.repository.projection.InventoryStockSummaryProjection;
 import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -18,14 +19,28 @@ import java.util.Optional;
 
 public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
-    boolean existsByBookIdAndBookstoreIdAndCondition(Long bookId, Long bookStoreId, BookCondition condition);
+    boolean existsByBookIdAndBookstoreIdAndCondition(
+            Long bookId,
+            Long bookstoreId,
+            BookCondition condition
+    );
 
     boolean existsByBookId(Long bookId);
 
-    Optional<Inventory> findByBookIdAndBookstoreIdAndCondition(Long bookId, Long bookstoreId, BookCondition condition);
+    Optional<Inventory> findByBookIdAndBookstoreIdAndCondition(
+            Long bookId,
+            Long bookstoreId,
+            BookCondition condition
+    );
 
-    @EntityGraph(attributePaths = {"book", "bookstore"})
-    List<Inventory> findAllByBookstoreIdAndCondition(Long bookstoreId, BookCondition condition);
+    @EntityGraph(attributePaths = {
+            "book",
+            "bookstore"
+    })
+    List<Inventory> findAllByBookstoreIdAndCondition(
+            Long bookstoreId,
+            BookCondition condition
+    );
 
     @EntityGraph(attributePaths = {
             "book",
@@ -47,6 +62,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             JOIN i.book b
             WHERE i.bookstore.id = :bookstoreId
               AND i.active = true
+              AND b.active = true
               AND (
                     b.isbn13 = :isbn13
                     OR (:isbn10 IS NOT NULL AND b.isbn10 = :isbn10)
@@ -81,11 +97,67 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             "book.publisher",
             "book.authors"
     })
-    Page<Inventory> findAllByBookstoreIdAndActiveTrue(
-            Long bookstoreId,
+    @Query("""
+            SELECT i
+            FROM Inventory i
+            JOIN i.book b
+            WHERE i.bookstore.id = :bookstoreId
+              AND i.active = true
+              AND b.active = true
+              AND (
+                    :stockFilter = 'ALL'
+                    OR (
+                        :stockFilter = 'AVAILABLE'
+                        AND i.stock > i.minimumStock
+                    )
+                    OR (
+                        :stockFilter = 'LOW'
+                        AND i.stock > 0
+                        AND i.stock <= i.minimumStock
+                    )
+                    OR (
+                        :stockFilter = 'OUT'
+                        AND i.stock = 0
+                    )
+              )
+            """)
+    Page<Inventory> findPage(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("stockFilter") String stockFilter,
             Pageable pageable
     );
 
+    @Query(
+            value = """
+                    SELECT
+                        COUNT(*) AS total,
+                    
+                        COUNT(*) FILTER (
+                            WHERE i.stock > i.minimum_stock
+                        ) AS available,
+                    
+                        COUNT(*) FILTER (
+                            WHERE i.stock > 0
+                              AND i.stock <= i.minimum_stock
+                        ) AS "lowStock",
+                    
+                        COUNT(*) FILTER (
+                            WHERE i.stock = 0
+                        ) AS "outOfStock"
+                    
+                    FROM inventory i
+                    JOIN books b
+                      ON b.id = i.book_id
+                    
+                    WHERE i.bookstore_id = :bookstoreId
+                      AND i.active = true
+                      AND b.active = true
+                    """,
+            nativeQuery = true
+    )
+    InventoryStockSummaryProjection getStockSummary(
+            @Param("bookstoreId") Long bookstoreId
+    );
 
     @EntityGraph(attributePaths = {
             "book",
@@ -117,9 +189,9 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
-            select i
-            from Inventory i
-            where i.id = :id
+            SELECT i
+            FROM Inventory i
+            WHERE i.id = :id
             """)
     Optional<Inventory> findByIdForUpdate(@Param("id") Long id);
 
@@ -148,10 +220,29 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                     WHERE i.active = true
                       AND b.active = true
                       AND i.bookstore_id = :bookstoreId
+                    
+                      AND (
+                            :stockFilter = 'ALL'
+                            OR (
+                                :stockFilter = 'AVAILABLE'
+                                AND i.stock > i.minimum_stock
+                            )
+                            OR (
+                                :stockFilter = 'LOW'
+                                AND i.stock > 0
+                                AND i.stock <= i.minimum_stock
+                            )
+                            OR (
+                                :stockFilter = 'OUT'
+                                AND i.stock = 0
+                            )
+                      )
+                    
                       AND (
                             b.isbn_13 LIKE concat(:query, '%')
                             OR b.isbn_10 LIKE concat(:query, '%')
                       )
+                    
                     ORDER BY
                         CASE
                             WHEN b.isbn_13 = :query
@@ -169,6 +260,24 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                     WHERE i.active = true
                       AND b.active = true
                       AND i.bookstore_id = :bookstoreId
+                    
+                      AND (
+                            :stockFilter = 'ALL'
+                            OR (
+                                :stockFilter = 'AVAILABLE'
+                                AND i.stock > i.minimum_stock
+                            )
+                            OR (
+                                :stockFilter = 'LOW'
+                                AND i.stock > 0
+                                AND i.stock <= i.minimum_stock
+                            )
+                            OR (
+                                :stockFilter = 'OUT'
+                                AND i.stock = 0
+                            )
+                      )
+                    
                       AND (
                             b.isbn_13 LIKE concat(:query, '%')
                             OR b.isbn_10 LIKE concat(:query, '%')
@@ -179,12 +288,39 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     Page<Inventory> searchByIsbn(
             @Param("bookstoreId") Long bookstoreId,
             @Param("query") String query,
+            @Param("stockFilter") String stockFilter,
             Pageable pageable
     );
 
     @Query(
             value = """
-                    WITH matches AS (
+                    WITH filtered_inventory AS (
+                        SELECT i.*
+                        FROM inventory i
+                        JOIN books b ON b.id = i.book_id
+                    
+                        WHERE i.active = true
+                          AND b.active = true
+                          AND i.bookstore_id = :bookstoreId
+                          AND (
+                                :stockFilter = 'ALL'
+                                OR (
+                                    :stockFilter = 'AVAILABLE'
+                                    AND i.stock > i.minimum_stock
+                                )
+                                OR (
+                                    :stockFilter = 'LOW'
+                                    AND i.stock > 0
+                                    AND i.stock <= i.minimum_stock
+                                )
+                                OR (
+                                    :stockFilter = 'OUT'
+                                    AND i.stock = 0
+                                )
+                          )
+                    ),
+                    
+                    matches AS (
                         SELECT
                             i.id AS inventory_id,
                             CASE
@@ -192,25 +328,19 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                                 WHEN b.title_search LIKE concat(:query, '%') THEN 2
                                 ELSE 3
                             END AS priority
-                        FROM inventory i
+                        FROM filtered_inventory i
                         JOIN books b ON b.id = i.book_id
-                        WHERE i.active = true
-                          AND b.active = true
-                          AND i.bookstore_id = :bookstoreId
-                          AND to_tsvector('simple', b.title_search)
-                                @@ to_tsquery('simple', :fullTextQuery)
+                        WHERE to_tsvector('simple', b.title_search)
+                              @@ to_tsquery('simple', :fullTextQuery)
                     
                         UNION ALL
                     
                         SELECT
                             i.id AS inventory_id,
                             4 AS priority
-                        FROM inventory i
+                        FROM filtered_inventory i
                         JOIN books b ON b.id = i.book_id
-                        WHERE i.active = true
-                          AND b.active = true
-                          AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(
+                        WHERE immutable_unaccent(
                                   lower(coalesce(b.subtitle, ''))
                               )
                               LIKE concat(
@@ -226,11 +356,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                             5 AS priority
                         FROM publishers p
                         JOIN books b ON b.publisher_id = p.id
-                        JOIN inventory i ON i.book_id = b.id
-                        WHERE i.active = true
-                          AND b.active = true
-                          AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(lower(p.name))
+                        JOIN filtered_inventory i ON i.book_id = b.id
+                        WHERE immutable_unaccent(lower(p.name))
                               LIKE concat(
                                   '%',
                                   immutable_unaccent(lower(:query)),
@@ -253,11 +380,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                         FROM authors a
                         JOIN book_authors ba ON ba.author_id = a.id
                         JOIN books b ON b.id = ba.book_id
-                        JOIN inventory i ON i.book_id = b.id
-                        WHERE i.active = true
-                          AND b.active = true
-                          AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(lower(a.name))
+                        JOIN filtered_inventory i ON i.book_id = b.id
+                        WHERE immutable_unaccent(lower(a.name))
                               LIKE concat(
                                   '%',
                                   immutable_unaccent(lower(:query)),
@@ -277,30 +401,50 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                     JOIN books b ON b.id = i.book_id
                     ORDER BY
                         rm.priority ASC,
-                        coalesce(b.title_sort, b.title) ASC,
+                        COALESCE(b.title_sort, b.title) ASC,
                         i.id ASC
                     """,
             countQuery = """
-                    SELECT COUNT(DISTINCT matches.inventory_id)
-                    FROM (
-                        SELECT i.id AS inventory_id
+                    WITH filtered_inventory AS (
+                        SELECT i.*
                         FROM inventory i
                         JOIN books b ON b.id = i.book_id
                         WHERE i.active = true
                           AND b.active = true
                           AND i.bookstore_id = :bookstoreId
-                          AND to_tsvector('simple', b.title_search)
-                                @@ to_tsquery('simple', :fullTextQuery)
+                          AND (
+                                :stockFilter = 'ALL'
+                                OR (
+                                    :stockFilter = 'AVAILABLE'
+                                    AND i.stock > i.minimum_stock
+                                )
+                                OR (
+                                    :stockFilter = 'LOW'
+                                    AND i.stock > 0
+                                    AND i.stock <= i.minimum_stock
+                                )
+                                OR (
+                                    :stockFilter = 'OUT'
+                                    AND i.stock = 0
+                                )
+                          )
+                    ),
+                    
+                    matches AS (
+                        SELECT i.id AS inventory_id
+                        FROM filtered_inventory i
+                        JOIN books b
+                          ON b.id = i.book_id
+                    
+                        WHERE to_tsvector('simple', b.title_search)
+                              @@ to_tsquery('simple', :fullTextQuery)
                     
                         UNION ALL
                     
                         SELECT i.id AS inventory_id
-                        FROM inventory i
+                        FROM filtered_inventory i
                         JOIN books b ON b.id = i.book_id
-                        WHERE i.active = true
-                          AND b.active = true
-                          AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(
+                        WHERE immutable_unaccent(
                                   lower(coalesce(b.subtitle, ''))
                               )
                               LIKE concat(
@@ -314,11 +458,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                         SELECT i.id AS inventory_id
                         FROM publishers p
                         JOIN books b ON b.publisher_id = p.id
-                        JOIN inventory i ON i.book_id = b.id
-                        WHERE i.active = true
-                          AND b.active = true
-                          AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(lower(p.name))
+                        JOIN filtered_inventory i ON i.book_id = b.id
+                        WHERE immutable_unaccent(lower(p.name))
                               LIKE concat(
                                   '%',
                                   immutable_unaccent(lower(:query)),
@@ -331,17 +472,16 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                         FROM authors a
                         JOIN book_authors ba ON ba.author_id = a.id
                         JOIN books b ON b.id = ba.book_id
-                        JOIN inventory i ON i.book_id = b.id
-                        WHERE i.active = true
-                          AND b.active = true
-                          AND i.bookstore_id = :bookstoreId
-                          AND immutable_unaccent(lower(a.name))
+                        JOIN filtered_inventory i ON i.book_id = b.id
+                        WHERE immutable_unaccent(lower(a.name))
                               LIKE concat(
                                   '%',
                                   immutable_unaccent(lower(:query)),
                                   '%'
                               )
-                    ) matches
+                    )
+                    SELECT COUNT(DISTINCT inventory_id)
+                    FROM matches
                     """,
             nativeQuery = true
     )
@@ -349,6 +489,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             @Param("bookstoreId") Long bookstoreId,
             @Param("query") String query,
             @Param("fullTextQuery") String fullTextQuery,
+            @Param("stockFilter") String stockFilter,
             Pageable pageable
     );
 
