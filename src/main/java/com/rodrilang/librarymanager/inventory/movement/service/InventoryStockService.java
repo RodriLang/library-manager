@@ -1,21 +1,12 @@
 package com.rodrilang.librarymanager.inventory.movement.service;
 
-import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
-import com.rodrilang.librarymanager.enums.InventoryMovementSource;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
-import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 
 public interface InventoryStockService {
 
-    InventoryStockChangeResult changeStock(
-            Long inventoryId,
-            InventoryStockChangeCommand command
-    );
+    InventoryStockChangeResult changeStock(Long inventoryId, InventoryStockChangeCommand command);
 
-    Inventory adjustStockTo(
-            Long inventoryId,
-            int targetStock,
-            InventoryMovementSource source,
-            String note
-    );
+    InventoryStockChangeResult adjustStockTo(Long inventoryId, InventoryStockAdjustmentCommand command);
 }

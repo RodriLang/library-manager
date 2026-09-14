@@ -22,6 +22,11 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     boolean existsByBookId(Long bookId);
 
+    Optional<Inventory> findByBookIdAndBookstoreIdAndCondition(Long bookId, Long bookstoreId, BookCondition condition);
+
+    @EntityGraph(attributePaths = {"book", "bookstore"})
+    List<Inventory> findAllByBookstoreIdAndCondition(Long bookstoreId, BookCondition condition);
+
     @EntityGraph(attributePaths = {
             "book",
             "book.authors",
@@ -51,6 +56,15 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             @Param("bookstoreId") Long bookstoreId,
             @Param("isbn13") String isbn13,
             @Param("isbn10") String isbn10
+    );
+
+    @EntityGraph(attributePaths = {
+            "book"
+    })
+    List<Inventory> findAllByBookstoreIdAndBookIdInAndCondition(
+            Long bookstoreId,
+            Collection<Long> bookIds,
+            BookCondition condition
     );
 
     @EntityGraph(attributePaths = {
