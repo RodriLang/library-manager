@@ -23,6 +23,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInve
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.inventory.movement.repository.InventoryMovementRepository;
@@ -257,10 +258,14 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory adjusted =
                 inventoryStockService.adjustStockTo(
                         inventory.getId(),
-                        request.stock(),
-                        InventoryMovementSource.MANUAL,
-                        "Stock informado al reactivar el inventario"
-                );
+                        new InventoryStockAdjustmentCommand(
+                                request.stock(),
+                                InventoryMovementSource.MANUAL,
+                                null,
+                                null,
+                                "Stock informado al reactivar el inventario"
+                        )
+                ).inventory();
 
         if (adjusted.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
             eventPublisher.publishEvent(
