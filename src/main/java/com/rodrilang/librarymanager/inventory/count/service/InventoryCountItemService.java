@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.inventory.count.dto.internal.InventoryCountItemUpsertCommand;
 import com.rodrilang.librarymanager.inventory.count.dto.internal.InventoryCountResolution;
+import com.rodrilang.librarymanager.inventory.count.dto.request.AddInventoryCountBookRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.ScanInventoryCountRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.UpdateInventoryCountItemRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.response.InventoryCountItemResponse;
@@ -16,6 +17,8 @@ import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountIte
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountResultRepository;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
+import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +33,7 @@ public class InventoryCountItemService {
     private final InventoryCountItemRepository itemRepository;
     private final InventoryCountItemScanRepository scanRepository;
     private final InventoryCountResultRepository resultRepository;
+    private final BookRepository bookRepository;
     private final InventoryCountBookResolver bookResolver;
     private final InventoryCountPriceResolver priceResolver;
     private final InventoryCountReviewResetService reviewResetService;
@@ -53,6 +57,37 @@ public class InventoryCountItemService {
                 ? bookResolver.resolve(isbn, session.getBookstore(), session.getCondition())
                 : new InventoryCountResolution(null, null, InventoryCountItemStatus.INVALID_IDENTIFIER);
 
+        if (resolution.book() != null) {
+            InventoryCountItem existing = itemRepository
+                    .findBySessionIdAndBookId(sessionId, resolution.book().getId())
+                    .orElse(null);
+
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity() + 1);
+                existing.setLastScannedAt(Instant.now());
+
+                if (existing.getRawIdentifier() == null) {
+                    existing.setRawIdentifier(request.code().trim());
+                }
+
+                if (existing.getNormalizedIdentifier() == null) {
+                    existing.setNormalizedIdentifier(normalized);
+                }
+
+                if (existing.getIsbn10() == null) {
+                    existing.setIsbn10(isbn.isbn10());
+                }
+
+                if (existing.getIsbn13() == null) {
+                    existing.setIsbn13(isbn.isbn13());
+                }
+
+                refreshKnownItemStatus(existing);
+
+                return responseMapper.toItemResponse(itemRepository.save(existing));
+            }
+        }
+        
         Instant now = Instant.now();
         Long itemId = scanRepository.upsertScan(new InventoryCountItemUpsertCommand(
                 session.getId(),
@@ -70,6 +105,47 @@ public class InventoryCountItemService {
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró el ítem recién escaneado"));
 
         return responseMapper.toItemResponse(item);
+    }
+
+    @Transactional
+    public InventoryCountItemResponse addBook(Long sessionId, AddInventoryCountBookRequest request) {
+        InventoryCountSession session = accessService.requireForUpdate(sessionId);
+        requireScannable(session);
+        reviewResetService.resetToOpen(session);
+
+        Book book = bookRepository.findById(request.bookId())
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el libro"));
+
+        InventoryCountItem item = itemRepository.findBySessionIdAndBookId(sessionId, book.getId())
+                .orElse(null);
+
+        Instant now = Instant.now();
+
+        if (item != null) {
+            item.setQuantity(item.getQuantity() + request.quantity());
+            item.setLastScannedAt(now);
+
+            refreshKnownItemStatus(item);
+
+            return responseMapper.toItemResponse(itemRepository.save(item));
+        }
+
+        item = InventoryCountItem.builder()
+                .session(session)
+                .rawIdentifier(book.getPreferredIsbn())
+                .normalizedIdentifier(book.getPreferredIsbn())
+                .isbn10(book.getIsbn10())
+                .isbn13(book.getIsbn13())
+                .book(book)
+                .quantity(request.quantity())
+                .status(InventoryCountItemStatus.RESOLVED)
+                .firstScannedAt(now)
+                .lastScannedAt(now)
+                .build();
+
+        refreshKnownItemStatus(item);
+
+        return responseMapper.toItemResponse(itemRepository.save(item));
     }
 
     @Transactional

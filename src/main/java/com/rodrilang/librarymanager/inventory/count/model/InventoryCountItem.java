@@ -40,10 +40,10 @@ public class InventoryCountItem extends AuditableEntity {
     @JoinColumn(name = "session_id", nullable = false)
     private InventoryCountSession session;
 
-    @Column(name = "raw_identifier", nullable = false, length = 100)
+    @Column(name = "raw_identifier", length = 100)
     private String rawIdentifier;
 
-    @Column(name = "normalized_identifier", nullable = false, length = 100)
+    @Column(name = "normalized_identifier", length = 100)
     private String normalizedIdentifier;
 
     @Column(name = "isbn_10", length = 10)

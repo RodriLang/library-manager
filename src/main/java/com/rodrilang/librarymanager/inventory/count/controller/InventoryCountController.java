@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.inventory.count.controller;
 
 import com.rodrilang.librarymanager.dto.response.PageResponse;
+import com.rodrilang.librarymanager.inventory.count.dto.request.AddInventoryCountBookRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.ApplyInventoryCountRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.CreateInventoryCountRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.ScanInventoryCountRequest;
@@ -41,6 +42,14 @@ public class InventoryCountController {
     @PostMapping
     public ResponseEntity<InventoryCountSessionResponse> create(@Valid @RequestBody CreateInventoryCountRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request));
+    }
+
+    @PostMapping("/{sessionId}/items")
+    public ResponseEntity<InventoryCountItemResponse> addBook(
+            @PathVariable Long sessionId,
+            @Valid @RequestBody AddInventoryCountBookRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(itemService.addBook(sessionId, request));
     }
 
     @GetMapping

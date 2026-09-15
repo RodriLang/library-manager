@@ -11,6 +11,7 @@ import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 import com.rodrilang.librarymanager.service.InventoryService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,11 @@ public class InventoryController {
         );
     }
 
+    @Deprecated
+    @Operation(
+            deprecated = true,
+            description = "Endpoint legado. Las nuevas ventas deben registrarse mediante POST /api/sales."
+    )
     @PostMapping("/{inventoryId}/sales")
     public ResponseEntity<InventoryDetailResponse> recordSale(
             @PathVariable Long inventoryId,

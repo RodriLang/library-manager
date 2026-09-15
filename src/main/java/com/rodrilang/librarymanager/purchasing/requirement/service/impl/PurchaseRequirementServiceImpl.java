@@ -107,34 +107,79 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         validateUndoSource(source);
 
-        int previousQuantity = requirement.getQuantity();
+        return reverseSource(requirement, source);
+    }
 
+    @Transactional
+    @Override
+    public void undoAutomaticSource(
+            PurchaseRequirementSourceType sourceType,
+            String referenceId
+    ) {
+        if (sourceType == null || referenceId == null || referenceId.isBlank()) {
+            return;
+        }
+
+        if (sourceType != PurchaseRequirementSourceType.SALE_ITEM) {
+            throw new BusinessException("El origen indicado no admite reversión automática.");
+        }
+
+        PurchaseRequirementSource source = sourceRepository
+                .findByTypeAndReferenceId(sourceType, referenceId)
+                .orElse(null);
+
+        if (source == null || sourceRepository.existsByReversedSourceId(source.getId())) {
+            return;
+        }
+
+        PurchaseRequirement sourceRequirement = source.getRequirement();
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        PurchaseRequirement requirement = requirementRepository
+                .findByIdAndBookstoreIdForUpdate(
+                        sourceRequirement.getId(),
+                        bookstoreId
+                )
+                .orElse(null);
+
+        if (requirement == null || requirement.getStatus() != PurchaseRequirementStatus.PENDING) {
+            return;
+        }
+
+        Long orderedQuantity = purchaseOrderItemRepository
+                .sumOrderedQuantityByRequirementId(requirement.getId());
+
+        if ((orderedQuantity != null && orderedQuantity > 0)
+                || source.getQuantity() > requirement.getQuantity()) {
+            return;
+        }
+
+        reverseSource(requirement, source);
+    }
+
+    private AddPurchaseRequirementResponse reverseSource(
+            PurchaseRequirement requirement,
+            PurchaseRequirementSource source
+    ) {
+        int previousQuantity = requirement.getQuantity();
         int newQuantity = previousQuantity - source.getQuantity();
 
         if (newQuantity < 0) {
             throw new BusinessException("La acción no puede deshacerse porque dejaría una cantidad inválida.");
         }
 
-        PurchaseRequirementSource reversal =
-                PurchaseRequirementSource.builder()
-                        .requirement(requirement)
-                        .type(
-                                PurchaseRequirementSourceType.REVERSAL
-                        )
-                        .quantity(
-                                -source.getQuantity()
-                        )
-                        .reversedSource(source)
-                        .build();
+        PurchaseRequirementSource reversal = PurchaseRequirementSource.builder()
+                .requirement(requirement)
+                .type(PurchaseRequirementSourceType.REVERSAL)
+                .quantity(-source.getQuantity())
+                .reversedSource(source)
+                .build();
 
         sourceRepository.save(reversal);
 
         if (newQuantity == 0) {
-
             requirement.setStatus(PurchaseRequirementStatus.CANCELLED);
-
         } else {
-
             requirement.setQuantity(newQuantity);
         }
 
@@ -147,9 +192,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 requirement.getBook().getCoverUrl(),
 
                 previousQuantity,
-
                 -source.getQuantity(),
-
                 newQuantity,
 
                 reversal.getId(),
@@ -622,10 +665,11 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     private void validateReference(AddPurchaseRequirementCommand command) {
 
-        if (command.source() == PurchaseRequirementSourceType.SALE
+        if ((command.source() == PurchaseRequirementSourceType.SALE
+                || command.source() == PurchaseRequirementSourceType.SALE_ITEM)
                 && (command.referenceId() == null || command.referenceId().isBlank())
         ) {
-            throw new BusinessException("Una reposición originada por una venta debe indicar la venta de referencia.");
+            throw new BusinessException("Una reposición originada por una venta debe indicar su referencia.");
         }
     }
 

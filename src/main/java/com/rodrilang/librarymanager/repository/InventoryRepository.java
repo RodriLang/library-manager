@@ -195,6 +195,19 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             """)
     Optional<Inventory> findByIdForUpdate(@Param("id") Long id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT i
+            FROM Inventory i
+            WHERE i.bookstore.id = :bookstoreId
+              AND i.id IN :inventoryIds
+            ORDER BY i.id
+            """)
+    List<Inventory> findAllByBookstoreIdAndIdsForUpdate(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("inventoryIds") Collection<Long> inventoryIds
+    );
+
     @EntityGraph(attributePaths = {
             "book",
             "book.authors",
