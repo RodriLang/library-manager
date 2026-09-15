@@ -33,6 +33,6 @@ public class InventoryBulkMinimumStockHandler
                 request.minimumStock()
         );
 
-        return InventoryBulkMutationResult.changed();
+        return InventoryBulkMutationResult.modified();
     }
 }

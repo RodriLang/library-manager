@@ -42,6 +42,6 @@ public class InventoryBulkEditorialPriceSyncHandler
 
         inventory.setEditorialPriceSyncEnabled(enable);
 
-        return InventoryBulkMutationResult.changed();
+        return InventoryBulkMutationResult.modified();
     }
 }

@@ -37,7 +37,7 @@ public class InventoryBulkActivationHandler
                         == TiendanubeInventoryStatus.LINKED;
 
         if (!linked) {
-            return InventoryBulkMutationResult.changed();
+            return InventoryBulkMutationResult.modified();
         }
 
         boolean syncPrice =
@@ -46,7 +46,7 @@ public class InventoryBulkActivationHandler
                         inventory.getTiendanubePriceSyncEnabled()
                 );
 
-        return InventoryBulkMutationResult.changed(
+        return InventoryBulkMutationResult.modified(
                 true,
                 syncPrice
         );

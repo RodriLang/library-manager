@@ -18,7 +18,7 @@ public record InventoryBulkMutationResult(
         );
     }
 
-    public static InventoryBulkMutationResult changed() {
+    public static InventoryBulkMutationResult modified() {
         return new InventoryBulkMutationResult(
                 true,
                 false,
@@ -26,7 +26,7 @@ public record InventoryBulkMutationResult(
         );
     }
 
-    public static InventoryBulkMutationResult changed(
+    public static InventoryBulkMutationResult modified(
             boolean syncStock,
             boolean syncPrice
     ) {
