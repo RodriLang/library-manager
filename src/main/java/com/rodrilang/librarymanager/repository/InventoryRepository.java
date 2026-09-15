@@ -4,11 +4,16 @@ import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.projection.InventoryStockSummaryProjection;
 import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
+import io.micrometer.common.lang.NonNullApi;
 import jakarta.persistence.LockModeType;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,7 +22,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-public interface InventoryRepository extends JpaRepository<Inventory, Long> {
+@NonNullApi
+public interface InventoryRepository extends JpaRepository<Inventory, Long>, JpaSpecificationExecutor<Inventory> {
 
     boolean existsByBookIdAndBookstoreIdAndCondition(
             Long bookId,
@@ -204,6 +210,30 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             ORDER BY i.id
             """)
     List<Inventory> findAllByBookstoreIdAndIdsForUpdate(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("inventoryIds") Collection<Long> inventoryIds
+    );
+
+    @Query("""
+            SELECT i.id
+            FROM Inventory i
+            WHERE i.bookstore.id = :bookstoreId
+              AND i.id IN :inventoryIds
+            ORDER BY i.id
+            """)
+    List<Long> findIdsByBookstoreIdAndIdIn(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("inventoryIds") Collection<Long> inventoryIds
+    );
+
+    @Query("""
+            SELECT i
+            FROM Inventory i
+            WHERE i.bookstore.id = :bookstoreId
+              AND i.id IN :inventoryIds
+            ORDER BY i.id
+            """)
+    List<Inventory> findAllByBookstoreIdAndIdIn(
             @Param("bookstoreId") Long bookstoreId,
             @Param("inventoryIds") Collection<Long> inventoryIds
     );
@@ -528,5 +558,15 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     List<InventoryTiendanubePreviewProjection> findTiendanubePreviewByBookIds(
             @Param("bookstoreId") Long bookstoreId,
             @Param("bookIds") Collection<Long> bookIds
+    );
+
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.publisher"
+    })
+    @Override
+    Page<Inventory> findAll(
+            @Nullable Specification<Inventory> specification,
+            Pageable pageable
     );
 }
