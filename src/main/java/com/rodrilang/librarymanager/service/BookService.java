@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.repository.criteria.BookCatalogCriteria;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -19,6 +20,8 @@ public interface BookService {
     BookDetailResponse lookupByIsbn(String isbn);
 
     BookDetailResponse update(Long bookId, UpdateBookRequest request);
+
+    Page<BookSummaryResponse> findCatalog(BookCatalogCriteria criteria, Pageable pageable);
 
     Page<BookSummaryResponse> search(String query, boolean force, Pageable pageable);
 
