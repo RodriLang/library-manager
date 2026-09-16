@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
+import com.rodrilang.librarymanager.dto.internal.InventoryStockSummaryCounts;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
@@ -16,7 +18,6 @@ import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
-import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
@@ -38,12 +39,10 @@ import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurch
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
 import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
-import com.rodrilang.librarymanager.repository.projection.InventoryStockSummaryProjection;
+import com.rodrilang.librarymanager.repository.criteria.InventorySearchCriteria;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.InventoryService;
-import com.rodrilang.librarymanager.util.PageableUtils;
-import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -73,12 +72,6 @@ public class InventoryServiceImpl implements InventoryService {
     private final ProviderBookService providerBookService;
     private final BookstoreContext bookstoreContext;
     private final ApplicationEventPublisher eventPublisher;
-
-    private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of(
-            "title", "book.titleSort",
-            "salePrice", "salePrice",
-            "stock", "stock"
-    );
 
     @Transactional
     @Override
@@ -355,79 +348,33 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Transactional(readOnly = true)
     @Override
-    public Page<InventorySummaryResponse> find(
-            String query,
-            boolean force,
-            InventoryStockFilter stockFilter,
-            Pageable pageable
-    ) {
-        InventoryStockFilter resolvedStockFilter =
-                stockFilter != null ? stockFilter : InventoryStockFilter.ALL;
-
-        Pageable normalizedPageable =
-                PageableUtils.mapSortProperties(
-                        pageable,
-                        INVENTORY_SORT_MAPPING
-                );
-
+    public Page<InventorySummaryResponse> find(InventorySearchCriteria criteria, Pageable pageable) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
-        if (query == null || query.isBlank()) {
-            Page<Inventory> inventory =
-                    inventoryRepository.findPage(
-                            bookstoreId,
-                            resolvedStockFilter.name(),
-                            normalizedPageable
-                    );
-
-            return toSummaryResponsePage(inventory);
-        }
-
-        String normalizedQuery = query.trim();
-
-        boolean identifierQuery =
-                normalizedQuery.matches("[0-9Xx\\-\\s]+");
-
-        if (!force) {
-            int minimumLength = identifierQuery ? 8 : 3;
-
-            if (normalizedQuery.length() < minimumLength) {
-                return Page.empty(normalizedPageable);
-            }
-        }
-
-        Page<Inventory> inventory;
-
-        if (identifierQuery) {
-            inventory = searchByIdentifier(
-                    bookstoreId,
-                    normalizedQuery,
-                    resolvedStockFilter,
-                    normalizedPageable
-            );
-        } else {
-            inventory = searchByText(
-                    bookstoreId,
-                    normalizedQuery,
-                    resolvedStockFilter,
-                    normalizedPageable
-            );
-        }
+        Page<Inventory> inventory =
+                inventoryRepository.find(
+                        bookstoreId,
+                        criteria,
+                        pageable
+                );
 
         return toSummaryResponsePage(inventory);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public InventoryStockSummaryResponse getStockSummary() {
-        InventoryStockSummaryProjection summary =
-                inventoryRepository.getStockSummary(bookstoreContext.getCurrentBookstoreId());
+    public InventoryStockSummaryResponse getStockSummary(InventoryAdvancedFilters filters) {
+        InventoryStockSummaryCounts summary =
+                inventoryRepository.summarize(
+                        bookstoreContext.getCurrentBookstoreId(),
+                        filters
+                );
 
         return new InventoryStockSummaryResponse(
-                summary.getTotal(),
-                summary.getAvailable(),
-                summary.getLowStock(),
-                summary.getOutOfStock()
+                summary.total(),
+                summary.available(),
+                summary.lowStock(),
+                summary.outOfStock()
         );
     }
 
@@ -564,63 +511,6 @@ public class InventoryServiceImpl implements InventoryService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
                 ));
-    }
-
-    private Page<Inventory> searchByIdentifier(
-            Long bookstoreId,
-            String query,
-            InventoryStockFilter stockFilter,
-            Pageable pageable
-    ) {
-        String normalizedIdentifier =
-                normalizeSearchIdentifier(query);
-
-        if (normalizedIdentifier == null) {
-            return Page.empty(pageable);
-        }
-
-        return inventoryRepository.searchByIsbn(
-                bookstoreId,
-                normalizedIdentifier,
-                stockFilter.name(),
-                pageable
-        );
-    }
-
-    private Page<Inventory> searchByText(
-            Long bookstoreId,
-            String query,
-            InventoryStockFilter stockFilter,
-            Pageable pageable
-    ) {
-        String searchQuery =
-                TextNormalizer.normalizeForSearch(query);
-
-        String fullTextQuery =
-                TextNormalizer.normalizeForFullTextSearch(query);
-
-        return inventoryRepository.searchText(
-                bookstoreId,
-                searchQuery,
-                fullTextQuery,
-                stockFilter.name(),
-                pageable
-        );
-    }
-
-    private String normalizeSearchIdentifier(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-
-        String normalized = value
-                .trim()
-                .toUpperCase()
-                .replaceAll("[^0-9X]", "");
-
-        return normalized.isBlank()
-                ? null
-                : normalized;
     }
 
     private Page<InventorySummaryResponse> toSummaryResponsePage(Page<Inventory> inventoryPage) {

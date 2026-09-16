@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.controller;
 
+import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
@@ -9,7 +10,10 @@ import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
+import com.rodrilang.librarymanager.enums.BookCondition;
+import com.rodrilang.librarymanager.enums.InventoryPriceMode;
 import com.rodrilang.librarymanager.enums.InventoryStockFilter;
+import com.rodrilang.librarymanager.repository.criteria.InventorySearchCriteria;
 import com.rodrilang.librarymanager.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -86,16 +90,34 @@ public class InventoryController {
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "false") boolean force,
             @RequestParam(defaultValue = "ALL") InventoryStockFilter stock,
+            @RequestParam(required = false) BookCondition condition,
+            @RequestParam(required = false) Long publisherId,
+            @RequestParam(required = false) Long authorId,
+            @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
             @ParameterObject
             @PageableDefault(size = 30)
             Pageable pageable
     ) {
+        InventoryAdvancedFilters filters =
+                new InventoryAdvancedFilters(
+                        condition,
+                        publisherId,
+                        authorId,
+                        priceMode
+                );
+
+        InventorySearchCriteria criteria =
+                new InventorySearchCriteria(
+                        q,
+                        force,
+                        stock,
+                        filters
+                );
+
         return ResponseEntity.ok(
                 PageResponse.of(
                         inventoryService.find(
-                                q,
-                                force,
-                                stock,
+                                criteria,
                                 pageable
                         )
                 )
@@ -103,9 +125,22 @@ public class InventoryController {
     }
 
     @GetMapping("/summary")
-    public ResponseEntity<InventoryStockSummaryResponse> getSummary() {
+    public ResponseEntity<InventoryStockSummaryResponse> getSummary(
+            @RequestParam(required = false) BookCondition condition,
+            @RequestParam(required = false) Long publisherId,
+            @RequestParam(required = false) Long authorId,
+            @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode
+    ) {
+        InventoryAdvancedFilters filters =
+                new InventoryAdvancedFilters(
+                        condition,
+                        publisherId,
+                        authorId,
+                        priceMode
+                );
+
         return ResponseEntity.ok(
-                inventoryService.getStockSummary()
+                inventoryService.getStockSummary(filters)
         );
     }
 

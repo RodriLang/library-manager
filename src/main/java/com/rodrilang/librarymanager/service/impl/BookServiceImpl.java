@@ -22,13 +22,14 @@ import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Publisher;
+import com.rodrilang.librarymanager.repository.criteria.BookCatalogCriteria;
+import com.rodrilang.librarymanager.repository.BookCatalogQueryRepository;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.service.AuthorService;
 import com.rodrilang.librarymanager.service.BookCatalogService;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.PublisherService;
-import com.rodrilang.librarymanager.util.PageableUtils;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,11 +49,10 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class BookServiceImpl implements BookService {
 
-    private static final Map<String, String> BOOK_SORT_MAPPING = Map.of("title", "titleSort");
-
     private final BookRepository bookRepository;
     private final BookMapper bookMapper;
     private final PublisherService publisherService;
+    private final BookCatalogQueryRepository bookCatalogQueryRepository;
     private final AuthorService authorService;
     private final BookCatalogService bookCatalogService;
     private final EffectiveEditorialPriceService effectiveEditorialPriceService;
@@ -170,101 +170,33 @@ public class BookServiceImpl implements BookService {
 
     @Transactional(readOnly = true)
     @Override
+    public Page<BookSummaryResponse> findCatalog(
+            BookCatalogCriteria criteria,
+            Pageable pageable
+    ) {
+        return doFindCatalog(criteria, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    @Override
     public Page<BookSummaryResponse> search(
             String query,
             boolean force,
             Pageable pageable
     ) {
-        if (query == null || query.isBlank()) {
-            return Page.empty(pageable);
-        }
-
-        String normalizedQuery = query.trim();
-
-        boolean identifierQuery =
-                normalizedQuery.matches("[0-9Xx\\-\\s]+");
-
-        if (!force) {
-            int minimumLength = identifierQuery ? 8 : 3;
-
-            if (normalizedQuery.length() < minimumLength) {
-                return Page.empty(pageable);
-            }
-        }
-
-        long repositoryStart = System.currentTimeMillis();
-
-        Page<Book> books;
-
-        long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-
-        if (identifierQuery) {
-            String normalizedIdentifier = normalizeSearchIdentifier(normalizedQuery);
-
-            if (normalizedIdentifier == null) {
-                return Page.empty(pageable);
-            }
-
-            books = bookRepository.searchByIsbn(
-                    normalizedIdentifier,
-                    bookstoreId,
-                    pageable
-            );
-        } else {
-            String searchQuery = TextNormalizer.normalizeForSearch(normalizedQuery);
-            String fullTextQuery = TextNormalizer.normalizeForFullTextSearch(normalizedQuery);
-
-            books = bookRepository.searchText(
-                    searchQuery,
-                    fullTextQuery,
-                    bookstoreId,
-                    pageable
-            );
-        }
-
-        long repositoryTime =
-                System.currentTimeMillis() - repositoryStart;
-
-        long mappingStart = System.currentTimeMillis();
-
-        Page<BookSummaryResponse> response = toSummaryResponsePage(books);
-
-        long mappingTime =
-                System.currentTimeMillis() - mappingStart;
-
-        log.info(
-                "Book search timing. query={} repositoryTime={}ms mappingTime={}ms results={} totalElements={}",
-                normalizedQuery,
-                repositoryTime,
-                mappingTime,
-                books.getNumberOfElements(),
-                books.getTotalElements()
+        return doFindCatalog(
+                BookCatalogCriteria.search(query, force),
+                pageable
         );
-
-        return response;
     }
 
     @Transactional(readOnly = true)
     @Override
     public Page<BookSummaryResponse> getAll(Pageable pageable) {
-        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-
-        if (PageableUtils.hasSort(pageable, "editorialPrice")) {
-            boolean ascending = PageableUtils.isAscending(pageable, "editorialPrice");
-            Pageable unsortedPageable = PageableUtils.withoutSort(pageable);
-
-            Page<Book> books = ascending
-                    ? bookRepository.findAllForCatalogOrderByCurrentEditorialPriceAsc(bookstoreId, unsortedPageable)
-                    : bookRepository.findAllForCatalogOrderByCurrentEditorialPriceDesc(bookstoreId, unsortedPageable);
-
-            return toSummaryResponsePage(books);
-        }
-
-        Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, BOOK_SORT_MAPPING);
-
-        Page<Book> books = bookRepository.findAllForCatalog(bookstoreId, normalizedPageable);
-
-        return toSummaryResponsePage(books);
+        return doFindCatalog(
+                BookCatalogCriteria.empty(),
+                pageable
+        );
     }
 
     @Override
@@ -322,6 +254,114 @@ public class BookServiceImpl implements BookService {
         }
 
         return bookRepository.findByIsbn10WithDetails(parsedIsbn.isbn10()).orElse(null);
+    }
+
+    private Page<BookSummaryResponse> doFindCatalog(BookCatalogCriteria criteria, Pageable pageable) {
+        validateCatalogCriteria(criteria);
+
+        long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        long repositoryStart = System.currentTimeMillis();
+
+        Page<Book> books = criteria.hasQuery()
+                ? searchCatalog(criteria, bookstoreId, pageable)
+                : bookCatalogQueryRepository.findAll(criteria, bookstoreId, pageable);
+
+        long repositoryTime = System.currentTimeMillis() - repositoryStart;
+
+        long mappingStart = System.currentTimeMillis();
+
+        Page<BookSummaryResponse> response = toSummaryResponsePage(books);
+
+        long mappingTime = System.currentTimeMillis() - mappingStart;
+
+        log.info(
+                "Book catalog timing. query={} publisherId={} authorId={} minPrice={} maxPrice={} priceStatus={} repositoryTime={}ms mappingTime={}ms results={} totalElements={}",
+                criteria.query(),
+                criteria.publisherId(),
+                criteria.authorId(),
+                criteria.minPrice(),
+                criteria.maxPrice(),
+                criteria.priceStatus(),
+                repositoryTime,
+                mappingTime,
+                books.getNumberOfElements(),
+                books.getTotalElements()
+        );
+
+        return response;
+    }
+
+    private Page<Book> searchCatalog(
+            BookCatalogCriteria criteria,
+            long bookstoreId,
+            Pageable pageable
+    ) {
+        String query = criteria.query();
+
+        boolean identifierQuery = query.matches("[0-9Xx\\-\\s]+");
+
+        if (!criteria.force()) {
+            int minimumLength = identifierQuery ? 8 : 3;
+
+            if (query.length() < minimumLength) {
+                return Page.empty(pageable);
+            }
+        }
+
+        if (identifierQuery) {
+            String normalizedIdentifier = normalizeSearchIdentifier(query);
+
+            if (normalizedIdentifier == null) {
+                return Page.empty(pageable);
+            }
+
+            return bookCatalogQueryRepository.searchByIsbn(
+                    criteria,
+                    normalizedIdentifier,
+                    bookstoreId,
+                    pageable
+            );
+        }
+
+        String searchQuery = TextNormalizer.normalizeForSearch(query);
+
+        String fullTextQuery = TextNormalizer.normalizeForFullTextSearch(query);
+
+        return bookCatalogQueryRepository.searchText(
+                criteria,
+                searchQuery,
+                fullTextQuery,
+                bookstoreId,
+                pageable
+        );
+    }
+
+    private void validateCatalogCriteria(
+            BookCatalogCriteria criteria
+    ) {
+        if (criteria.minPrice() != null
+                && criteria.minPrice().signum() < 0) {
+            throw new BusinessException(
+                    "El precio mínimo no puede ser negativo."
+            );
+        }
+
+        if (criteria.maxPrice() != null
+                && criteria.maxPrice().signum() < 0) {
+            throw new BusinessException(
+                    "El precio máximo no puede ser negativo."
+            );
+        }
+
+        if (criteria.minPrice() != null
+                && criteria.maxPrice() != null
+                && criteria.minPrice()
+                .compareTo(criteria.maxPrice()) > 0) {
+            throw new BusinessException(
+                    "El precio mínimo no puede ser mayor que el precio máximo."
+            );
+        }
     }
 
     private String normalizeSearchIdentifier(String value) {
