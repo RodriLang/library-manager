@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.auth.exceptions.InvalidTokenException;
 import com.rodrilang.librarymanager.auth.exceptions.PasswordReuseException;
 import com.rodrilang.librarymanager.dto.error.ErrorResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException;
+import com.rodrilang.librarymanager.fiscal.exception.ArcaApiException;
 import com.rodrilang.librarymanager.media.exception.ImageStorageException;
 import com.rodrilang.librarymanager.media.exception.InvalidImageException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -112,6 +113,22 @@ public class GlobalExceptionHandler {
         return buildError(
                 HttpStatus.BAD_REQUEST,
                 "BUSINESS_ERROR",
+                ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(ArcaApiException.class)
+    public ResponseEntity<ErrorResponse> handleArcaApiException(
+            ArcaApiException ex,
+            HttpServletRequest request
+    ) {
+        log.error("ARCA API error on path={}", request.getRequestURI(), ex);
+
+        return buildError(
+                HttpStatus.BAD_GATEWAY,
+                "ARCA_API_ERROR",
                 ex.getMessage(),
                 request.getRequestURI(),
                 null

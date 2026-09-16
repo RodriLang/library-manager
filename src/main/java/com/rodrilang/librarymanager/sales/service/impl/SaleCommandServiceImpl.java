@@ -8,6 +8,8 @@ import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.fiscal.model.FiscalDocumentStatus;
+import com.rodrilang.librarymanager.fiscal.repository.FiscalDocumentRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
@@ -59,6 +61,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
     private final SaleRepository saleRepository;
     private final SaleItemRepository itemRepository;
     private final SalePaymentRepository paymentRepository;
+    private final FiscalDocumentRepository fiscalDocumentRepository;
     private final InventoryRepository inventoryRepository;
     private final UserRepository userRepository;
 
@@ -223,6 +226,20 @@ public class SaleCommandServiceImpl implements SaleCommandService {
 
         if (sale.getStatus() == SaleStatus.CANCELLED) {
             throw new BusinessException("La venta ya se encuentra cancelada.");
+        }
+
+        if (fiscalDocumentRepository.existsBySaleIdAndStatusIn(
+                sale.getId(),
+                Set.of(
+                        FiscalDocumentStatus.AUTHORIZED,
+                        FiscalDocumentStatus.AUTHORIZING,
+                        FiscalDocumentStatus.RECONCILIATION_REQUIRED
+                )
+        )) {
+            throw new BusinessException(
+                    "La venta posee un comprobante fiscal emitido o pendiente. "
+                            + "Para cancelarla deberá emitirse la nota de crédito correspondiente."
+            );
         }
 
         List<SaleItem> items = itemRepository.findAllBySaleIdOrderByIdAsc(sale.getId());
