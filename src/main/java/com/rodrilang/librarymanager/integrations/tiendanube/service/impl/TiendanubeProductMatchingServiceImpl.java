@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.service.impl;
 
+import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.MatchResult;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.internal.RemoteInventoryMatch;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.InventoryMatchCandidateResponse;
@@ -228,10 +229,11 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
             return null;
         }
 
-        List<Inventory> candidates = inventoryRepository.findAllByBookstoreAndIsbn(
+        List<Inventory> candidates = inventoryRepository.findAllByBookstoreAndIsbnAndCondition(
                 bookstoreId,
                 parsedIsbn.isbn13(),
-                parsedIsbn.isbn10()
+                parsedIsbn.isbn10(),
+                BookCondition.NEW
         );
 
         if (candidates.isEmpty()) {
@@ -252,9 +254,10 @@ public class TiendanubeProductMatchingServiceImpl implements TiendanubeProductMa
                 .map(Book::getId)
                 .toList();
 
-        List<Inventory> inventories = inventoryRepository.findAllByBookstoreIdAndBookIdInAndActiveTrue(
+        List<Inventory> inventories = inventoryRepository.findAllByBookstoreIdAndBookIdInAndConditionAndActiveTrue(
                 bookstoreId,
-                bookIds
+                bookIds,
+                BookCondition.NEW
         );
 
         if (inventories.isEmpty()) {

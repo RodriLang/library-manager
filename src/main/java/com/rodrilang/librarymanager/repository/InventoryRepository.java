@@ -54,20 +54,32 @@ public interface InventoryRepository
             "book.authors",
             "book.publisher"
     })
-    List<Inventory> findAllByBookstoreIdAndBookIdInAndActiveTrue(
-            Long bookstoreId,
-            Collection<Long> bookIds
+    @Query("""
+            SELECT DISTINCT i
+            FROM Inventory i
+            JOIN i.book b
+            WHERE i.bookstore.id = :bookstoreId
+              AND i.condition = :condition
+              AND i.active = true
+              AND b.active = true
+            ORDER BY i.id
+            """)
+    List<Inventory> findAllForTiendanubeMatching(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("condition") BookCondition condition
     );
 
     @EntityGraph(attributePaths = {
             "book",
-            "book.publisher"
+            "book.publisher",
+            "book.authors"
     })
     @Query("""
             SELECT DISTINCT i
             FROM Inventory i
             JOIN i.book b
             WHERE i.bookstore.id = :bookstoreId
+              AND i.condition = :condition
               AND i.active = true
               AND b.active = true
               AND (
@@ -75,10 +87,11 @@ public interface InventoryRepository
                     OR (:isbn10 IS NOT NULL AND b.isbn10 = :isbn10)
               )
             """)
-    List<Inventory> findAllByBookstoreAndIsbn(
+    List<Inventory> findAllByBookstoreAndIsbnAndCondition(
             @Param("bookstoreId") Long bookstoreId,
             @Param("isbn13") String isbn13,
-            @Param("isbn10") String isbn10
+            @Param("isbn10") String isbn10,
+            @Param("condition") BookCondition condition
     );
 
     @EntityGraph(attributePaths = {

@@ -4,5 +4,6 @@ public enum TiendanubeWorkType {
     JOB,
     WEBHOOK,
     BULK,
-    RECONCILIATION
+    RECONCILIATION,
+    IMPORT_ANALYSIS
 }
