@@ -172,6 +172,13 @@ public class TiendanubeImportAnalysisResultFactory {
             return null;
         }
 
-        return product.images().getFirst().src();
+        return product.images().stream()
+                .filter(image -> image != null && image.src() != null && !image.src().isBlank())
+                .min((left, right) -> Integer.compare(
+                        left.position() == null ? Integer.MAX_VALUE : left.position(),
+                        right.position() == null ? Integer.MAX_VALUE : right.position()
+                ))
+                .map(image -> image.src().trim())
+                .orElse(null);
     }
 }

@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisCreateInventoryRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.enums.TiendanubeImportAnalysisItemStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.model.TiendanubeImportAnalysisItemLock;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.repository.TiendanubeImportAnalysisItemWriteRepository;
@@ -28,6 +29,7 @@ public class TiendanubeImportAnalysisResolutionItemService {
     private final InventoryRepository inventoryRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeJobRequestService jobRequestService;
+    private final TiendanubeImportAnalysisInventoryService analysisInventoryService;
 
     @Transactional
     public Long resolve(
@@ -52,6 +54,67 @@ public class TiendanubeImportAnalysisResolutionItemService {
         validateInventory(inventory, bookstoreId);
         validateCanLink(item, inventory);
 
+        linkAndResolve(runId, item, inventory, syncStock, refreshCounts);
+        return inventory.getId();
+    }
+
+    @Transactional
+    public Long createInventoryAndResolve(
+            Long runId,
+            Long itemId,
+            Long bookstoreId,
+            TiendanubeImportAnalysisCreateInventoryRequest request
+    ) {
+        TiendanubeImportAnalysisItemLock item = itemWriteRepository
+                .lockItem(runId, itemId, bookstoreId)
+                .orElseThrow(() -> new BusinessException(
+                        "No se encontró un caso resoluble para el análisis indicado"
+                ));
+
+        validateItemStatus(item.status());
+
+        if (!itemWriteRepository.existsCatalogCandidate(item.id(), request.bookId())) {
+            throw new BusinessException(
+                    "El libro seleccionado no pertenece a las coincidencias de catálogo de este caso"
+            );
+        }
+
+        Inventory inventory = analysisInventoryService.createOrReactivate(bookstoreId, request);
+        validateInventory(inventory, bookstoreId);
+        validateCanLink(item, inventory);
+
+        linkAndResolve(
+                runId,
+                item,
+                inventory,
+                request.shouldSyncStock(),
+                true
+        );
+
+        return inventory.getId();
+    }
+
+    @Transactional
+    public void refreshCounts(Long runId) {
+        runRepository.refreshCounts(runId);
+    }
+
+    @Transactional
+    public void ignore(Long runId, Long itemId, Long bookstoreId) {
+        if (!itemWriteRepository.markIgnored(runId, itemId, bookstoreId, Instant.now())) {
+            throw new BusinessException("El caso no puede ignorarse o ya fue resuelto");
+        }
+
+        runRepository.refreshCounts(runId);
+    }
+
+    private void linkAndResolve(
+            Long runId,
+            TiendanubeImportAnalysisItemLock item,
+            Inventory inventory,
+            boolean syncStock,
+            boolean refreshCounts
+    ) {
         TiendanubeProductLink link = TiendanubeProductLink.builder()
                 .inventory(inventory)
                 .tiendanubeStoreId(item.storeId())
@@ -86,22 +149,6 @@ public class TiendanubeImportAnalysisResolutionItemService {
         if (syncStock) {
             jobRequestService.enqueueAutomaticLinked(inventory.getId(), TiendanubeJobType.SYNC_STOCK);
         }
-
-        return inventory.getId();
-    }
-
-    @Transactional
-    public void refreshCounts(Long runId) {
-        runRepository.refreshCounts(runId);
-    }
-
-    @Transactional
-    public void ignore(Long runId, Long itemId, Long bookstoreId) {
-        if (!itemWriteRepository.markIgnored(runId, itemId, bookstoreId, Instant.now())) {
-            throw new BusinessException("El caso no puede ignorarse o ya fue resuelto");
-        }
-
-        runRepository.refreshCounts(runId);
     }
 
     private void validateItemStatus(TiendanubeImportAnalysisItemStatus status) {

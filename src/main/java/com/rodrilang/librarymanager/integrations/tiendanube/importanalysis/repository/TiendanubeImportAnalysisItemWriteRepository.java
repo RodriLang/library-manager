@@ -161,6 +161,22 @@ public class TiendanubeImportAnalysisItemWriteRepository {
                 .addValue("now", Timestamp.from(now))) == 1;
     }
 
+    public boolean existsCatalogCandidate(Long itemId, Long bookId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM tiendanube_import_analysis_candidates
+                    WHERE item_id = :itemId
+                      AND book_id = :bookId
+                      AND candidate_source = 'CATALOG'
+                )
+                """, new MapSqlParameterSource()
+                .addValue("itemId", itemId)
+                .addValue("bookId", bookId), Boolean.class);
+
+        return Boolean.TRUE.equals(exists);
+    }
+
     public List<TiendanubeImportAnalysisReadyItem> findReadyItems(Long runId, Long bookstoreId) {
         return jdbcTemplate.query("""
                 SELECT item.id, item.suggested_inventory_id

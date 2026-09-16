@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisBulkFailureResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisBulkResolveResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisCreateInventoryRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisItemResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisResolveRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisRunResponse;
@@ -43,6 +44,23 @@ public class TiendanubeImportAnalysisResolutionService {
                 request.inventoryId(),
                 request.shouldSyncStock(),
                 true
+        );
+
+        return requireItem(runId, itemId, bookstoreId);
+    }
+
+    public TiendanubeImportAnalysisItemResponse createInventoryAndResolve(
+            Long runId,
+            Long itemId,
+            TiendanubeImportAnalysisCreateInventoryRequest request
+    ) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        itemService.createInventoryAndResolve(
+                runId,
+                itemId,
+                bookstoreId,
+                request
         );
 
         return requireItem(runId, itemId, bookstoreId);

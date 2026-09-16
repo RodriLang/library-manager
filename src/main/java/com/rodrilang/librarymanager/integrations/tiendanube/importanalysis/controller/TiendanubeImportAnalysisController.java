@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.cont
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisBulkResolveRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisBulkResolveResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisCreateInventoryRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisItemResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisResolveRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisRunResponse;
@@ -89,6 +90,15 @@ public class TiendanubeImportAnalysisController {
             @Valid @RequestBody TiendanubeImportAnalysisResolveRequest request
     ) {
         return resolutionService.resolve(runId, itemId, request);
+    }
+
+    @PostMapping("/{runId}/items/{itemId}/add-to-inventory-and-resolve")
+    public TiendanubeImportAnalysisItemResponse createInventoryAndResolve(
+            @PathVariable Long runId,
+            @PathVariable Long itemId,
+            @Valid @RequestBody TiendanubeImportAnalysisCreateInventoryRequest request
+    ) {
+        return resolutionService.createInventoryAndResolve(runId, itemId, request);
     }
 
     @PostMapping("/{runId}/items/{itemId}/ignore")
