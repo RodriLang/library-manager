@@ -93,6 +93,7 @@ public class BookstoreFiscalSettingsServiceImpl implements BookstoreFiscalSettin
     @Transactional
     public FiscalSettingsResponse verifyAuthorization() {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
         BookstoreFiscalSettings settings = repository.findByBookstoreIdForUpdate(bookstoreId)
                 .orElseThrow(() -> new BusinessException(
                         "Primero debés configurar los datos fiscales de la librería."
@@ -100,30 +101,59 @@ public class BookstoreFiscalSettingsServiceImpl implements BookstoreFiscalSettin
 
         try {
             long representedCuit = Long.parseLong(settings.getCuit());
+
+            if (isHomologation()) {
+                arcaClient.verifyAccess(representedCuit);
+                markAsVerified(settings);
+
+                return toResponse(settings);
+            }
+
             boolean pointOfSaleFound = arcaClient.getPointsOfSale(representedCuit).stream()
-                    .anyMatch(point -> matchesConfiguredPoint(point, settings.getPointOfSale()));
+                    .anyMatch(point -> matchesConfiguredPoint(
+                            point,
+                            settings.getPointOfSale()
+                    ));
 
             if (!pointOfSaleFound) {
-                settings.setArcaStatus(ArcaAuthorizationStatus.ERROR);
-                settings.setVerifiedAt(null);
-                settings.setLastVerificationError(
+                markAsError(
+                        settings,
                         "ARCA respondió correctamente, pero el punto de venta "
                                 + settings.getPointOfSale()
                                 + " no aparece activo para Facturación Electrónica por Web Services."
                 );
+
                 return toResponse(settings);
             }
 
-            settings.setArcaStatus(ArcaAuthorizationStatus.VERIFIED);
-            settings.setVerifiedAt(Instant.now());
-            settings.setLastVerificationError(null);
+            markAsVerified(settings);
             return toResponse(settings);
+
         } catch (RuntimeException exception) {
-            settings.setArcaStatus(ArcaAuthorizationStatus.ERROR);
-            settings.setVerifiedAt(null);
-            settings.setLastVerificationError(limit(exception.getMessage(), 1000));
+            markAsError(settings, limit(exception.getMessage(), 1000));
             return toResponse(settings);
         }
+    }
+
+    private boolean isHomologation() {
+        return "HOMOLOGATION".equalsIgnoreCase(
+                String.valueOf(arcaProperties.environment())
+        );
+    }
+
+    private void markAsVerified(BookstoreFiscalSettings settings) {
+        settings.setArcaStatus(ArcaAuthorizationStatus.VERIFIED);
+        settings.setVerifiedAt(Instant.now());
+        settings.setLastVerificationError(null);
+    }
+
+    private void markAsError(
+            BookstoreFiscalSettings settings,
+            String message
+    ) {
+        settings.setArcaStatus(ArcaAuthorizationStatus.ERROR);
+        settings.setVerifiedAt(null);
+        settings.setLastVerificationError(message);
     }
 
     private boolean matchesConfiguredPoint(ArcaPointOfSale point, Integer configuredPoint) {

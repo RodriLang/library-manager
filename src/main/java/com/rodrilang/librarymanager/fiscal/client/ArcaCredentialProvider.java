@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.fiscal.client;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.fiscal.config.ArcaProperties;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
@@ -16,6 +17,7 @@ import java.util.Base64;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ArcaCredentialProvider {
 
     private final ArcaProperties properties;
@@ -23,12 +25,33 @@ public class ArcaCredentialProvider {
     public X509Certificate certificate() {
         validateConfiguration();
 
+        log.info(
+                "ARCA credentials: certificate={} chars, privateKey={} chars",
+                properties.certificateBase64() == null
+                        ? 0
+                        : properties.certificateBase64().length(),
+                properties.privateKeyBase64() == null
+                        ? 0
+                        : properties.privateKeyBase64().length()
+        );
+
         try {
-            byte[] bytes = decodePemOrBase64(properties.certificateBase64(), "CERTIFICATE");
-            CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            return (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(bytes));
+            byte[] bytes = decodePemOrBase64(
+                    properties.certificateBase64(),
+                    "CERTIFICATE"
+            );
+
+            CertificateFactory factory =
+                    CertificateFactory.getInstance("X.509");
+
+            return (X509Certificate) factory.generateCertificate(
+                    new ByteArrayInputStream(bytes)
+            );
         } catch (Exception exception) {
-            throw new BusinessException("No se pudo leer el certificado configurado para ARCA.");
+            throw new BusinessException(
+                    "No se pudo leer el certificado configurado para ARCA: "
+                            + exception.getMessage()
+            );
         }
     }
 

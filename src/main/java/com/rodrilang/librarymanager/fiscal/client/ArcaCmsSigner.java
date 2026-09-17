@@ -25,10 +25,10 @@ public class ArcaCmsSigner {
     private final ArcaCredentialProvider credentials;
 
     public String sign(String content) {
-        try {
-            X509Certificate certificate = credentials.certificate();
-            PrivateKey privateKey = credentials.privateKey();
+        X509Certificate certificate = credentials.certificate();
+        PrivateKey privateKey = credentials.privateKey();
 
+        try {
             ContentSigner signer = new JcaContentSignerBuilder("SHA1withRSA")
                     .build(privateKey);
 
@@ -47,7 +47,10 @@ public class ArcaCmsSigner {
 
             return Base64.getEncoder().encodeToString(signed.getEncoded());
         } catch (Exception exception) {
-            throw new ArcaApiException("No se pudo firmar la solicitud de autenticación de ARCA.", exception);
+            throw new ArcaApiException(
+                    "No se pudo generar la firma CMS para ARCA: " + exception.getMessage(),
+                    exception
+            );
         }
     }
 }

@@ -66,6 +66,21 @@ public class ArcaWsfeClient {
         return result;
     }
 
+    public void verifyAccess(long representedCuit) {
+        Document document = execute(
+                "FEParamGetTiposCbte",
+                authXml(representedCuit)
+        );
+
+        assertNoGlobalErrors(document);
+
+        if (XmlSupport.elements(document, "CbteTipo").isEmpty()) {
+            throw new ArcaApiException(
+                    "ARCA respondió correctamente, pero no devolvió tipos de comprobante habilitados."
+            );
+        }
+    }
+
     public long getLastAuthorized(long representedCuit, int pointOfSale, int voucherType) {
         String body = authXml(representedCuit) + """
                 <ar:PtoVta>%d</ar:PtoVta>
