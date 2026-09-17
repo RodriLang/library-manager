@@ -16,6 +16,7 @@ import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeC
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.profitability.service.SaleProfitabilityService;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
 import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
@@ -69,6 +70,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
     private final PurchaseRequirementService purchaseRequirementService;
     private final SaleCalculator calculator;
     private final SaleMapper mapper;
+    private final SaleProfitabilityService profitabilityService;
 
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
@@ -210,7 +212,12 @@ public class SaleCommandServiceImpl implements SaleCommandService {
             publishStockSync(saleItem.getInventory().getId());
         }
 
-        return mapper.toDetailResponse(sale, saleItems, payments);
+        return mapper.toDetailResponse(
+                sale,
+                saleItems,
+                payments,
+                profitabilityService.summarize(sale, saleItems)
+        );
     }
 
     @Override
@@ -283,7 +290,8 @@ public class SaleCommandServiceImpl implements SaleCommandService {
         return mapper.toDetailResponse(
                 sale,
                 items,
-                paymentRepository.findAllBySaleIdOrderByIdAsc(sale.getId())
+                paymentRepository.findAllBySaleIdOrderByIdAsc(sale.getId()),
+                profitabilityService.summarize(sale, items)
         );
     }
 

@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.inventory.cost.repository;
 
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.inventory.cost.model.InventoryCostAllocation;
+import com.rodrilang.librarymanager.inventory.cost.repository.projection.SaleCostAllocationProjection;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +15,22 @@ import java.util.List;
 public interface InventoryCostAllocationRepository extends JpaRepository<InventoryCostAllocation, Long> {
 
     boolean existsByInventoryMovementId(Long inventoryMovementId);
+
+    @Query("""
+            SELECT
+                allocation.quantity AS quantity,
+                layer.costType AS costType,
+                layer.unitCost AS unitCost
+            FROM InventoryCostAllocation allocation
+            JOIN allocation.costLayer layer
+            WHERE allocation.inventoryMovement.referenceType = :referenceType
+              AND allocation.inventoryMovement.referenceId = :referenceId
+            ORDER BY allocation.id ASC
+            """)
+    List<SaleCostAllocationProjection> findCostSummaryByMovementReference(
+            @Param("referenceType") InventoryMovementReferenceType referenceType,
+            @Param("referenceId") String referenceId
+    );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = {"costLayer", "inventoryMovement"})
