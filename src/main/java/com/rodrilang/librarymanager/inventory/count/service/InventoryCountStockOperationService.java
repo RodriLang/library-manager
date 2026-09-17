@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.inventory.count.service;
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
+import com.rodrilang.librarymanager.inventory.cost.service.InventoryCostMovementService;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItem;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItemStatus;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountMode;
@@ -25,6 +26,7 @@ public class InventoryCountStockOperationService {
 
     private final InventoryCountProvisioningService provisioningService;
     private final InventoryStockService stockService;
+    private final InventoryCostMovementService inventoryCostMovementService;
 
     public Optional<Long> applyInitial(InventoryCountSession session, InventoryCountResult result, InventoryCountItem item) {
         if (result.getCountedQuantity() == null) {
@@ -96,6 +98,7 @@ public class InventoryCountStockOperationService {
                             "Resolución posterior del conteo de inventario"
                     )
             );
+            inventoryCostMovementService.applyInventoryCount(session, stockResult.movement());
 
             result.setAppliedDelta(result.getAppliedDelta() + correction);
             result.setResultingQuantity(stockResult.inventory().getStock());
@@ -111,7 +114,7 @@ public class InventoryCountStockOperationService {
     }
 
     private InventoryStockChangeResult addStock(InventoryCountSession session, Inventory inventory, int quantity) {
-        return stockService.changeStock(
+        InventoryStockChangeResult result = stockService.changeStock(
                 inventory.getId(),
                 new InventoryStockChangeCommand(
                         quantity,
@@ -122,10 +125,12 @@ public class InventoryCountStockOperationService {
                         "Entrada aplicada desde conteo de inventario"
                 )
         );
+        inventoryCostMovementService.applyInventoryCount(session, result.movement());
+        return result;
     }
 
     private InventoryStockChangeResult setStock(InventoryCountSession session, Inventory inventory, int targetStock) {
-        return stockService.adjustStockTo(
+        InventoryStockChangeResult result = stockService.adjustStockTo(
                 inventory.getId(),
                 new InventoryStockAdjustmentCommand(
                         targetStock,
@@ -135,6 +140,8 @@ public class InventoryCountStockOperationService {
                         "Ajuste aplicado desde conteo de inventario"
                 )
         );
+        inventoryCostMovementService.applyInventoryCount(session, result.movement());
+        return result;
     }
 
     private void markAppliedWithoutInventory(InventoryCountResult result, InventoryCountItem item) {
