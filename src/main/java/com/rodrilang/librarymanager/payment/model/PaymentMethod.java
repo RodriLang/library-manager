@@ -1,7 +1,6 @@
-package com.rodrilang.librarymanager.sales.model;
+package com.rodrilang.librarymanager.payment.model;
 
 public enum PaymentMethod {
-
     CASH,
     DEBIT_CARD,
     CREDIT_CARD,

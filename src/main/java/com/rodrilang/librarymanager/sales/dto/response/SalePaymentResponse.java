@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.sales.dto.response;
 
-import com.rodrilang.librarymanager.sales.model.PaymentMethod;
+import com.rodrilang.librarymanager.payment.model.PaymentMethod;
 
 import java.math.BigDecimal;
 

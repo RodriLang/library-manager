@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.purchasing.model;
 
 import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.purchasing.payment.model.PurchasePayment;
+import com.rodrilang.librarymanager.purchasing.payment.model.PurchasePaymentStatus;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Bookstore;
 import jakarta.persistence.*;
@@ -56,4 +58,32 @@ public class Purchase extends AuditableEntity {
     @OneToMany(mappedBy = "purchase", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<PurchaseItem> items = new ArrayList<>();
+
+    @OneToMany(mappedBy = "purchase", cascade = CascadeType.ALL)
+    @OrderBy("paidAt ASC, id ASC")
+    @Builder.Default
+    private List<PurchasePayment> payments = new ArrayList<>();
+
+    public BigDecimal getPaidAmount() {
+        return payments.stream()
+                .filter(PurchasePayment::isActive)
+                .map(PurchasePayment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2);
+    }
+
+    public BigDecimal getPendingAmount() {
+        return totalAmount.subtract(getPaidAmount()).max(BigDecimal.ZERO).setScale(2);
+    }
+
+    public PurchasePaymentStatus getPaymentStatus() {
+        BigDecimal paidAmount = getPaidAmount();
+        if (paidAmount.signum() == 0 || totalAmount.signum() == 0) {
+            return PurchasePaymentStatus.PENDING;
+        }
+        return paidAmount.compareTo(totalAmount) >= 0
+                ? PurchasePaymentStatus.PAID
+                : PurchasePaymentStatus.PARTIALLY_PAID;
+    }
 }
+

@@ -33,7 +33,7 @@ import com.rodrilang.librarymanager.fiscal.model.RecipientVatCondition;
 import com.rodrilang.librarymanager.fiscal.repository.BookstoreFiscalSettingsRepository;
 import com.rodrilang.librarymanager.fiscal.repository.FiscalDocumentRepository;
 import com.rodrilang.librarymanager.fiscal.service.FiscalPdfService;
-import com.rodrilang.librarymanager.sales.model.PaymentMethod;
+import com.rodrilang.librarymanager.payment.model.PaymentMethod;
 import com.rodrilang.librarymanager.sales.model.SaleItem;
 import com.rodrilang.librarymanager.sales.model.SalePayment;
 import com.rodrilang.librarymanager.sales.repository.SaleItemRepository;

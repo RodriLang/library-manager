@@ -5,10 +5,15 @@ import com.rodrilang.librarymanager.purchasing.dto.response.*;
 import com.rodrilang.librarymanager.purchasing.model.BookstoreProviderBookTerm;
 import com.rodrilang.librarymanager.purchasing.model.Purchase;
 import com.rodrilang.librarymanager.purchasing.model.PurchaseItem;
+import com.rodrilang.librarymanager.purchasing.payment.service.PurchasePaymentMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class PurchasingMapper {
+
+    private final PurchasePaymentMapper paymentMapper;
 
     public PurchaseProviderResponse toResponse(Provider provider) {
         return new PurchaseProviderResponse(
@@ -53,8 +58,12 @@ public class PurchasingMapper {
                 purchase.getDocumentNumber(),
                 purchase.getStatus(),
                 purchase.getTotalAmount(),
+                purchase.getPaidAmount(),
+                purchase.getPendingAmount(),
+                purchase.getPaymentStatus(),
                 purchase.getNotes(),
-                purchase.getItems().stream().map(this::toResponse).toList()
+                purchase.getItems().stream().map(this::toResponse).toList(),
+                purchase.getPayments().stream().map(paymentMapper::toResponse).toList()
         );
     }
 }
