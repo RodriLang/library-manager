@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 
-public record UpsertBookSupplierTermRequest(
+public record UpsertProviderBookTermRequest(
         @NotNull Long bookId,
         @DecimalMin("0.00") @DecimalMax("100.00") BigDecimal discountPercentage
 ) {

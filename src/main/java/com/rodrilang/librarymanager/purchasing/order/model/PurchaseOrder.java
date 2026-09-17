@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.purchasing.order.model;
 
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Bookstore;
 import jakarta.persistence.Column;
@@ -60,7 +60,7 @@ public class PurchaseOrder extends AuditableEntity {
             name = "provider_id",
             nullable = false
     )
-    private PriceListProvider provider;
+    private Provider provider;
 
     @Column(
             name = "order_number",

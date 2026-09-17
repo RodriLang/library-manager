@@ -1,6 +1,8 @@
-package com.rodrilang.librarymanager.importer.price.configuration.model;
+package com.rodrilang.librarymanager.provider.catalog.model;
 
-import com.rodrilang.librarymanager.importer.price.configuration.enums.ProviderBookIdentifierStatus;
+import com.rodrilang.librarymanager.provider.model.Provider;
+
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookIdentifierStatus;
 import com.rodrilang.librarymanager.model.Book;
 import jakarta.persistence.*;
 import lombok.*;
@@ -34,7 +36,7 @@ public class ProviderBook {
             nullable = false,
             foreignKey = @ForeignKey(name = "fk_provider_books_provider")
     )
-    private PriceListProvider provider;
+    private Provider provider;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(

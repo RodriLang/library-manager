@@ -3,10 +3,11 @@ package com.rodrilang.librarymanager.purchasing.provider.service.impl;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.model.ProviderType;
+import com.rodrilang.librarymanager.provider.catalog.model.ProviderBook;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.provider.dto.ProviderCatalogFilter;
@@ -45,7 +46,7 @@ public class ProviderCatalogServiceImpl
         implements ProviderCatalogService {
 
     private final ProviderBookRepository providerBookRepository;
-    private final PriceListProviderRepository providerRepository;
+    private final ProviderRepository providerRepository;
     private final BookRepository bookRepository;
 
     private final EditorialPriceRepository editorialPriceRepository;
@@ -215,7 +216,8 @@ public class ProviderCatalogServiceImpl
                 providerBookRepository
                         .findAlternativeProviders(
                                 bookIds,
-                                providerId
+                                providerId,
+                                ProviderType.COMMERCIAL
                         );
 
         if (providers.isEmpty()) {
@@ -352,7 +354,7 @@ public class ProviderCatalogServiceImpl
 
         providerRepository
                 .findById(providerId)
-                .filter(PriceListProvider::isActive)
+                .filter(Provider::isPurchasable)
                 .orElseThrow(() ->
                         new BusinessException(
                                 "El proveedor seleccionado no se encuentra activo."

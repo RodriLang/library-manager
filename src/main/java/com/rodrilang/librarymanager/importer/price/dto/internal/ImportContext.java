@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.dto.internal;
 
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.importer.price.dto.IsbnBookConflict;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 public record ImportContext(
-        PriceListProvider provider,
+        Provider provider,
         Map<String, Book> booksByIsbn13,
         Map<String, Book> booksByIsbn10,
         Map<String, Book> booksByCanonicalIsbn,

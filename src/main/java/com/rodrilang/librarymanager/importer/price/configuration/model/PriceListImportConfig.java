@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.configuration.model;
 
+import com.rodrilang.librarymanager.provider.model.Provider;
+
 import com.rodrilang.librarymanager.importer.price.configuration.enums.HeaderStrategy;
 import com.rodrilang.librarymanager.importer.price.configuration.enums.SheetStrategy;
 import jakarta.persistence.*;
@@ -30,7 +32,7 @@ public class PriceListImportConfig {
                     name = "fk_price_list_import_configs_provider"
             )
     )
-    private PriceListProvider provider;
+    private Provider provider;
 
     @Column(nullable = false, length = 100)
     private String name;

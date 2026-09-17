@@ -2,7 +2,7 @@ package com.rodrilang.librarymanager.editorialprice.model;
 
 import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceConfirmationSourceType;
 import com.rodrilang.librarymanager.editorialprice.enums.ExternalPriceSourceType;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.model.EditorialPrice;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -51,7 +51,7 @@ public class EditorialPriceConfirmation {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "provider_id")
-    private PriceListProvider provider;
+    private Provider provider;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "external_source_type", length = 30)

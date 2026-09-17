@@ -3,9 +3,9 @@ package com.rodrilang.librarymanager.purchasing.order.service.impl;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.EditorialPrice;
@@ -65,7 +65,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     private final PurchaseRequirementRepository requirementRepository;
 
-    private final PriceListProviderRepository providerRepository;
+    private final ProviderRepository providerRepository;
     private final ProviderBookRepository providerBookRepository;
     private final EditorialPriceRepository editorialPriceRepository;
 
@@ -82,7 +82,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
-        PriceListProvider provider = getActiveProvider(request.providerId());
+        Provider provider = getActiveProvider(request.providerId());
 
         Optional<PurchaseOrder> existing =
                 orderRepository.findDraftByBookstoreIdAndProviderIdForUpdate(bookstoreId, provider.getId());
@@ -190,7 +190,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
             PurchaseRequirement firstRequirement = providerPreparations.getFirst().requirement();
 
-            PriceListProvider provider = getActiveProvider(firstRequirement.getPreferredProvider().getId());
+            Provider provider = getActiveProvider(firstRequirement.getPreferredProvider().getId());
 
             DraftOrderResolution resolution = resolveDraftOrder(bookstore, provider);
             PurchaseOrder order = resolution.order();
@@ -594,10 +594,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 .orElse(null);
     }
 
-    private PriceListProvider getActiveProvider(Long providerId) {
+    private Provider getActiveProvider(Long providerId) {
 
         return providerRepository.findById(providerId)
-                .filter(PriceListProvider::isActive)
+                .filter(Provider::isPurchasable)
                 .orElseThrow(() -> new BusinessException("El proveedor seleccionado no se encuentra activo."));
     }
 
@@ -665,7 +665,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         );
     }
 
-    private DraftOrderResolution resolveDraftOrder(Bookstore bookstore, PriceListProvider provider) {
+    private DraftOrderResolution resolveDraftOrder(Bookstore bookstore, Provider provider) {
 
         Optional<PurchaseOrder> existing =
                 orderRepository.findDraftByBookstoreIdAndProviderIdForUpdate(bookstore.getId(), provider.getId());
@@ -677,7 +677,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         return new DraftOrderResolution(createDraftOrder(bookstore, provider), true);
     }
 
-    private PurchaseOrder createDraftOrder(Bookstore bookstore, PriceListProvider provider) {
+    private PurchaseOrder createDraftOrder(Bookstore bookstore, Provider provider) {
 
         PurchaseOrder order = PurchaseOrder.builder()
                 .bookstore(bookstore)
@@ -696,7 +696,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             PurchaseOrder order,
             PurchaseRequirement requirement,
             int quantity,
-            PriceListProvider provider
+            Provider provider
     ) {
         Book book = requirement.getBook();
 

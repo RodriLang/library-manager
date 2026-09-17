@@ -16,8 +16,8 @@ import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceControl
 import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceHealthCacheService;
 import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePriceSyncRequestedEvent;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.EditorialPrice;
@@ -50,7 +50,7 @@ public class EditorialPriceControlServiceImpl implements EditorialPriceControlSe
     private final EditorialPriceConfirmationRepository confirmationRepository;
     private final EditorialPriceResolutionRepository resolutionRepository;
 
-    private final PriceListProviderRepository providerRepository;
+    private final ProviderRepository providerRepository;
 
     private final EffectiveEditorialPriceService effectivePriceService;
 
@@ -91,7 +91,7 @@ public class EditorialPriceControlServiceImpl implements EditorialPriceControlSe
 
         validateConfirmation(request);
 
-        PriceListProvider provider = resolveConfirmationProvider(request);
+        Provider provider = resolveConfirmationProvider(request);
 
         EditorialPriceConfirmation confirmation =
                 EditorialPriceConfirmation.builder()
@@ -348,7 +348,7 @@ public class EditorialPriceControlServiceImpl implements EditorialPriceControlSe
         Book book = bookRepository.findById(bookId)
                 .orElseThrow(() -> new BusinessException("No se encontró el libro."));
 
-        PriceListProvider provider = resolveManualProvider(request);
+        Provider provider = resolveManualProvider(request);
 
         if (request.origin() == EditorialPriceOrigin.MANUAL_DISTRIBUTOR) {
             if (provider == null) throw new IllegalStateException("El distribuidor resuelto no puede ser nulo.");
@@ -515,25 +515,25 @@ public class EditorialPriceControlServiceImpl implements EditorialPriceControlSe
         }
     }
 
-    private PriceListProvider resolveManualProvider(ManualEditorialPriceRequest request) {
+    private Provider resolveManualProvider(ManualEditorialPriceRequest request) {
         if (request.origin() != EditorialPriceOrigin.MANUAL_DISTRIBUTOR) {
             return null;
         }
 
         return providerRepository
                 .findById(request.providerId())
-                .filter(PriceListProvider::isActive)
+                .filter(Provider::isActive)
                 .orElseThrow(() -> new BusinessException("No se encontró el distribuidor seleccionado."));
     }
 
-    private PriceListProvider resolveConfirmationProvider(EditorialPriceConfirmationRequest request) {
+    private Provider resolveConfirmationProvider(EditorialPriceConfirmationRequest request) {
         if (request.sourceType() != EditorialPriceConfirmationSourceType.DISTRIBUTOR) {
             return null;
         }
 
         return providerRepository
                 .findById(request.providerId())
-                .filter(PriceListProvider::isActive)
+                .filter(Provider::isActive)
                 .orElseThrow(() -> new BusinessException("No se encontró el distribuidor seleccionado."));
     }
 

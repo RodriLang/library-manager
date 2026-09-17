@@ -1,7 +1,8 @@
-package com.rodrilang.librarymanager.importer.price.configuration.repository;
+package com.rodrilang.librarymanager.provider.catalog.repository;
 
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
-import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
+import com.rodrilang.librarymanager.provider.catalog.model.ProviderBook;
+import com.rodrilang.librarymanager.provider.model.ProviderType;
 import com.rodrilang.librarymanager.purchasing.provider.repository.projection.BookAlternativeProviderProjection;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.projection.PurchaseRequirementProviderProjection;
 import io.micrometer.common.lang.NonNullApi;
@@ -57,13 +58,15 @@ public interface ProviderBookRepository
               AND pb.active = true
               AND pb.provider.active = true
               AND pb.provider.id <> :excludedProviderId
+              AND pb.provider.type = :providerType
             ORDER BY
                 pb.book.id,
                 pb.provider.name
             """)
     List<BookAlternativeProviderProjection> findAlternativeProviders(
             @Param("bookIds") Collection<Long> bookIds,
-            @Param("excludedProviderId") Long excludedProviderId
+            @Param("excludedProviderId") Long excludedProviderId,
+            @Param("providerType") ProviderType providerType
     );
 
     @Query("""
@@ -88,6 +91,7 @@ public interface ProviderBookRepository
             WHERE pb.book.id IN :bookIds
               AND pb.active = true
               AND pb.provider.active = true
+              AND pb.provider.type = :providerType
             ORDER BY
                 pb.book.id,
                 pb.provider.name
@@ -95,7 +99,8 @@ public interface ProviderBookRepository
     List<PurchaseRequirementProviderProjection>
     findAvailableProvidersByBookIds(
             @Param("bookIds")
-            Collection<Long> bookIds
+            Collection<Long> bookIds,
+            @Param("providerType") ProviderType providerType
     );
 
     @Query("""
@@ -112,10 +117,13 @@ public interface ProviderBookRepository
             FROM ProviderBook pb
             WHERE pb.book.id = :bookId
               AND pb.active = true
+              AND pb.provider.active = true
+              AND pb.provider.type = :providerType
             ORDER BY pb.provider.name
             """)
     List<BookProviderResponse> findActiveProvidersByBookId(
-            @Param("bookId") Long bookId
+            @Param("bookId") Long bookId,
+            @Param("providerType") ProviderType providerType
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

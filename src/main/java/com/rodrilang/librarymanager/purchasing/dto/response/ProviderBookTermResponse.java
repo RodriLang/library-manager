@@ -3,9 +3,9 @@ package com.rodrilang.librarymanager.purchasing.dto.response;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-public record BookSupplierTermResponse(
+public record ProviderBookTermResponse(
         Long id,
-        Long supplierId,
+        Long providerId,
         Long bookId,
         String isbn,
         String title,

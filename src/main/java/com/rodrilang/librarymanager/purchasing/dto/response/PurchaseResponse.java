@@ -8,7 +8,7 @@ import java.util.List;
 
 public record PurchaseResponse(
         Long id,
-        SupplierResponse supplier,
+        PurchaseProviderResponse provider,
         LocalDate purchaseDate,
         String documentNumber,
         PurchaseStatus status,

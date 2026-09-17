@@ -1,9 +1,11 @@
 package com.rodrilang.librarymanager.purchasing.model;
 
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Bookstore;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -17,10 +19,12 @@ import java.util.List;
 @Entity
 @Table(name = "purchases", indexes = {
         @Index(name = "idx_purchases_bookstore_date", columnList = "bookstore_id,purchase_date"),
-        @Index(name = "idx_purchases_supplier", columnList = "supplier_id")
+        @Index(name = "idx_purchases_provider", columnList = "provider_id")
 })
 public class Purchase extends AuditableEntity {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -28,8 +32,8 @@ public class Purchase extends AuditableEntity {
     private Bookstore bookstore;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "supplier_id", nullable = false)
-    private Supplier supplier;
+    @JoinColumn(name = "provider_id", nullable = false)
+    private Provider provider;
 
     @Column(name = "purchase_date", nullable = false)
     private LocalDate purchaseDate;

@@ -1,4 +1,4 @@
-package com.rodrilang.librarymanager.importer.price.configuration.enums;
+package com.rodrilang.librarymanager.provider.catalog.enums;
 
 public enum ProviderBookIdentifierStatus {
 

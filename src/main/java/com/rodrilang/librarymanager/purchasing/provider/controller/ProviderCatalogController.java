@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/price-list-providers")
+@RequestMapping("/api/providers")
 @RequiredArgsConstructor
 @Tag(name = "Catálogo de proveedores", description = "Consulta de libros comercializados por proveedores")
 public class ProviderCatalogController {

@@ -9,6 +9,7 @@ import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
 import com.rodrilang.librarymanager.isbn.service.IsbnService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.purchasing.dto.request.CreatePurchaseRequest;
 import com.rodrilang.librarymanager.purchasing.dto.request.UpsertPurchaseItemRequest;
 import com.rodrilang.librarymanager.purchasing.dto.request.ScanPurchaseItemRequest;
@@ -23,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -33,8 +33,8 @@ public class PurchaseService {
     private final PurchaseItemRepository purchaseItemRepository;
     private final BookRepository bookRepository;
     private final BookstoreRepository bookstoreRepository;
-    private final SupplierService supplierService;
-    private final BookSupplierTermService termService;
+    private final ProviderBookTermService termService;
+    private final ProviderResolver providerResolver;
     private final PurchaseInventoryService purchaseInventoryService;
     private final EffectiveEditorialPriceService editorialPriceService;
     private final InventoryCostCalculator calculator;
@@ -55,12 +55,12 @@ public class PurchaseService {
 
     @Transactional
     public PurchaseResponse create(CreatePurchaseRequest request) {
-        Supplier supplier = supplierService.requireSupplier(request.supplierId());
+        Provider provider = providerResolver.requirePurchasable(request.providerId());
         Bookstore bookstore = bookstoreRepository.findById(bookstoreContext.getCurrentBookstoreId())
                 .orElseThrow(() -> new BusinessException("Librería no encontrada"));
         Purchase purchase = purchaseRepository.save(Purchase.builder()
                 .bookstore(bookstore)
-                .supplier(supplier)
+                .provider(provider)
                 .purchaseDate(request.purchaseDate())
                 .documentNumber(clean(request.documentNumber()))
                 .notes(clean(request.notes()))
@@ -171,7 +171,8 @@ public class PurchaseService {
             }
             purchaseInventoryService.receive(item);
             termService.rememberPurchase(
-                    purchase.getSupplier(), item.getBook(), item.getDiscountPercentage(), purchase.getPurchaseDate()
+                    purchase.getBookstore(), purchase.getProvider(), item.getBook(),
+                    item.getDiscountPercentage(), purchase.getPurchaseDate()
             );
         });
 
