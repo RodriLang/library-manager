@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.inventory.cost.model;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.model.InventoryMovement;
+import com.rodrilang.librarymanager.purchasing.model.PurchaseItem;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -73,6 +74,10 @@ public class InventoryCostLayer extends AuditableEntity {
 
     @Column(name = "source_reference_id", length = 100)
     private String sourceReferenceId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "purchase_item_id")
+    private PurchaseItem purchaseItem;
 
     @Column(name = "entered_at", nullable = false)
     private Instant enteredAt;

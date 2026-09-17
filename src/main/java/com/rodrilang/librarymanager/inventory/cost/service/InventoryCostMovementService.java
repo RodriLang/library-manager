@@ -13,10 +13,12 @@ import com.rodrilang.librarymanager.inventory.count.model.InventoryCountPurpose;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountSession;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.model.InventoryMovement;
+import com.rodrilang.librarymanager.purchasing.model.PurchaseItem;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -62,6 +64,38 @@ public class InventoryCostMovementService {
         }
 
         registerInbound(movement, sourceType(session.getPurpose()));
+    }
+
+    @Transactional
+    public void confirmPurchaseCost(
+            InventoryMovement movement,
+            PurchaseItem purchaseItem,
+            BigDecimal unitCost,
+            BigDecimal discountPercentage,
+            BigDecimal referencePrice
+    ) {
+        if (movement == null || movement.getId() == null) {
+            throw new BusinessException("No se encontró el movimiento generado por la compra");
+        }
+        if (movement.getType() != InventoryMovementType.PURCHASE) {
+            throw new BusinessException("Solo un movimiento de compra puede recibir un costo real de compra");
+        }
+
+        InventoryCostLayer layer = layerRepository.findBySourceMovementId(movement.getId())
+                .orElseThrow(() -> new BusinessException("No se encontró la capa de costo generada por la compra"));
+
+        if (unitCost == null || unitCost.signum() <= 0) {
+            throw new BusinessException("La compra requiere un costo unitario real mayor a cero");
+        }
+
+        layer.setCostType(InventoryCostType.REAL);
+        layer.setUnitCost(unitCost);
+        layer.setDiscountPercentage(discountPercentage);
+        if (referencePrice != null) {
+            layer.setReferencePrice(referencePrice);
+        }
+        layer.setPurchaseItem(purchaseItem);
+        layer.setSourceReferenceId(purchaseItem.getId().toString());
     }
 
     @Transactional(readOnly = true)
