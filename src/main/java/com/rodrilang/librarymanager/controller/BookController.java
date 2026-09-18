@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.controller;
 
+import com.rodrilang.librarymanager.dto.request.BookCatalogFilterRequest;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.LookupBookByIsbnRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
@@ -53,11 +54,23 @@ public class BookController {
     @GetMapping
     public ResponseEntity<PageResponse<BookSummaryResponse>> getAll(
             @ParameterObject
-            @PageableDefault(size = 20, sort = "title")
+            BookCatalogFilterRequest filters,
+            @RequestParam(defaultValue = "false")
+            boolean force,
+            @ParameterObject
+            @PageableDefault(
+                    size = 20,
+                    sort = "title"
+            )
             Pageable pageable
     ) {
         return ResponseEntity.ok(
-                PageResponse.of(bookService.getAll(pageable))
+                PageResponse.of(
+                        bookService.findCatalog(
+                                filters.toCriteria(force),
+                                pageable
+                        )
+                )
         );
     }
 
@@ -79,16 +92,18 @@ public class BookController {
         );
     }
 
+    @Deprecated
     @GetMapping("/search")
     public ResponseEntity<PageResponse<BookSummaryResponse>> search(
             @RequestParam String q,
-            @RequestParam(defaultValue = "false") boolean force,
+            @RequestParam(defaultValue = "false")
+            boolean force,
             @ParameterObject
             @PageableDefault(size = 20)
             Pageable pageable
     ) {
         return ResponseEntity.ok(
-                PageResponse.of(bookService.search(q.trim(), force, pageable))
+                PageResponse.of(bookService.search(q, force, pageable))
         );
     }
 

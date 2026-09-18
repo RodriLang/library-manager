@@ -1,19 +1,27 @@
 package com.rodrilang.librarymanager.controller;
 
+import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
+import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
+import com.rodrilang.librarymanager.enums.BookCondition;
+import com.rodrilang.librarymanager.enums.InventoryPriceMode;
+import com.rodrilang.librarymanager.enums.InventoryStockFilter;
+import com.rodrilang.librarymanager.repository.criteria.InventorySearchCriteria;
 import com.rodrilang.librarymanager.service.InventoryService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,6 +63,11 @@ public class InventoryController {
         );
     }
 
+    @Deprecated
+    @Operation(
+            deprecated = true,
+            description = "Endpoint legado. Las nuevas ventas deben registrarse mediante POST /api/sales."
+    )
     @PostMapping("/{inventoryId}/sales")
     public ResponseEntity<InventoryDetailResponse> recordSale(
             @PathVariable Long inventoryId,
@@ -74,13 +87,61 @@ public class InventoryController {
     }
 
     @GetMapping
-    public ResponseEntity<PageResponse<InventorySummaryResponse>> getAll(
+    public ResponseEntity<PageResponse<InventorySummaryResponse>> find(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean force,
+            @RequestParam(defaultValue = "ALL") InventoryStockFilter stock,
+            @RequestParam(required = false) BookCondition condition,
+            @RequestParam(required = false) Long publisherId,
+            @RequestParam(required = false) Long authorId,
+            @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
             @ParameterObject
-            @PageableDefault(size = 20)
+            @PageableDefault(size = 30, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
+        InventoryAdvancedFilters filters =
+                new InventoryAdvancedFilters(
+                        condition,
+                        publisherId,
+                        authorId,
+                        priceMode
+                );
+
+        InventorySearchCriteria criteria =
+                new InventorySearchCriteria(
+                        q,
+                        force,
+                        stock,
+                        filters
+                );
+
         return ResponseEntity.ok(
-                PageResponse.of(inventoryService.getAll(pageable))
+                PageResponse.of(
+                        inventoryService.find(
+                                criteria,
+                                pageable
+                        )
+                )
+        );
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<InventoryStockSummaryResponse> getSummary(
+            @RequestParam(required = false) BookCondition condition,
+            @RequestParam(required = false) Long publisherId,
+            @RequestParam(required = false) Long authorId,
+            @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode
+    ) {
+        InventoryAdvancedFilters filters =
+                new InventoryAdvancedFilters(
+                        condition,
+                        publisherId,
+                        authorId,
+                        priceMode
+                );
+
+        return ResponseEntity.ok(
+                inventoryService.getStockSummary(filters)
         );
     }
 
@@ -99,19 +160,6 @@ public class InventoryController {
     ) {
         return ResponseEntity.ok(
                 inventoryService.getByBookId(bookId)
-        );
-    }
-
-    @GetMapping("/search")
-    public ResponseEntity<PageResponse<InventorySummaryResponse>> search(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "false") boolean force,
-            @ParameterObject
-            @PageableDefault(size = 20)
-            Pageable pageable
-    ) {
-        return ResponseEntity.ok(
-                PageResponse.of(inventoryService.search(q.trim(), force, pageable))
         );
     }
 

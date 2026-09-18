@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
+import com.rodrilang.librarymanager.dto.internal.InventoryStockSummaryCounts;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
@@ -8,6 +10,7 @@ import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
+import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
@@ -23,6 +26,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInve
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
+import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.inventory.movement.repository.InventoryMovementRepository;
@@ -35,11 +39,10 @@ import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurch
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
 import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.repository.criteria.InventorySearchCriteria;
 import com.rodrilang.librarymanager.service.BookService;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import com.rodrilang.librarymanager.service.InventoryService;
-import com.rodrilang.librarymanager.util.PageableUtils;
-import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -69,11 +72,6 @@ public class InventoryServiceImpl implements InventoryService {
     private final ProviderBookService providerBookService;
     private final BookstoreContext bookstoreContext;
     private final ApplicationEventPublisher eventPublisher;
-
-    private static final Map<String, String> INVENTORY_SORT_MAPPING = Map.of(
-            "title", "book.titleSort",
-            "salePrice", "salePrice"
-    );
 
     @Transactional
     @Override
@@ -257,10 +255,14 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory adjusted =
                 inventoryStockService.adjustStockTo(
                         inventory.getId(),
-                        request.stock(),
-                        InventoryMovementSource.MANUAL,
-                        "Stock informado al reactivar el inventario"
-                );
+                        new InventoryStockAdjustmentCommand(
+                                request.stock(),
+                                InventoryMovementSource.MANUAL,
+                                null,
+                                null,
+                                "Stock informado al reactivar el inventario"
+                        )
+                ).inventory();
 
         if (adjusted.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
             eventPublisher.publishEvent(
@@ -346,75 +348,34 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Transactional(readOnly = true)
     @Override
-    public Page<InventorySummaryResponse> getAll(Pageable pageable) {
-        pageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
+    public Page<InventorySummaryResponse> find(InventorySearchCriteria criteria, Pageable pageable) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
-        Page<Inventory> inventory = inventoryRepository.findAllByBookstoreIdAndActiveTrue(
-                bookstoreContext.getCurrentBookstoreId(),
-                pageable
-        );
+        Page<Inventory> inventory =
+                inventoryRepository.find(
+                        bookstoreId,
+                        criteria,
+                        pageable
+                );
 
         return toSummaryResponsePage(inventory);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public Page<InventorySummaryResponse> search(String query, boolean force, Pageable pageable) {
-        if (query == null || query.isBlank()) {
-            Pageable normalizedPageable = PageableUtils.mapSortProperties(pageable, INVENTORY_SORT_MAPPING);
+    public InventoryStockSummaryResponse getStockSummary(InventoryAdvancedFilters filters) {
+        InventoryStockSummaryCounts summary =
+                inventoryRepository.summarize(
+                        bookstoreContext.getCurrentBookstoreId(),
+                        filters
+                );
 
-            Page<Inventory> inventory = inventoryRepository.findAllByBookstoreIdAndActiveTrue(
-                    bookstoreContext.getCurrentBookstoreId(),
-                    normalizedPageable
-            );
-
-            return toSummaryResponsePage(inventory);
-
-        }
-
-        String normalizedQuery = query.trim();
-
-        boolean identifierQuery =
-                normalizedQuery.matches("[0-9Xx\\-\\s]+");
-
-        if (!force) {
-            int minimumLength = identifierQuery ? 8 : 3;
-
-            if (normalizedQuery.length() < minimumLength) {
-                return Page.empty(pageable);
-            }
-        }
-
-        Page<Inventory> inventory;
-
-        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-
-        if (identifierQuery) {
-            String normalizedIdentifier =
-                    normalizeSearchIdentifier(normalizedQuery);
-
-            if (normalizedIdentifier == null) {
-                return Page.empty(pageable);
-            }
-
-            inventory = inventoryRepository.searchByIsbn(
-                    bookstoreId,
-                    normalizedIdentifier,
-                    pageable
-            );
-        } else {
-            String searchQuery = TextNormalizer.normalizeForSearch(normalizedQuery);
-            String fullTextQuery = TextNormalizer.normalizeForFullTextSearch(normalizedQuery);
-
-            inventory = inventoryRepository.searchText(
-                    bookstoreId,
-                    searchQuery,
-                    fullTextQuery,
-                    pageable
-            );
-        }
-
-        return toSummaryResponsePage(inventory);
+        return new InventoryStockSummaryResponse(
+                summary.total(),
+                summary.available(),
+                summary.lowStock(),
+                summary.outOfStock()
+        );
     }
 
     @Transactional
@@ -550,21 +511,6 @@ public class InventoryServiceImpl implements InventoryService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No se encontró inventario para el libro con ID: " + bookId
                 ));
-    }
-
-    private String normalizeSearchIdentifier(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-
-        String normalized = value
-                .trim()
-                .toUpperCase()
-                .replaceAll("[^0-9X]", "");
-
-        return normalized.isBlank()
-                ? null
-                : normalized;
     }
 
     private Page<InventorySummaryResponse> toSummaryResponsePage(Page<Inventory> inventoryPage) {

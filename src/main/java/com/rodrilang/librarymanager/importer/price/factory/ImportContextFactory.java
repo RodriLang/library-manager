@@ -1,8 +1,8 @@
 package com.rodrilang.librarymanager.importer.price.factory;
 
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.catalog.model.ProviderBook;
+import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.importer.price.dto.internal.ImportContext;
 import com.rodrilang.librarymanager.importer.price.dto.IsbnBookConflict;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
@@ -48,7 +48,7 @@ public class ImportContextFactory {
     private final PriceListIdentifierResolver identifierResolver;
     private final ProviderBookRepository providerBookRepository;
 
-    public ImportContext create(List<PriceListRow> rows, PriceListProvider provider) {
+    public ImportContext create(List<PriceListRow> rows, Provider provider) {
         long startedAt = System.nanoTime();
 
         long stepStartedAt = System.nanoTime();
@@ -287,7 +287,7 @@ public class ImportContextFactory {
     }
 
     private Map<String, Book> loadBooksByExternalCode(
-            PriceListProvider provider,
+            Provider provider,
             Set<String> externalCodes
     ) {
         if (provider == null || externalCodes.isEmpty()) {

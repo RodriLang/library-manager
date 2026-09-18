@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.purchasing.requirement.model;
 
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
@@ -66,7 +66,7 @@ public class PurchaseRequirement extends AuditableEntity {
                     name = "fk_purchase_requirements_provider"
             )
     )
-    private PriceListProvider preferredProvider;
+    private Provider preferredProvider;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

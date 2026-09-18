@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.purchasing.requirement.repository;
 
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSource;
+import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.projection.PurchaseRequirementReasonProjection;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -69,5 +70,14 @@ public interface PurchaseRequirementSourceRepository extends JpaRepository<Purch
 
     boolean existsByReversedSourceId(
             Long reversedSourceId
+    );
+
+    @EntityGraph(attributePaths = {
+            "requirement",
+            "requirement.bookstore"
+    })
+    Optional<PurchaseRequirementSource> findByTypeAndReferenceId(
+            PurchaseRequirementSourceType type,
+            String referenceId
     );
 }

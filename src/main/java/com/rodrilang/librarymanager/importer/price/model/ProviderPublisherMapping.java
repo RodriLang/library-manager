@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.model;
 
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.importer.price.enums.ProviderPublisherMappingType;
 import com.rodrilang.librarymanager.model.Publisher;
 import jakarta.persistence.Column;
@@ -51,7 +51,7 @@ public class ProviderPublisherMapping {
     @JoinColumn(name = "provider_id", nullable = false,
             foreignKey = @ForeignKey(name = "fk_provider_publisher_mapping_provider")
     )
-    private PriceListProvider provider;
+    private Provider provider;
 
     @Column(name = "external_name", nullable = false, length = 200)
     private String externalName;

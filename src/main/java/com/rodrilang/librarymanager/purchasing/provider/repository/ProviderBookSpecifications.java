@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.purchasing.provider.repository;
 
-import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
+import com.rodrilang.librarymanager.provider.catalog.model.ProviderBook;
 import org.springframework.data.jpa.domain.Specification;
 
 public final class ProviderBookSpecifications {

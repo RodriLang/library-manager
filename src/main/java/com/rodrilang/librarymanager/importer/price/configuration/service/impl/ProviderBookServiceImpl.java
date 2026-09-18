@@ -3,10 +3,11 @@ package com.rodrilang.librarymanager.importer.price.configuration.service.impl;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.dto.response.ProviderBookRegistrationResult;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.configuration.model.ProviderBook;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.model.ProviderType;
+import com.rodrilang.librarymanager.provider.catalog.model.ProviderBook;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookBatchRepository;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
+import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookService;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
@@ -39,7 +40,7 @@ public class ProviderBookServiceImpl implements ProviderBookService {
     @Override
     @Transactional
     public ProviderBookRegistrationResult registerOrUpdate(
-            PriceListProvider provider,
+            Provider provider,
             Book book,
             String externalCode
     ) {
@@ -83,19 +84,19 @@ public class ProviderBookServiceImpl implements ProviderBookService {
     public List<BookProviderResponse> findActiveProvidersByBookId(
             Long bookId
     ) {
-        return providerBookRepository.findActiveProvidersByBookId(bookId);
+        return providerBookRepository.findActiveProvidersByBookId(bookId, ProviderType.COMMERCIAL);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<BookProviderResponse> getProvidersForBook(Long bookId) {
-        return providerBookRepository.findActiveProvidersByBookId(bookId);
+        return providerBookRepository.findActiveProvidersByBookId(bookId, ProviderType.COMMERCIAL);
     }
 
     @Override
     @Transactional
     public void registerBatch(
-            PriceListProvider provider,
+            Provider provider,
             List<Book> books,
             List<PriceListRow> rows
     ) {

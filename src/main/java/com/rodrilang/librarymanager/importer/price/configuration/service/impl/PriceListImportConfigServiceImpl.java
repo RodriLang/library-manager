@@ -9,9 +9,9 @@ import com.rodrilang.librarymanager.importer.price.configuration.enums.HeaderStr
 import com.rodrilang.librarymanager.importer.price.configuration.enums.PriceListField;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListImportConfigRepository;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import com.rodrilang.librarymanager.importer.price.configuration.service.PriceListImportConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,13 +26,13 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class PriceListImportConfigServiceImpl implements PriceListImportConfigService {
 
-    private final PriceListProviderRepository providerRepository;
+    private final ProviderRepository providerRepository;
     private final PriceListImportConfigRepository configRepository;
 
     @Override
     @Transactional
     public PriceListImportConfigResponse create(Long providerId, CreatePriceListImportConfigRequest request) {
-        PriceListProvider provider = providerRepository.findById(providerId)
+        Provider provider = providerRepository.findById(providerId)
                 .orElseThrow(() -> new BusinessException("No se encontró el proveedor solicitado."));
 
         if (!provider.isActive()) {

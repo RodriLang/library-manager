@@ -2,9 +2,9 @@ package com.rodrilang.librarymanager.importer.price.service.impl;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListImportConfigRepository;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportJobStatusResponse;
 import com.rodrilang.librarymanager.importer.price.dto.response.PriceListImportStartResponse;
 import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
@@ -32,7 +32,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
 
     private final PriceListImportJobRepository jobRepository;
     private final PriceListAsyncProcessor asyncProcessor;
-    private final PriceListProviderRepository providerRepository;
+    private final ProviderRepository providerRepository;
     private final PriceListImportConfigRepository configRepository;
     private final PriceListImportFileStorage fileStorage;
 
@@ -53,7 +53,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
             return toExistingJobResponse(existingJob);
         }
 
-        PriceListProvider provider = providerRepository.findById(providerId)
+        Provider provider = providerRepository.findById(providerId)
                 .orElseThrow(() -> new BusinessException("No se encontró el proveedor seleccionado."));
 
         if (!provider.isActive()) {
@@ -138,7 +138,7 @@ public class PriceListImportServiceImpl implements PriceListImportService {
     }
 
     private PriceListImportStartResponse createAndStartJob(
-            PriceListProvider provider,
+            Provider provider,
             PriceListImportConfig importConfig,
             MultipartFile file,
             LocalDate validFrom,

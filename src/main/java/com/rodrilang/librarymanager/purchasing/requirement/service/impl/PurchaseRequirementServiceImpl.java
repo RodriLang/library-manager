@@ -4,9 +4,10 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.model.ProviderType;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -55,7 +56,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
     private final PurchaseOrderItemRepository purchaseOrderItemRepository;
 
     private final ProviderBookRepository providerBookRepository;
-    private final PriceListProviderRepository providerRepository;
+    private final ProviderRepository providerRepository;
 
     private final InventoryRepository inventoryRepository;
 
@@ -107,34 +108,79 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         validateUndoSource(source);
 
-        int previousQuantity = requirement.getQuantity();
+        return reverseSource(requirement, source);
+    }
 
+    @Transactional
+    @Override
+    public void undoAutomaticSource(
+            PurchaseRequirementSourceType sourceType,
+            String referenceId
+    ) {
+        if (sourceType == null || referenceId == null || referenceId.isBlank()) {
+            return;
+        }
+
+        if (sourceType != PurchaseRequirementSourceType.SALE_ITEM) {
+            throw new BusinessException("El origen indicado no admite reversión automática.");
+        }
+
+        PurchaseRequirementSource source = sourceRepository
+                .findByTypeAndReferenceId(sourceType, referenceId)
+                .orElse(null);
+
+        if (source == null || sourceRepository.existsByReversedSourceId(source.getId())) {
+            return;
+        }
+
+        PurchaseRequirement sourceRequirement = source.getRequirement();
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        PurchaseRequirement requirement = requirementRepository
+                .findByIdAndBookstoreIdForUpdate(
+                        sourceRequirement.getId(),
+                        bookstoreId
+                )
+                .orElse(null);
+
+        if (requirement == null || requirement.getStatus() != PurchaseRequirementStatus.PENDING) {
+            return;
+        }
+
+        Long orderedQuantity = purchaseOrderItemRepository
+                .sumOrderedQuantityByRequirementId(requirement.getId());
+
+        if ((orderedQuantity != null && orderedQuantity > 0)
+                || source.getQuantity() > requirement.getQuantity()) {
+            return;
+        }
+
+        reverseSource(requirement, source);
+    }
+
+    private AddPurchaseRequirementResponse reverseSource(
+            PurchaseRequirement requirement,
+            PurchaseRequirementSource source
+    ) {
+        int previousQuantity = requirement.getQuantity();
         int newQuantity = previousQuantity - source.getQuantity();
 
         if (newQuantity < 0) {
             throw new BusinessException("La acción no puede deshacerse porque dejaría una cantidad inválida.");
         }
 
-        PurchaseRequirementSource reversal =
-                PurchaseRequirementSource.builder()
-                        .requirement(requirement)
-                        .type(
-                                PurchaseRequirementSourceType.REVERSAL
-                        )
-                        .quantity(
-                                -source.getQuantity()
-                        )
-                        .reversedSource(source)
-                        .build();
+        PurchaseRequirementSource reversal = PurchaseRequirementSource.builder()
+                .requirement(requirement)
+                .type(PurchaseRequirementSourceType.REVERSAL)
+                .quantity(-source.getQuantity())
+                .reversedSource(source)
+                .build();
 
         sourceRepository.save(reversal);
 
         if (newQuantity == 0) {
-
             requirement.setStatus(PurchaseRequirementStatus.CANCELLED);
-
         } else {
-
             requirement.setQuantity(newQuantity);
         }
 
@@ -147,9 +193,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 requirement.getBook().getCoverUrl(),
 
                 previousQuantity,
-
                 -source.getQuantity(),
-
                 newQuantity,
 
                 reversal.getId(),
@@ -246,7 +290,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return purchaseRequirementMapper.toResponse(requirement);
         }
 
-        PriceListProvider provider = resolveProvider(providerId, requirement.getBook().getId());
+        Provider provider = resolveProvider(providerId, requirement.getBook().getId());
 
         requirement.setPreferredProvider(provider);
 
@@ -398,7 +442,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         Map<Long, List<PurchaseRequirementProviderResponse>>
                 availableProvidersByBookId =
                 providerBookRepository
-                        .findAvailableProvidersByBookIds(bookIds)
+                        .findAvailableProvidersByBookIds(bookIds, ProviderType.COMMERCIAL)
                         .stream()
                         .collect(
                                 Collectors.groupingBy(
@@ -458,7 +502,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             int addedQuantity
     ) {
 
-        PriceListProvider preferredProvider = requirement.getPreferredProvider();
+        Provider preferredProvider = requirement.getPreferredProvider();
 
         return new AddPurchaseRequirementResponse(
                 requirement.getId(),
@@ -491,7 +535,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
 
-        PriceListProvider provider = resolveProvider(command.providerId(), command.bookId());
+        Provider provider = resolveProvider(command.providerId(), command.bookId());
 
         PurchaseRequirement requirement =
                 requirementRepository
@@ -568,7 +612,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 );
     }
 
-    private PriceListProvider resolveProvider(
+    private Provider resolveProvider(
             Long providerId,
             Long bookId
     ) {
@@ -577,10 +621,10 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return null;
         }
 
-        PriceListProvider provider =
+        Provider provider =
                 providerRepository
                         .findById(providerId)
-                        .filter(PriceListProvider::isActive)
+                        .filter(Provider::isPurchasable)
                         .orElseThrow(() ->
                                 new BusinessException("El proveedor seleccionado no se encuentra activo.")
                         );
@@ -622,10 +666,11 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     private void validateReference(AddPurchaseRequirementCommand command) {
 
-        if (command.source() == PurchaseRequirementSourceType.SALE
+        if ((command.source() == PurchaseRequirementSourceType.SALE
+                || command.source() == PurchaseRequirementSourceType.SALE_ITEM)
                 && (command.referenceId() == null || command.referenceId().isBlank())
         ) {
-            throw new BusinessException("Una reposición originada por una venta debe indicar la venta de referencia.");
+            throw new BusinessException("Una reposición originada por una venta debe indicar su referencia.");
         }
     }
 

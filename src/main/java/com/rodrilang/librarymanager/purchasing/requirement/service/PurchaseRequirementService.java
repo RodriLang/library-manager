@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.purchasing.requirement.dto.response.AddPurch
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.BookPurchaseRequirementStatusResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementSummaryResponse;
+import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -16,6 +17,8 @@ public interface PurchaseRequirementService {
     PurchaseRequirementResponse addRequirement(AddPurchaseRequirementCommand command);
 
     AddPurchaseRequirementResponse undoSource(Long requirementId, Long sourceId);
+
+    void undoAutomaticSource(PurchaseRequirementSourceType sourceType, String referenceId);
 
     PurchaseRequirementResponse reactivate(Long requirementId);
 
