@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.sales.mapper;
 
 import com.rodrilang.librarymanager.auth.models.User;
+import com.rodrilang.librarymanager.profitability.dto.response.ProfitabilitySummaryResponse;
 import com.rodrilang.librarymanager.sales.dto.response.SaleDetailResponse;
 import com.rodrilang.librarymanager.sales.dto.response.SaleItemResponse;
 import com.rodrilang.librarymanager.sales.dto.response.SalePaymentResponse;
@@ -38,7 +39,8 @@ public interface SaleMapper {
     default SaleDetailResponse toDetailResponse(
             Sale sale,
             List<SaleItem> items,
-            List<SalePayment> payments
+            List<SalePayment> payments,
+            ProfitabilitySummaryResponse profitability
     ) {
         return new SaleDetailResponse(
                 sale.getId(),
@@ -58,6 +60,7 @@ public interface SaleMapper {
                 sale.getCancellationReason(),
                 sale.getCreatedAt(),
                 sale.getUpdatedAt(),
+                profitability,
                 items.stream().map(this::toItemResponse).toList(),
                 payments.stream().map(this::toPaymentResponse).toList()
         );

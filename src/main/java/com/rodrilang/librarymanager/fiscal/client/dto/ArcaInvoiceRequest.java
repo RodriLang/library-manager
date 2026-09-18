@@ -15,7 +15,16 @@ public record ArcaInvoiceRequest(
         int recipientVatConditionId,
         BigDecimal total,
         BigDecimal netAmount,
-        BigDecimal exemptAmount
+        BigDecimal exemptAmount,
+        Integer associatedVoucherType,
+        Integer associatedPointOfSale,
+        Long associatedVoucherNumber,
+        LocalDate associatedIssueDate
 
 ) {
+    public boolean hasAssociatedVoucher() {
+        return associatedVoucherType != null
+                && associatedPointOfSale != null
+                && associatedVoucherNumber != null;
+    }
 }

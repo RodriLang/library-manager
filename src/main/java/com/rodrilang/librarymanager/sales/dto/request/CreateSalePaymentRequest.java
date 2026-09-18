@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.sales.dto.request;
 
-import com.rodrilang.librarymanager.sales.model.PaymentMethod;
+import com.rodrilang.librarymanager.payment.model.PaymentMethod;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;

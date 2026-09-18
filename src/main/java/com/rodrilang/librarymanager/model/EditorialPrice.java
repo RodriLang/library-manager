@@ -2,7 +2,7 @@ package com.rodrilang.librarymanager.model;
 
 import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceOrigin;
 import com.rodrilang.librarymanager.editorialprice.enums.ExternalPriceSourceType;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -53,7 +53,7 @@ public class EditorialPrice extends AuditableEntity {
             name = "provider_id",
             foreignKey = @ForeignKey(name = "fk_editorial_prices_provider")
     )
-    private PriceListProvider provider;
+    private Provider provider;
 
     @Column(name = "valid_from", nullable = false)
     private LocalDate validFrom;

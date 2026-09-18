@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.inventory.movement.service.impl;
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.inventory.cost.service.InventoryCostMovementService;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
@@ -21,6 +22,7 @@ public class InventoryStockServiceImpl implements InventoryStockService {
 
     private final InventoryRepository inventoryRepository;
     private final InventoryMovementRepository movementRepository;
+    private final InventoryCostMovementService inventoryCostMovementService;
 
     @Override
     @Transactional
@@ -55,6 +57,7 @@ public class InventoryStockServiceImpl implements InventoryStockService {
                 .note(command.note())
                 .build());
 
+        inventoryCostMovementService.apply(movement);
         return new InventoryStockChangeResult(inventory, movement);
     }
 
@@ -86,6 +89,7 @@ public class InventoryStockServiceImpl implements InventoryStockService {
                 .note(command.note())
                 .build());
 
+        inventoryCostMovementService.apply(movement);
         return new InventoryStockChangeResult(inventory, movement);
     }
 

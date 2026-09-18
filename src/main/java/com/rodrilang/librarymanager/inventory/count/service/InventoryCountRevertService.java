@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.inventory.cost.service.InventoryCostMovementService;
 import com.rodrilang.librarymanager.inventory.count.event.InventoryCountStockChangedEvent;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountMode;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountResult;
@@ -15,6 +16,7 @@ import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeC
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.model.InventoryMovement;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -33,6 +35,7 @@ public class InventoryCountRevertService {
     private final InventoryCountSessionRepository sessionRepository;
     private final InventoryRepository inventoryRepository;
     private final InventoryStockService stockService;
+    private final InventoryCostMovementService inventoryCostMovementService;
     private final ApplicationEventPublisher eventPublisher;
 
     public void revert(InventoryCountSession session) {
@@ -42,6 +45,7 @@ public class InventoryCountRevertService {
         }
 
         validateNotSuperseded(session);
+        inventoryCostMovementService.validateInventoryCountReversal(session);
 
         List<InventoryCountResult> appliedResults = resultRepository.findAllBySessionIdOrderById(session.getId()).stream()
                 .filter(result -> result.getAppliedAt() != null)
@@ -58,6 +62,7 @@ public class InventoryCountRevertService {
             }
 
             boolean activeBeforeRevert = Boolean.TRUE.equals(inventory.getActive());
+            InventoryMovement reversalMovement = null;
             if (result.getAppliedDelta() != 0) {
                 InventoryStockChangeResult stockResult = stockService.changeStock(
                         inventory.getId(),
@@ -71,8 +76,11 @@ public class InventoryCountRevertService {
                         )
                 );
                 inventory = stockResult.inventory();
+                reversalMovement = stockResult.movement();
                 affectedInventoryIds.add(inventory.getId());
             }
+
+            inventoryCostMovementService.reverseInventoryCountEffects(session, inventory, reversalMovement);
 
             if (inventory.getStock().equals(result.getPreviousQuantity())) {
                 inventory.setActive(result.isPreviousActive());

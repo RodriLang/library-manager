@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.dto.response;
 
-import com.rodrilang.librarymanager.importer.price.configuration.enums.ProviderBookIdentifierStatus;
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookIdentifierStatus;
 
 import java.time.Instant;
 

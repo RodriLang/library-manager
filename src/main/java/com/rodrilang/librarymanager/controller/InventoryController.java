@@ -21,6 +21,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -95,7 +96,7 @@ public class InventoryController {
             @RequestParam(required = false) Long authorId,
             @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
             @ParameterObject
-            @PageableDefault(size = 30)
+            @PageableDefault(size = 30, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
         InventoryAdvancedFilters filters =

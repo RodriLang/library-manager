@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.purchasing.requirement.model;
 
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -73,7 +73,7 @@ public class PurchaseRequirementSource extends AuditableEntity {
                     name = "fk_purchase_requirement_sources_provider"
             )
     )
-    private PriceListProvider provider;
+    private Provider provider;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reversed_source_id")

@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.sales.service.impl;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.profitability.service.SaleProfitabilityService;
 import com.rodrilang.librarymanager.sales.dto.SaleFilter;
 import com.rodrilang.librarymanager.sales.dto.response.SaleDetailResponse;
 import com.rodrilang.librarymanager.sales.dto.response.SaleResponse;
@@ -33,6 +34,7 @@ public class SaleQueryServiceImpl implements SaleQueryService {
     private final SaleItemRepository itemRepository;
     private final SalePaymentRepository paymentRepository;
     private final SaleMapper mapper;
+    private final SaleProfitabilityService profitabilityService;
     private final BookstoreContext bookstoreContext;
 
     @Override
@@ -94,10 +96,13 @@ public class SaleQueryServiceImpl implements SaleQueryService {
                         "No se encontró la venta con ID: " + saleId
                 ));
 
+        var items = itemRepository.findAllBySaleIdOrderByIdAsc(sale.getId());
+
         return mapper.toDetailResponse(
                 sale,
-                itemRepository.findAllBySaleIdOrderByIdAsc(sale.getId()),
-                paymentRepository.findAllBySaleIdOrderByIdAsc(sale.getId())
+                items,
+                paymentRepository.findAllBySaleIdOrderByIdAsc(sale.getId()),
+                profitabilityService.summarize(sale, items)
         );
     }
 }

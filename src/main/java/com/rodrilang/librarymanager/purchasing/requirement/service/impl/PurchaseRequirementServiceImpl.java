@@ -4,9 +4,10 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.PriceListProviderRepository;
-import com.rodrilang.librarymanager.importer.price.configuration.repository.ProviderBookRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.model.ProviderType;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -55,7 +56,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
     private final PurchaseOrderItemRepository purchaseOrderItemRepository;
 
     private final ProviderBookRepository providerBookRepository;
-    private final PriceListProviderRepository providerRepository;
+    private final ProviderRepository providerRepository;
 
     private final InventoryRepository inventoryRepository;
 
@@ -289,7 +290,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return purchaseRequirementMapper.toResponse(requirement);
         }
 
-        PriceListProvider provider = resolveProvider(providerId, requirement.getBook().getId());
+        Provider provider = resolveProvider(providerId, requirement.getBook().getId());
 
         requirement.setPreferredProvider(provider);
 
@@ -441,7 +442,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         Map<Long, List<PurchaseRequirementProviderResponse>>
                 availableProvidersByBookId =
                 providerBookRepository
-                        .findAvailableProvidersByBookIds(bookIds)
+                        .findAvailableProvidersByBookIds(bookIds, ProviderType.COMMERCIAL)
                         .stream()
                         .collect(
                                 Collectors.groupingBy(
@@ -501,7 +502,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             int addedQuantity
     ) {
 
-        PriceListProvider preferredProvider = requirement.getPreferredProvider();
+        Provider preferredProvider = requirement.getPreferredProvider();
 
         return new AddPurchaseRequirementResponse(
                 requirement.getId(),
@@ -534,7 +535,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
 
-        PriceListProvider provider = resolveProvider(command.providerId(), command.bookId());
+        Provider provider = resolveProvider(command.providerId(), command.bookId());
 
         PurchaseRequirement requirement =
                 requirementRepository
@@ -611,7 +612,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 );
     }
 
-    private PriceListProvider resolveProvider(
+    private Provider resolveProvider(
             Long providerId,
             Long bookId
     ) {
@@ -620,10 +621,10 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return null;
         }
 
-        PriceListProvider provider =
+        Provider provider =
                 providerRepository
                         .findById(providerId)
-                        .filter(PriceListProvider::isActive)
+                        .filter(Provider::isPurchasable)
                         .orElseThrow(() ->
                                 new BusinessException("El proveedor seleccionado no se encuentra activo.")
                         );

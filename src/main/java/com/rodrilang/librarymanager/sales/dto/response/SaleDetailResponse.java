@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.sales.dto.response;
 
+import com.rodrilang.librarymanager.profitability.dto.response.ProfitabilitySummaryResponse;
 import com.rodrilang.librarymanager.sales.model.SaleOrigin;
 import com.rodrilang.librarymanager.sales.model.SaleStatus;
 
@@ -31,6 +32,8 @@ public record SaleDetailResponse(
 
         Instant createdAt,
         Instant updatedAt,
+
+        ProfitabilitySummaryResponse profitability,
 
         List<SaleItemResponse> items,
         List<SalePaymentResponse> payments

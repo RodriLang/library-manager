@@ -40,6 +40,15 @@ public interface InventoryCountSessionRepository extends JpaRepository<Inventory
             Instant appliedAt
     );
 
+    @EntityGraph(attributePaths = {"bookstore", "createdByUser"})
+    Optional<InventoryCountSession>
+    findFirstByBookstoreIdAndConditionAndModeAndStatusInOrderByCreatedAtDesc(
+            Long bookstoreId,
+            BookCondition condition,
+            InventoryCountMode mode,
+            Collection<InventoryCountStatus> statuses
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT session

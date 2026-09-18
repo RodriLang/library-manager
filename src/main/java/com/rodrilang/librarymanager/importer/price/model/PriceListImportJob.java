@@ -1,7 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.model;
 
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
-import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListProvider;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.importer.price.enums.PriceListImportPhase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -55,7 +55,7 @@ public class PriceListImportJob {
             name = "provider_id",
             foreignKey = @ForeignKey(name = "fk_price_list_import_jobs_provider")
     )
-    private PriceListProvider provider;
+    private Provider provider;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(

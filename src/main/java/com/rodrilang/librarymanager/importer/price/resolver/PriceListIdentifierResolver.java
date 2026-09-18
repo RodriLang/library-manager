@@ -1,6 +1,6 @@
 package com.rodrilang.librarymanager.importer.price.resolver;
 
-import com.rodrilang.librarymanager.importer.price.configuration.enums.ProviderBookIdentifierStatus;
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookIdentifierStatus;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListIdentifier;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListMetadata;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;

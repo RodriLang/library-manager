@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.sales.model;
 
 import com.rodrilang.librarymanager.model.AuditableEntity;
+import com.rodrilang.librarymanager.payment.model.PaymentMethod;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

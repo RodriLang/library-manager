@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -89,6 +90,23 @@ public class InventoryCountService {
     @Transactional(readOnly = true)
     public Page<InventoryCountSessionResponse> findAll(Pageable pageable) {
         return sessionRepository.findAllByBookstoreId(bookstoreContext.getCurrentBookstoreId(), pageable)
+                .map(responseMapper::toSessionResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<InventoryCountSessionResponse> findActiveAbsolute(BookCondition condition) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        return sessionRepository
+                .findFirstByBookstoreIdAndConditionAndModeAndStatusInOrderByCreatedAtDesc(
+                        bookstoreId,
+                        condition,
+                        InventoryCountMode.ABSOLUTE,
+                        List.of(
+                                InventoryCountStatus.OPEN,
+                                InventoryCountStatus.REVIEW
+                        )
+                )
                 .map(responseMapper::toSessionResponse);
     }
 
