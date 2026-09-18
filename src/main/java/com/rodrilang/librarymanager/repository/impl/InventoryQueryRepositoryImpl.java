@@ -716,30 +716,18 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                 .toList();
     }
 
-    private String resolveOrderBy(
-            Pageable pageable
-    ) {
-        if (
-                pageable == null
-                        || pageable.getSort().isUnsorted()
-        ) {
+    private String resolveOrderBy(Pageable pageable) {
+        if (pageable == null || pageable.getSort().isUnsorted()) {
             return """
-                    COALESCE(
-                        b.title_sort,
-                        b.title
-                    ) ASC,
-                    i.id ASC
+                    i.created_at DESC,
+                    i.id DESC
                     """;
         }
 
-        List<String> orders =
-                new ArrayList<>();
+        List<String> orders = new ArrayList<>();
 
         for (Sort.Order order : pageable.getSort()) {
-            String column =
-                    resolveSortColumn(
-                            order.getProperty()
-                    );
+            String column = resolveSortColumn(order.getProperty());
 
             if (column == null) {
                 continue;
@@ -755,28 +743,30 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
 
         if (orders.isEmpty()) {
             return """
-                    COALESCE(
-                        b.title_sort,
-                        b.title
-                    ) ASC,
-                    i.id ASC
+                    i.created_at DESC,
+                    i.id DESC
                     """;
         }
 
-        orders.add("i.id ASC");
+        Sort.Order primaryOrder = pageable.getSort().stream()
+                .findFirst()
+                .orElse(null);
 
-        return String.join(
-                ", ",
-                orders
-        );
+        if (primaryOrder != null && "createdAt".equals(primaryOrder.getProperty())) {
+            orders.add(primaryOrder.isAscending() ? "i.id ASC" : "i.id DESC");
+        } else {
+            orders.add("i.id ASC");
+        }
+
+        return String.join(", ", orders);
     }
 
-    private String resolveSortColumn(
-            String property
-    ) {
+    private String resolveSortColumn(String property) {
         return switch (property) {
             case "title",
                  "book.titleSort" -> "COALESCE(b.title_sort, b.title)";
+
+            case "createdAt" -> "i.created_at";
 
             case "salePrice" -> "i.sale_price";
 

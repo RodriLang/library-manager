@@ -1,9 +1,9 @@
 package com.rodrilang.librarymanager.sales.service;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.payment.model.PaymentMethod;
 import com.rodrilang.librarymanager.sales.dto.internal.SaleTotals;
 import com.rodrilang.librarymanager.sales.dto.request.CreateSalePaymentRequest;
-import com.rodrilang.librarymanager.sales.model.PaymentMethod;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

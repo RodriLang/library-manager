@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.inventory.count.controller;
 
 import com.rodrilang.librarymanager.dto.response.PageResponse;
+import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.inventory.count.dto.request.AddInventoryCountBookRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.ApplyInventoryCountRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.CreateInventoryCountRequest;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -63,6 +65,16 @@ public class InventoryCountController {
     @GetMapping("/{sessionId}")
     public ResponseEntity<InventoryCountSessionResponse> findById(@PathVariable Long sessionId) {
         return ResponseEntity.ok(service.findById(sessionId));
+    }
+
+    @GetMapping("/active-absolute")
+    public ResponseEntity<InventoryCountSessionResponse> findActiveAbsolute(
+            @RequestParam BookCondition condition
+    ) {
+        return service
+                .findActiveAbsolute(condition)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/{sessionId}/items")
