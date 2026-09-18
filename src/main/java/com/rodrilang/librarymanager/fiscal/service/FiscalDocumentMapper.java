@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 public class FiscalDocumentMapper {
 
     public FiscalDocumentResponse toResponse(FiscalDocument document) {
+        FiscalDocument reversing = document.getReversingDocument();
+
         return new FiscalDocumentResponse(
                 document.getId(),
                 document.getSale().getId(),
@@ -34,6 +36,14 @@ public class FiscalDocumentMapper {
                 document.getArcaObservations(),
                 document.getArcaErrors(),
                 document.getQrUrl(),
+                document.getAssociatedDocument() != null
+                        ? document.getAssociatedDocument().getId()
+                        : null,
+                reversing != null ? reversing.getId() : null,
+                reversing != null ? reversing.getStatus() : null,
+                document.getReason(),
+                document.getCreatedBy().getId(),
+                document.getCreatedBy().getDisplayName(),
                 document.getCreatedAt(),
                 document.getUpdatedAt()
         );

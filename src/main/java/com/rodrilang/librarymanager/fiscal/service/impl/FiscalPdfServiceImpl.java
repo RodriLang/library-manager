@@ -27,6 +27,7 @@ import com.rodrilang.librarymanager.fiscal.config.ArcaProperties;
 import com.rodrilang.librarymanager.fiscal.model.BookstoreFiscalSettings;
 import com.rodrilang.librarymanager.fiscal.model.FiscalDocument;
 import com.rodrilang.librarymanager.fiscal.model.FiscalDocumentStatus;
+import com.rodrilang.librarymanager.fiscal.model.FiscalDocumentType;
 import com.rodrilang.librarymanager.fiscal.model.FiscalVoucherClass;
 import com.rodrilang.librarymanager.fiscal.model.GrossIncomeRegime;
 import com.rodrilang.librarymanager.fiscal.model.RecipientVatCondition;
@@ -281,8 +282,12 @@ public class FiscalPdfServiceImpl implements FiscalPdfService {
 
         PdfPCell data = borderlessCell(0);
         data.setPaddingLeft(7);
+        String documentLabel = fiscal.getDocumentType() == FiscalDocumentType.CREDIT_NOTE
+                ? "NOTA DE CRÉDITO "
+                : "FACTURA ";
+
         data.addElement(new Paragraph(
-                "FACTURA " + fiscal.getVoucherClass().name(),
+                documentLabel + fiscal.getVoucherClass().name(),
                 font(14.5f, true, TEXT)
         ));
         data.addElement(spaced(
@@ -420,7 +425,11 @@ public class FiscalPdfServiceImpl implements FiscalPdfService {
         PdfPTable row = new PdfPTable(new float[]{57, 2.5f, 40.5f});
         row.setWidthPercentage(100);
 
-        row.addCell(buildPaymentCard(payments));
+        row.addCell(
+                fiscal.getDocumentType() == FiscalDocumentType.CREDIT_NOTE
+                        ? buildCreditNoteReferenceCard(fiscal)
+                        : buildPaymentCard(payments)
+        );
         row.addCell(gapCell());
 
         PdfPCell totalsCard = roundedCell(SOFT, BORDER, 10);
@@ -902,6 +911,46 @@ public class FiscalPdfServiceImpl implements FiscalPdfService {
             lineCanvas.stroke();
             lineCanvas.restoreState();
         }
+    }
+
+    private PdfPCell buildCreditNoteReferenceCard(FiscalDocument fiscal) {
+        PdfPCell card = roundedCell(WHITE, BORDER, 10);
+        card.addElement(sectionLabel("COMPROBANTE ASOCIADO"));
+
+        FiscalDocument invoice = fiscal.getAssociatedDocument();
+        if (invoice != null && invoice.getVoucherNumber() != null) {
+            card.addElement(spaced(
+                    "Factura " + invoice.getVoucherClass().name() + " "
+                            + String.format(
+                            "%05d-%08d",
+                            invoice.getPointOfSale(),
+                            invoice.getVoucherNumber()
+                    ),
+                    8.5f,
+                    true,
+                    TEXT,
+                    4
+            ));
+        }
+
+        if (fiscal.getReason() != null && !fiscal.getReason().isBlank()) {
+            card.addElement(spaced(
+                    "Motivo: " + fiscal.getReason(),
+                    8.2f,
+                    false,
+                    TEXT,
+                    8
+            ));
+        }
+
+        card.addElement(spaced(
+                "Esta nota de crédito anula totalmente la operación asociada.",
+                7.4f,
+                false,
+                MUTED,
+                8
+        ));
+        return card;
     }
 
     private PdfPCell buildPaymentCard(List<SalePayment> payments) {

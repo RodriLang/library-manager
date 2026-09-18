@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
@@ -158,4 +159,14 @@ public class FiscalDocument extends AuditableEntity {
 
     @Column(name = "qr_url", columnDefinition = "TEXT")
     private String qrUrl;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "associated_document_id")
+    private FiscalDocument associatedDocument;
+
+    @OneToOne(mappedBy = "associatedDocument", fetch = FetchType.LAZY)
+    private FiscalDocument reversingDocument;
+
+    @Column(length = 500)
+    private String reason;
 }

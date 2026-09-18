@@ -8,7 +8,9 @@ import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.fiscal.model.FiscalDocument;
 import com.rodrilang.librarymanager.fiscal.model.FiscalDocumentStatus;
+import com.rodrilang.librarymanager.fiscal.model.FiscalDocumentType;
 import com.rodrilang.librarymanager.fiscal.repository.FiscalDocumentRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
@@ -235,19 +237,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
             throw new BusinessException("La venta ya se encuentra cancelada.");
         }
 
-        if (fiscalDocumentRepository.existsBySaleIdAndStatusIn(
-                sale.getId(),
-                Set.of(
-                        FiscalDocumentStatus.AUTHORIZED,
-                        FiscalDocumentStatus.AUTHORIZING,
-                        FiscalDocumentStatus.RECONCILIATION_REQUIRED
-                )
-        )) {
-            throw new BusinessException(
-                    "La venta posee un comprobante fiscal emitido o pendiente. "
-                            + "Para cancelarla deberá emitirse la nota de crédito correspondiente."
-            );
-        }
+        validateFiscalCancellation(sale, bookstoreId);
 
         List<SaleItem> items = itemRepository.findAllBySaleIdOrderByIdAsc(sale.getId());
         if (items.isEmpty()) {
@@ -292,6 +282,53 @@ public class SaleCommandServiceImpl implements SaleCommandService {
                 items,
                 paymentRepository.findAllBySaleIdOrderByIdAsc(sale.getId()),
                 profitabilityService.summarize(sale, items)
+        );
+    }
+
+    private void validateFiscalCancellation(Sale sale, Long bookstoreId) {
+        FiscalDocument invoice = fiscalDocumentRepository
+                .findBySaleIdAndBookstoreIdAndDocumentType(
+                        sale.getId(),
+                        bookstoreId,
+                        FiscalDocumentType.INVOICE
+                )
+                .orElse(null);
+
+        if (invoice == null || invoice.getStatus() == FiscalDocumentStatus.REJECTED) return;
+
+        FiscalDocument creditNote = fiscalDocumentRepository
+                .findBySaleIdAndBookstoreIdAndDocumentType(
+                        sale.getId(),
+                        bookstoreId,
+                        FiscalDocumentType.CREDIT_NOTE
+                )
+                .orElse(null);
+
+        if (creditNote != null && creditNote.getStatus() == FiscalDocumentStatus.AUTHORIZED) {
+            return;
+        }
+
+        if (creditNote != null && (
+                creditNote.getStatus() == FiscalDocumentStatus.AUTHORIZING
+                        || creditNote.getStatus() == FiscalDocumentStatus.RECONCILIATION_REQUIRED
+        )) {
+            throw new BusinessException(
+                    "La nota de crédito está pendiente de confirmación en ARCA. "
+                            + "La venta se cancelará cuando el comprobante quede autorizado."
+            );
+        }
+
+        if (invoice.getStatus() == FiscalDocumentStatus.AUTHORIZING
+                || invoice.getStatus() == FiscalDocumentStatus.RECONCILIATION_REQUIRED) {
+            throw new BusinessException(
+                    "La factura está pendiente de confirmación en ARCA. "
+                            + "Debe conciliarse antes de cancelar la venta."
+            );
+        }
+
+        throw new BusinessException(
+                "La venta posee una factura autorizada. "
+                        + "Para cancelarla deberá emitirse la nota de crédito correspondiente."
         );
     }
 

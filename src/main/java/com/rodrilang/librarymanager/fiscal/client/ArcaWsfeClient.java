@@ -96,6 +96,8 @@ public class ArcaWsfeClient {
     }
 
     public ArcaAuthorizationResult authorize(ArcaInvoiceRequest request) {
+        String associatedVoucherXml = associatedVoucherXml(request);
+
         String body = authXml(request.representedCuit()) + """
                 <ar:FeCAEReq>
                     <ar:FeCabReq>
@@ -120,6 +122,7 @@ public class ArcaWsfeClient {
                             <ar:MonId>PES</ar:MonId>
                             <ar:MonCotiz>1.000000</ar:MonCotiz>
                             <ar:CondicionIVAReceptorId>%d</ar:CondicionIVAReceptorId>
+                            %s
                         </ar:FECAEDetRequest>
                     </ar:FeDetReq>
                 </ar:FeCAEReq>
@@ -134,7 +137,8 @@ public class ArcaWsfeClient {
                 money(request.total()),
                 money(request.netAmount()),
                 money(request.exemptAmount()),
-                request.recipientVatConditionId()
+                request.recipientVatConditionId(),
+                associatedVoucherXml
         );
 
         Document document = execute("FECAESolicitar", body);
@@ -154,6 +158,32 @@ public class ArcaWsfeClient {
                 expiration,
                 observations,
                 errors
+        );
+    }
+
+    private String associatedVoucherXml(ArcaInvoiceRequest request) {
+        if (!request.hasAssociatedVoucher()) return "";
+
+        String issueDate = request.associatedIssueDate() != null
+                ? "<ar:CbteFch>" + ARCA_DATE.format(request.associatedIssueDate()) + "</ar:CbteFch>"
+                : "";
+
+        return """
+                <ar:CbtesAsoc>
+                    <ar:CbteAsoc>
+                        <ar:Tipo>%d</ar:Tipo>
+                        <ar:PtoVta>%d</ar:PtoVta>
+                        <ar:Nro>%d</ar:Nro>
+                        <ar:Cuit>%d</ar:Cuit>
+                        %s
+                    </ar:CbteAsoc>
+                </ar:CbtesAsoc>
+                """.formatted(
+                request.associatedVoucherType(),
+                request.associatedPointOfSale(),
+                request.associatedVoucherNumber(),
+                request.representedCuit(),
+                issueDate
         );
     }
 

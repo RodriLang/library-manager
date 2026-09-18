@@ -37,6 +37,12 @@ public record FiscalDocumentResponse(
         String arcaObservations,
         String arcaErrors,
         String qrUrl,
+        Long associatedDocumentId,
+        Long reversingDocumentId,
+        FiscalDocumentStatus reversingDocumentStatus,
+        String reason,
+        Long createdByUserId,
+        String createdByName,
         Instant createdAt,
         Instant updatedAt
 
