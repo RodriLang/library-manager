@@ -35,6 +35,7 @@ public class InventoryCountItemScanRepository {
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
                         ON CONFLICT (session_id, normalized_identifier)
+                        WHERE normalized_identifier IS NOT NULL
                         DO UPDATE SET
                             quantity = inventory_count_items.quantity + 1,
                             isbn_10 = COALESCE(EXCLUDED.isbn_10, inventory_count_items.isbn_10),
