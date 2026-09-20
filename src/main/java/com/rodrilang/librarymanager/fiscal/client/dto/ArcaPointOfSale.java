@@ -1,10 +1,19 @@
 package com.rodrilang.librarymanager.fiscal.client.dto;
 
-public record ArcaPointOfSale(
+import java.time.LocalDate;
 
+public record ArcaPointOfSale(
         int number,
         String emissionType,
-        boolean active
-
+        boolean blocked,
+        LocalDate deactivationDate
 ) {
+
+    public boolean active() {
+        return !blocked && deactivationDate == null;
+    }
+
+    public boolean usesCae() {
+        return "CAE".equalsIgnoreCase(emissionType);
+    }
 }

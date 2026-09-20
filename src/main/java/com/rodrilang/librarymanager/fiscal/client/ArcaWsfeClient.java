@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.fiscal.client.dto.ArcaVoucherInfo;
 import com.rodrilang.librarymanager.fiscal.config.ArcaProperties;
 import com.rodrilang.librarymanager.fiscal.exception.ArcaApiException;
 import com.rodrilang.librarymanager.fiscal.exception.ArcaCommunicationException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Component
 public class ArcaWsfeClient {
 
@@ -50,18 +52,45 @@ public class ArcaWsfeClient {
                 "FEParamGetPtosVenta",
                 authXml(representedCuit)
         );
+
         assertNoGlobalErrors(document);
 
         List<ArcaPointOfSale> result = new ArrayList<>();
-        for (Element element : XmlSupport.elements(document, "PtoVenta")) {
-            int number = XmlSupport.childText(element, "Nro").map(Integer::parseInt).orElse(0);
-            String emissionType = XmlSupport.childText(element, "EmisionTipo").orElse(null);
-            boolean active = XmlSupport.childText(element, "FchBaja")
-                    .map(String::isBlank)
-                    .orElse(true);
 
-            result.add(new ArcaPointOfSale(number, emissionType, active));
+        for (Element element : XmlSupport.elements(document, "PtoVenta")) {
+            int number = XmlSupport.childText(element, "Nro")
+                    .map(Integer::parseInt)
+                    .orElse(0);
+
+            String emissionType = XmlSupport.childText(element, "EmisionTipo")
+                    .map(String::trim)
+                    .orElse(null);
+
+            boolean blocked = XmlSupport.childText(element, "Bloqueado")
+                    .map(String::trim)
+                    .map("S"::equalsIgnoreCase)
+                    .orElse(false);
+
+            LocalDate deactivationDate = XmlSupport.childText(element, "FchBaja")
+                    .map(String::trim)
+                    .filter(value -> !value.isBlank())
+                    .filter(value -> value.length() == 8)
+                    .map(value -> LocalDate.parse(value, ARCA_DATE))
+                    .orElse(null);
+
+            result.add(new ArcaPointOfSale(
+                    number,
+                    emissionType,
+                    blocked,
+                    deactivationDate
+            ));
         }
+
+        log.info(
+                "ARCA FEParamGetPtosVenta CUIT={} points={}",
+                representedCuit,
+                result
+        );
 
         return result;
     }

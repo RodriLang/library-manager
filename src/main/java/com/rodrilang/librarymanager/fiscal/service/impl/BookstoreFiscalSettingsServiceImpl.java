@@ -105,24 +105,56 @@ public class BookstoreFiscalSettingsServiceImpl implements BookstoreFiscalSettin
             if (isHomologation()) {
                 arcaClient.verifyAccess(representedCuit);
                 markAsVerified(settings);
-
                 return toResponse(settings);
             }
 
-            boolean pointOfSaleFound = arcaClient.getPointsOfSale(representedCuit).stream()
-                    .anyMatch(point -> matchesConfiguredPoint(
-                            point,
-                            settings.getPointOfSale()
-                    ));
+            var pointsOfSale = arcaClient.getPointsOfSale(representedCuit);
 
-            if (!pointOfSaleFound) {
+            var pointOfSale = pointsOfSale.stream()
+                    .filter(point -> point.number() == settings.getPointOfSale())
+                    .findFirst();
+
+            if (pointOfSale.isEmpty()) {
                 markAsError(
                         settings,
                         "ARCA respondió correctamente, pero el punto de venta "
                                 + settings.getPointOfSale()
-                                + " no aparece activo para Facturación Electrónica por Web Services."
+                                + " no fue devuelto como punto de venta electrónico habilitado."
                 );
+                return toResponse(settings);
+            }
 
+            ArcaPointOfSale point = pointOfSale.get();
+
+            if (point.blocked()) {
+                markAsError(
+                        settings,
+                        "El punto de venta "
+                                + settings.getPointOfSale()
+                                + " existe en ARCA, pero se encuentra bloqueado."
+                );
+                return toResponse(settings);
+            }
+
+            if (point.deactivationDate() != null) {
+                markAsError(
+                        settings,
+                        "El punto de venta "
+                                + settings.getPointOfSale()
+                                + " fue dado de baja en ARCA el "
+                                + point.deactivationDate()
+                                + "."
+                );
+                return toResponse(settings);
+            }
+
+            if (!point.usesCae()) {
+                markAsError(
+                        settings,
+                        "El punto de venta "
+                                + settings.getPointOfSale()
+                                + " no utiliza la modalidad CAE requerida por Anaquel."
+                );
                 return toResponse(settings);
             }
 
@@ -154,10 +186,6 @@ public class BookstoreFiscalSettingsServiceImpl implements BookstoreFiscalSettin
         settings.setArcaStatus(ArcaAuthorizationStatus.ERROR);
         settings.setVerifiedAt(null);
         settings.setLastVerificationError(message);
-    }
-
-    private boolean matchesConfiguredPoint(ArcaPointOfSale point, Integer configuredPoint) {
-        return point.number() == configuredPoint && point.active();
     }
 
     private FiscalSettingsResponse toResponse(BookstoreFiscalSettings settings) {
