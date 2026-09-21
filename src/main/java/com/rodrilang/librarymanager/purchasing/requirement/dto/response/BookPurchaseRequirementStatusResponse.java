@@ -4,6 +4,8 @@ public record BookPurchaseRequirementStatusResponse(
         boolean pending,
         Long requirementId,
         Integer quantity,
+        Integer orderedQuantity,
+        Integer remainingQuantity,
         Long preferredProviderId,
         String preferredProviderName
 ) {
@@ -12,6 +14,8 @@ public record BookPurchaseRequirementStatusResponse(
         return new BookPurchaseRequirementStatusResponse(
                 false,
                 null,
+                0,
+                0,
                 0,
                 null,
                 null

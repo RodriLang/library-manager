@@ -55,6 +55,23 @@ public interface PurchaseOrderItemRepository
             @Param("requirementId") Long requirementId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {
+            "purchaseOrder",
+            "requirement"
+    })
+    @Query("""
+            SELECT item
+            FROM PurchaseOrderItem item
+            WHERE item.requirement.id = :requirementId
+              AND item.purchaseOrder.status =
+                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.DRAFT
+            ORDER BY item.id
+            """)
+    List<PurchaseOrderItem> findDraftItemsByRequirementIdForUpdate(
+            @Param("requirementId") Long requirementId
+    );
+
     @Query("""
             SELECT
                 item.purchaseOrder.id AS orderId,

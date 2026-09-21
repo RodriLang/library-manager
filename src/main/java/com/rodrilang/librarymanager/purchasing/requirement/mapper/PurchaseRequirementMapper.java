@@ -1,7 +1,6 @@
 package com.rodrilang.librarymanager.purchasing.requirement.mapper;
 
 import com.rodrilang.librarymanager.model.Inventory;
-import com.rodrilang.librarymanager.purchasing.requirement.dto.response.BookPurchaseRequirementStatusResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementInventoryResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementProviderResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementReasonResponse;
@@ -25,12 +24,6 @@ public interface PurchaseRequirementMapper {
     PurchaseRequirementResponse toResponse(
             PurchaseRequirement requirement
     );
-
-    @Mapping(target = "pending", constant = "true")
-    @Mapping(target = "requirementId", source = "id")
-    @Mapping(target = "preferredProviderId", source = "preferredProvider.id")
-    @Mapping(target = "preferredProviderName", source = "preferredProvider.name")
-    BookPurchaseRequirementStatusResponse toBookStatusResponse(PurchaseRequirement requirement);
 
     default PurchaseRequirementSummaryResponse toSummaryResponse(
             PurchaseRequirement requirement,

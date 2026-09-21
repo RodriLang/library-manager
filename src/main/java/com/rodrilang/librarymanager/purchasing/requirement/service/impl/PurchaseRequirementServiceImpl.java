@@ -73,13 +73,15 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         validateAdd(command);
         validateManualSource(command.source());
 
-        RequirementAddResult result = createOrAccumulateRequirement(command);
+        RequirementAddResult result = createOrEnsureManualRequirement(command);
 
-        PurchaseRequirement requirement = result.requirement();
-
-        PurchaseRequirementSource source = result.source();
-
-        return toAddResponse(requirement, source, result.previousQuantity(), command.quantity());
+        return toAddResponse(
+                result.requirement(),
+                result.source(),
+                result.previousQuantity(),
+                result.addedQuantity(),
+                command.source()
+        );
     }
 
     @Transactional
@@ -133,12 +135,11 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return;
         }
 
-        PurchaseRequirement sourceRequirement = source.getRequirement();
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
         PurchaseRequirement requirement = requirementRepository
                 .findByIdAndBookstoreIdForUpdate(
-                        sourceRequirement.getId(),
+                        source.getRequirement().getId(),
                         bookstoreId
                 )
                 .orElse(null);
@@ -147,15 +148,110 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return;
         }
 
-        Long orderedQuantity = purchaseOrderItemRepository
-                .sumOrderedQuantityByRequirementId(requirement.getId());
+        int rawQuantityAfterReversal = Math.max(
+                requirement.getQuantity() - source.getQuantity(),
+                0
+        );
 
-        if ((orderedQuantity != null && orderedQuantity > 0)
-                || source.getQuantity() > requirement.getQuantity()) {
-            return;
+        int orderedQuantityBeforeReversal = Math.toIntExact(
+                purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        int draftQuantityToRelease = Math.min(
+                source.getQuantity(),
+                Math.max(orderedQuantityBeforeReversal - rawQuantityAfterReversal, 0)
+        );
+
+        if (draftQuantityToRelease > 0) {
+            releaseDraftOrderAllocation(requirement.getId(), draftQuantityToRelease);
         }
 
-        reverseSource(requirement, source);
+        reverseAutomaticSource(requirement, source);
+    }
+
+    private void reverseAutomaticSource(
+            PurchaseRequirement requirement,
+            PurchaseRequirementSource source
+    ) {
+        int previousQuantity = requirement.getQuantity();
+        int rawQuantity = previousQuantity - source.getQuantity();
+
+        int orderedQuantity = Math.toIntExact(
+                purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        int targetQuantity = Math.max(Math.max(rawQuantity, 0), orderedQuantity);
+
+        PurchaseRequirementSource reversal = PurchaseRequirementSource.builder()
+                .requirement(requirement)
+                .type(PurchaseRequirementSourceType.REVERSAL)
+                .quantity(-source.getQuantity())
+                .reversedSource(source)
+                .build();
+
+        sourceRepository.save(reversal);
+
+        int orderFloorAdjustment = targetQuantity - rawQuantity;
+
+        if (orderFloorAdjustment > 0) {
+            sourceRepository.save(
+                    PurchaseRequirementSource.builder()
+                            .requirement(requirement)
+                            .type(PurchaseRequirementSourceType.ADJUSTMENT)
+                            .quantity(orderFloorAdjustment)
+                            .referenceId("ORDER_FLOOR:" + source.getId())
+                            .build()
+            );
+        }
+
+        if (rawQuantity <= 0) {
+            // La necesidad que originó la venta desapareció. Si ya había unidades
+            // comprometidas en pedidos enviados conservamos la cantidad histórica,
+            // pero la necesidad deja de estar activa en Reponer.
+            if (targetQuantity > 0) {
+                requirement.setQuantity(targetQuantity);
+            }
+            requirement.setStatus(PurchaseRequirementStatus.CANCELLED);
+        } else {
+            requirement.setQuantity(targetQuantity);
+        }
+    }
+
+    private void releaseDraftOrderAllocation(Long requirementId, int quantityToRelease) {
+        int remaining = quantityToRelease;
+
+        for (var item : purchaseOrderItemRepository.findDraftItemsByRequirementIdForUpdate(requirementId)) {
+            if (remaining <= 0) {
+                break;
+            }
+
+            int linkedQuantity = item.getRequirementQuantity() != null
+                    ? item.getRequirementQuantity()
+                    : 0;
+
+            if (linkedQuantity <= 0) {
+                continue;
+            }
+
+            int released = Math.min(linkedQuantity, remaining);
+            int newLinkedQuantity = linkedQuantity - released;
+            int newItemQuantity = item.getQuantity() - released;
+
+            if (newItemQuantity <= 0) {
+                purchaseOrderItemRepository.delete(item);
+            } else {
+                item.setQuantity(newItemQuantity);
+                item.setRequirementQuantity(newLinkedQuantity);
+
+                if (newLinkedQuantity == 0) {
+                    item.setRequirement(null);
+                }
+            }
+
+            remaining -= released;
+        }
+
+        purchaseOrderItemRepository.flush();
     }
 
     private AddPurchaseRequirementResponse reverseSource(
@@ -167,6 +263,16 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         if (newQuantity < 0) {
             throw new BusinessException("La acción no puede deshacerse porque dejaría una cantidad inválida.");
+        }
+
+        int orderedQuantity = Math.toIntExact(
+                purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        if (newQuantity < orderedQuantity) {
+            throw new BusinessException(
+                    "La acción no puede deshacerse porque parte de esas unidades ya fue incorporada a pedidos."
+            );
         }
 
         PurchaseRequirementSource reversal = PurchaseRequirementSource.builder()
@@ -247,6 +353,18 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         }
 
         PurchaseRequirement requirement = getPendingRequirementForUpdate(requirementId);
+
+        int orderedQuantity = Math.toIntExact(
+                purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        if (quantity < orderedQuantity) {
+            throw new BusinessException(
+                    "La necesidad no puede quedar por debajo de las "
+                            + orderedQuantity
+                            + " unidades ya incorporadas a pedidos."
+            );
+        }
 
         int currentQuantity = requirement.getQuantity();
 
@@ -344,14 +462,35 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
     public BookPurchaseRequirementStatusResponse findBookStatus(Long bookId) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
-        return requirementRepository
+        PurchaseRequirement requirement = requirementRepository
                 .findByBookstoreIdAndBookIdAndStatus(
                         bookstoreId,
                         bookId,
                         PurchaseRequirementStatus.PENDING
                 )
-                .map(purchaseRequirementMapper::toBookStatusResponse)
-                .orElseGet(BookPurchaseRequirementStatusResponse::notPending);
+                .orElse(null);
+
+        if (requirement == null) {
+            return BookPurchaseRequirementStatusResponse.notPending();
+        }
+
+        int orderedQuantity = Math.toIntExact(
+                purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        int remainingQuantity = Math.max(requirement.getQuantity() - orderedQuantity, 0);
+
+        Provider provider = requirement.getPreferredProvider();
+
+        return new BookPurchaseRequirementStatusResponse(
+                true,
+                requirement.getId(),
+                requirement.getQuantity(),
+                orderedQuantity,
+                remainingQuantity,
+                provider != null ? provider.getId() : null,
+                provider != null ? provider.getName() : null
+        );
     }
 
     @Transactional(readOnly = true)
@@ -405,7 +544,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         Map<Long, List<PurchaseRequirementReasonResponse>>
                 reasonsByRequirementId =
                 sourceRepository
-                        .findGroupedReasons(requirementIds)
+                        .findEffectiveGroupedReasons(requirementIds)
                         .stream()
                         .collect(
                                 Collectors.groupingBy(
@@ -499,7 +638,8 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             PurchaseRequirement requirement,
             PurchaseRequirementSource source,
             int previousQuantity,
-            int addedQuantity
+            int addedQuantity,
+            PurchaseRequirementSourceType requestedSource
     ) {
 
         Provider preferredProvider = requirement.getPreferredProvider();
@@ -516,18 +656,86 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 addedQuantity,
                 requirement.getQuantity(),
 
-                source.getId(),
-                source.getType(),
+                source != null ? source.getId() : null,
+                source != null ? source.getType() : requestedSource,
 
                 preferredProvider != null ? preferredProvider.getId() : null,
-
                 preferredProvider != null ? preferredProvider.getName() : null,
 
                 getEffectiveReasons(requirement.getId())
         );
     }
 
+    private RequirementAddResult createOrEnsureManualRequirement(AddPurchaseRequirementCommand command) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        Book book = bookService.getEntityById(command.bookId());
+        Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
+        Provider provider = resolveProvider(command.providerId(), command.bookId());
+
+        PurchaseRequirement requirement = requirementRepository
+                .findByBookstoreAndBookAndStatusForUpdate(
+                        bookstoreId,
+                        command.bookId(),
+                        PurchaseRequirementStatus.PENDING
+                )
+                .orElse(null);
+
+        int previousQuantity = requirement != null ? requirement.getQuantity() : 0;
+
+        if (requirement == null) {
+            requirement = PurchaseRequirement.builder()
+                    .bookstore(bookstore)
+                    .book(book)
+                    .quantity(command.quantity())
+                    .preferredProvider(provider)
+                    .status(PurchaseRequirementStatus.PENDING)
+                    .build();
+        } else {
+            requirement.setQuantity(Math.max(previousQuantity, command.quantity()));
+
+            if (requirement.getPreferredProvider() == null && provider != null) {
+                requirement.setPreferredProvider(provider);
+            }
+        }
+
+        requirement = requirementRepository.save(requirement);
+
+        int addedQuantity = requirement.getQuantity() - previousQuantity;
+        PurchaseRequirementSource source = null;
+
+        if (addedQuantity > 0) {
+            source = sourceRepository.save(
+                    PurchaseRequirementSource.builder()
+                            .requirement(requirement)
+                            .type(command.source())
+                            .quantity(addedQuantity)
+                            .referenceId(command.referenceId())
+                            .provider(provider)
+                            .build()
+            );
+        }
+
+        return new RequirementAddResult(requirement, source, previousQuantity, addedQuantity);
+    }
+
     private RequirementAddResult createOrAccumulateRequirement(AddPurchaseRequirementCommand command) {
+
+        if (command.referenceId() != null && !command.referenceId().isBlank()) {
+            PurchaseRequirementSource existingSource = sourceRepository
+                    .findByTypeAndReferenceId(command.source(), command.referenceId())
+                    .orElse(null);
+
+            if (existingSource != null) {
+                PurchaseRequirement existingRequirement = existingSource.getRequirement();
+                return new RequirementAddResult(
+                        existingRequirement,
+                        existingSource,
+                        Math.max(existingRequirement.getQuantity() - existingSource.getQuantity(), 0),
+                        0
+                );
+            }
+        }
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
@@ -574,7 +782,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         source = sourceRepository.save(source);
 
-        return new RequirementAddResult(requirement, source, previousQuantity);
+        return new RequirementAddResult(requirement, source, previousQuantity, command.quantity());
     }
 
     private List<PurchaseRequirementReasonResponse> getEffectiveReasons(
@@ -706,7 +914,8 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
     private record RequirementAddResult(
             PurchaseRequirement requirement,
             PurchaseRequirementSource source,
-            int previousQuantity
+            int previousQuantity,
+            int addedQuantity
     ) {
     }
 }
