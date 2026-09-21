@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.editorialprice.dto.response.EditorialPriceBo
 import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceControlService;
 import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceQueryService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -25,6 +26,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/editorial-prices")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class EditorialPriceController {
 
     private final EditorialPriceControlService editorialPriceControlService;

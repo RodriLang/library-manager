@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.metadata.cover.job.CoverEnrichmentJobService
 import com.rodrilang.librarymanager.metadata.cover.job.dto.CoverEnrichmentJobStatusResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -13,6 +14,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin/books/covers")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class BookCoverEnrichmentController {
 
     private final CoverEnrichmentJobService coverEnrichmentJobService;

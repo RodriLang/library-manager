@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.editorialprice.dto.response.EditorialPriceRe
 import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceControlService;
 import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceResolutionService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/editorial-prices/resolutions")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class EditorialPriceResolutionController {
 
     private final EditorialPriceResolutionService editorialPriceResolutionService;

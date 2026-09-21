@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.importer.price.service.PriceListImportHistor
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +24,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/price-lists")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class PriceListImportController {
 
     private final PriceListImportService priceListImportService;

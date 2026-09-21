@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceConflictS
 import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceHealthIssueType;
 import com.rodrilang.librarymanager.editorialprice.service.EditorialPriceHealthService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/editorial-prices/health")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class EditorialPriceHealthController {
 
     private final EditorialPriceHealthService editorialPriceHealthService;

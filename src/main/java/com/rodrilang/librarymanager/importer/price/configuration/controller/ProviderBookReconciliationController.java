@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.importer.price.configuration.dto.response.Pr
 import com.rodrilang.librarymanager.importer.price.configuration.service.ProviderBookReconciliationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
         name = "Provider Book Reconciliation",
         description = "Conciliación de libros entre los identificadores informados por los proveedores y el catálogo interno."
 )
+@PreAuthorize("hasRole('ADMIN')")
 public class ProviderBookReconciliationController {
 
     private final ProviderBookReconciliationService reconciliationService;

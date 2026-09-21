@@ -12,6 +12,7 @@ import com.rodrilang.librarymanager.importer.price.model.PriceListImportJobStatu
 import com.rodrilang.librarymanager.importer.price.service.PriceListImportHistoryService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -28,6 +29,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/price-lists/imports")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class PriceListImportHistoryController {
 
     private final PriceListImportHistoryService historyService;

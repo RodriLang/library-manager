@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.cover.service.BookCoverProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
         name = "Book Cover Processing",
         description = "Procesamiento asíncrono de portadas pendientes"
 )
+@PreAuthorize("hasRole('ADMIN')")
 public class BookCoverProcessingController {
 
     private final BookCoverProcessingService processingService;
