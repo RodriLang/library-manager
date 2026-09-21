@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.repository.impl;
 
 import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
+import com.rodrilang.librarymanager.dto.internal.InventoryFilterOption;
 import com.rodrilang.librarymanager.dto.internal.InventoryStockSummaryCounts;
 import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -10,13 +11,14 @@ import com.rodrilang.librarymanager.util.TextNormalizer;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.query.NativeQuery;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,7 +26,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Repository
 @RequiredArgsConstructor
 public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
 
@@ -108,7 +109,6 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                           ON b.id = i.book_id
                         
                         WHERE i.bookstore_id = :bookstoreId
-                          AND i.active = TRUE
                           AND b.active = TRUE
                         """);
 
@@ -136,6 +136,367 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                 number(row[1]),
                 number(row[2]),
                 number(row[3])
+        );
+    }
+
+    @Override
+    public Page<InventoryFilterOption> searchFilterAuthors(
+            Long bookstoreId,
+            String value,
+            Pageable pageable
+    ) {
+        String query = normalizeSearchQuery(value);
+
+        if (query == null || query.isBlank()) {
+            return Page.empty(pageable);
+        }
+
+        String sql = """
+                SELECT DISTINCT
+                    a.id,
+                    a.name,
+                    a.name_normalized
+                
+                FROM inventory i
+                JOIN books b
+                  ON b.id = i.book_id
+                JOIN book_authors ba
+                  ON ba.book_id = b.id
+                JOIN authors a
+                  ON a.id = ba.author_id
+                
+                WHERE i.bookstore_id = :bookstoreId
+                  AND i.active = TRUE
+                  AND b.active = TRUE
+                  AND a.name_normalized LIKE concat('%', :query, '%')
+                
+                ORDER BY
+                    a.name_normalized ASC,
+                    a.id ASC
+                """;
+
+        String countSql = """
+                SELECT COUNT(DISTINCT a.id)
+                
+                FROM inventory i
+                JOIN books b
+                  ON b.id = i.book_id
+                JOIN book_authors ba
+                  ON ba.book_id = b.id
+                JOIN authors a
+                  ON a.id = ba.author_id
+                
+                WHERE i.bookstore_id = :bookstoreId
+                  AND i.active = TRUE
+                  AND b.active = TRUE
+                  AND a.name_normalized LIKE concat('%', :query, '%')
+                """;
+
+        Query dataQuery =
+                entityManager.createNativeQuery(sql);
+
+        dataQuery.setParameter(
+                "bookstoreId",
+                bookstoreId
+        );
+
+        dataQuery.setParameter(
+                "query",
+                query
+        );
+
+        if (pageable.isPaged()) {
+            dataQuery.setFirstResult(
+                    Math.toIntExact(pageable.getOffset())
+            );
+
+            dataQuery.setMaxResults(
+                    pageable.getPageSize()
+            );
+        }
+
+        List<InventoryFilterOption> content =
+                dataQuery
+                        .getResultList()
+                        .stream()
+                        .map(this::mapFilterOption)
+                        .toList();
+
+        Query totalQuery =
+                entityManager.createNativeQuery(countSql);
+
+        totalQuery.setParameter(
+                "bookstoreId",
+                bookstoreId
+        );
+
+        totalQuery.setParameter(
+                "query",
+                query
+        );
+
+        long total =
+                ((Number) totalQuery.getSingleResult())
+                        .longValue();
+
+        return new PageImpl<>(
+                content,
+                pageable,
+                total
+        );
+    }
+
+    @Override
+    public Page<InventoryFilterOption> searchFilterPublishers(
+            Long bookstoreId,
+            String value,
+            Pageable pageable
+    ) {
+        String query = normalizeSearchQuery(value);
+
+        if (query == null || query.isBlank()) {
+            return Page.empty(pageable);
+        }
+
+        String sql = """
+                SELECT DISTINCT
+                    p.id,
+                    p.name,
+                    p.name_normalized
+                
+                FROM inventory i
+                JOIN books b
+                  ON b.id = i.book_id
+                JOIN publishers p
+                  ON p.id = b.publisher_id
+                
+                WHERE i.bookstore_id = :bookstoreId
+                  AND i.active = TRUE
+                  AND b.active = TRUE
+                  AND p.name_normalized LIKE concat('%', :query, '%')
+                
+                ORDER BY
+                    p.name_normalized ASC,
+                    p.id ASC
+                """;
+
+        String countSql = """
+                SELECT COUNT(DISTINCT p.id)
+                
+                FROM inventory i
+                JOIN books b
+                  ON b.id = i.book_id
+                JOIN publishers p
+                  ON p.id = b.publisher_id
+                
+                WHERE i.bookstore_id = :bookstoreId
+                  AND i.active = TRUE
+                  AND b.active = TRUE
+                  AND p.name_normalized LIKE concat('%', :query, '%')
+                """;
+
+        Query dataQuery =
+                entityManager.createNativeQuery(sql);
+
+        dataQuery.setParameter(
+                "bookstoreId",
+                bookstoreId
+        );
+
+        dataQuery.setParameter(
+                "query",
+                query
+        );
+
+        if (pageable.isPaged()) {
+            dataQuery.setFirstResult(
+                    Math.toIntExact(pageable.getOffset())
+            );
+
+            dataQuery.setMaxResults(
+                    pageable.getPageSize()
+            );
+        }
+
+        List<InventoryFilterOption> content =
+                dataQuery
+                        .getResultList()
+                        .stream()
+                        .map(this::mapFilterOption)
+                        .toList();
+
+        Query totalQuery =
+                entityManager.createNativeQuery(countSql);
+
+        totalQuery.setParameter(
+                "bookstoreId",
+                bookstoreId
+        );
+
+        totalQuery.setParameter(
+                "query",
+                query
+        );
+
+        long total =
+                ((Number) totalQuery.getSingleResult())
+                        .longValue();
+
+        return new PageImpl<>(
+                content,
+                pageable,
+                total
+        );
+    }
+
+    @Override
+    public List<InventoryFilterOption> findFilterAuthorsByIds(
+            Long bookstoreId,
+            Collection<Long> authorIds
+    ) {
+        if (authorIds == null || authorIds.isEmpty()) {
+            return List.of();
+        }
+
+        String sql = """
+                SELECT DISTINCT
+                    a.id,
+                    a.name,
+                    a.name_normalized
+                
+                FROM inventory i
+                JOIN books b
+                  ON b.id = i.book_id
+                JOIN book_authors ba
+                  ON ba.book_id = b.id
+                JOIN authors a
+                  ON a.id = ba.author_id
+                
+                WHERE i.bookstore_id = :bookstoreId
+                  AND i.active = TRUE
+                  AND b.active = TRUE
+                  AND a.id IN (:authorIds)
+                
+                ORDER BY
+                    a.name_normalized ASC,
+                    a.id ASC
+                """;
+
+        Query query =
+                entityManager.createNativeQuery(sql);
+
+        query.setParameter(
+                "bookstoreId",
+                bookstoreId
+        );
+
+        bindIdList(
+                query,
+                "authorIds",
+                authorIds
+        );
+
+        return query
+                .getResultList()
+                .stream()
+                .map(this::mapFilterOption)
+                .toList();
+    }
+
+    @Override
+    public List<InventoryFilterOption> findFilterPublishersByIds(
+            Long bookstoreId,
+            Collection<Long> publisherIds
+    ) {
+        if (publisherIds == null || publisherIds.isEmpty()) {
+            return List.of();
+        }
+
+        String sql = """
+                SELECT DISTINCT
+                    p.id,
+                    p.name,
+                    p.name_normalized
+                
+                FROM inventory i
+                JOIN books b
+                  ON b.id = i.book_id
+                JOIN publishers p
+                  ON p.id = b.publisher_id
+                
+                WHERE i.bookstore_id = :bookstoreId
+                  AND i.active = TRUE
+                  AND b.active = TRUE
+                  AND p.id IN (:publisherIds)
+                
+                ORDER BY
+                    p.name_normalized ASC,
+                    p.id ASC
+                """;
+
+        Query query =
+                entityManager.createNativeQuery(sql);
+
+        query.setParameter(
+                "bookstoreId",
+                bookstoreId
+        );
+
+        bindIdList(
+                query,
+                "publisherIds",
+                publisherIds
+        );
+
+        return query
+                .getResultList()
+                .stream()
+                .map(this::mapFilterOption)
+                .toList();
+    }
+
+    @Override
+    public List<Long> findIds(
+            Long bookstoreId,
+            InventorySearchCriteria criteria,
+            Collection<Long> excludedInventoryIds
+    ) {
+        String query = criteria.normalizedQuery();
+
+        if (query.isBlank()) {
+            return findIdsWithoutSearch(
+                    bookstoreId,
+                    criteria,
+                    excludedInventoryIds
+            );
+        }
+
+        boolean identifierQuery =
+                query.matches("[0-9Xx\\-\\s]+");
+
+        if (!criteria.force()) {
+            int minimumLength =
+                    identifierQuery ? 8 : 3;
+
+            if (query.length() < minimumLength) {
+                return List.of();
+            }
+        }
+
+        if (identifierQuery) {
+            return findIdsByIsbn(
+                    bookstoreId,
+                    query,
+                    criteria,
+                    excludedInventoryIds
+            );
+        }
+
+        return findIdsByText(
+                bookstoreId,
+                query,
+                criteria,
+                excludedInventoryIds
         );
     }
 
@@ -329,6 +690,16 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
     private String buildTextSearchCte(
             InventorySearchCriteria criteria
     ) {
+        return buildTextSearchCte(
+                criteria,
+                List.of()
+        );
+    }
+
+    private String buildTextSearchCte(
+            InventorySearchCriteria criteria,
+            Collection<Long> excludedInventoryIds
+    ) {
         StringBuilder sql =
                 new StringBuilder("""
                         WITH filtered_inventory AS (
@@ -341,7 +712,6 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                               ON b.id = i.book_id
                         
                             WHERE i.bookstore_id = :bookstoreId
-                              AND i.active = TRUE
                               AND b.active = TRUE
                         """);
 
@@ -353,6 +723,11 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         appendAdvancedFilters(
                 sql,
                 criteria.resolvedFilters()
+        );
+
+        appendExcludedInventoryIds(
+                sql,
+                excludedInventoryIds
         );
 
         sql.append("""
@@ -481,6 +856,53 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         return sql.toString();
     }
 
+    private void appendExcludedInventoryIds(
+            StringBuilder sql,
+            Collection<Long> excludedInventoryIds
+    ) {
+        if (
+                excludedInventoryIds == null
+                        || excludedInventoryIds.isEmpty()
+        ) {
+            return;
+        }
+
+        sql.append("""
+                
+                AND i.id NOT IN (:excludedInventoryIds)
+                """);
+    }
+
+    private void bindExcludedInventoryIds(
+            Query query,
+            Collection<Long> excludedInventoryIds
+    ) {
+        if (
+                excludedInventoryIds == null
+                        || excludedInventoryIds.isEmpty()
+        ) {
+            return;
+        }
+
+        bindIdList(
+                query,
+                "excludedInventoryIds",
+                excludedInventoryIds
+        );
+    }
+
+    private List<Long> extractIds(
+            Query query
+    ) {
+        return query
+                .getResultList()
+                .stream()
+                .map(result ->
+                        ((Number) result).longValue()
+                )
+                .toList();
+    }
+
     private void appendIsbnPredicate(
             StringBuilder sql
     ) {
@@ -523,6 +945,21 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
             StringBuilder sql,
             InventoryAdvancedFilters filters
     ) {
+        switch (filters.resolvedActive()) {
+            case ACTIVE -> sql.append("""
+                    
+                    AND i.active = TRUE
+                    """);
+
+            case INACTIVE -> sql.append("""
+                    
+                    AND i.active = FALSE
+                    """);
+
+            case ALL -> {
+            }
+        }
+
         if (filters.condition() != null) {
             sql.append("""
                     
@@ -530,21 +967,21 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     """);
         }
 
-        if (filters.publisherId() != null) {
+        if (!filters.publisherIds().isEmpty()) {
             sql.append("""
                     
-                    AND b.publisher_id = :publisherId
+                    AND b.publisher_id IN (:publisherIds)
                     """);
         }
 
-        if (filters.authorId() != null) {
+        if (!filters.authorIds().isEmpty()) {
             sql.append("""
                     
                     AND EXISTS (
                         SELECT 1
                         FROM book_authors ba_filter
                         WHERE ba_filter.book_id = b.id
-                          AND ba_filter.author_id = :authorId
+                          AND ba_filter.author_id IN (:authorIds)
                     )
                     """);
         }
@@ -652,19 +1089,33 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
             );
         }
 
-        if (filters.publisherId() != null) {
-            query.setParameter(
-                    "publisherId",
-                    filters.publisherId()
+        if (!filters.publisherIds().isEmpty()) {
+            bindIdList(
+                    query,
+                    "publisherIds",
+                    filters.publisherIds()
             );
         }
 
-        if (filters.authorId() != null) {
-            query.setParameter(
-                    "authorId",
-                    filters.authorId()
+        if (!filters.authorIds().isEmpty()) {
+            bindIdList(
+                    query,
+                    "authorIds",
+                    filters.authorIds()
             );
         }
+    }
+
+    private void bindIdList(
+            Query query,
+            String parameterName,
+            Collection<Long> values
+    ) {
+        query.unwrap(NativeQuery.class)
+                .setParameterList(
+                        parameterName,
+                        values
+                );
     }
 
     private List<Inventory> fetchInventories(
@@ -776,6 +1227,161 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         };
     }
 
+    private List<Long> findIdsWithoutSearch(
+            Long bookstoreId,
+            InventorySearchCriteria criteria,
+            Collection<Long> excludedInventoryIds
+    ) {
+        StringBuilder sql =
+                baseInventoryQuery(
+                        "SELECT i.id",
+                        criteria
+                );
+
+        appendExcludedInventoryIds(
+                sql,
+                excludedInventoryIds
+        );
+
+        sql.append("""
+                
+                ORDER BY i.id ASC
+                """);
+
+        Query query =
+                entityManager.createNativeQuery(
+                        sql.toString()
+                );
+
+        bindSearchFilters(
+                query,
+                bookstoreId,
+                criteria
+        );
+
+        bindExcludedInventoryIds(
+                query,
+                excludedInventoryIds
+        );
+
+        return extractIds(query);
+    }
+
+    private List<Long> findIdsByIsbn(
+            Long bookstoreId,
+            String value,
+            InventorySearchCriteria criteria,
+            Collection<Long> excludedInventoryIds
+    ) {
+        String normalizedIdentifier =
+                normalizeSearchIdentifier(value);
+
+        if (normalizedIdentifier == null) {
+            return List.of();
+        }
+
+        StringBuilder sql =
+                baseInventoryQuery(
+                        "SELECT i.id",
+                        criteria
+                );
+
+        appendIsbnPredicate(sql);
+
+        appendExcludedInventoryIds(
+                sql,
+                excludedInventoryIds
+        );
+
+        sql.append("""
+                
+                ORDER BY i.id ASC
+                """);
+
+        Query query =
+                entityManager.createNativeQuery(
+                        sql.toString()
+                );
+
+        bindSearchFilters(
+                query,
+                bookstoreId,
+                criteria
+        );
+
+        query.setParameter(
+                "query",
+                normalizedIdentifier
+        );
+
+        bindExcludedInventoryIds(
+                query,
+                excludedInventoryIds
+        );
+
+        return extractIds(query);
+    }
+
+    private List<Long> findIdsByText(
+            Long bookstoreId,
+            String value,
+            InventorySearchCriteria criteria,
+            Collection<Long> excludedInventoryIds
+    ) {
+        String searchQuery =
+                TextNormalizer.normalizeForSearch(value);
+
+        String fullTextQuery =
+                TextNormalizer.normalizeForFullTextSearch(value);
+
+        if (
+                searchQuery == null
+                        || searchQuery.isBlank()
+                        || fullTextQuery == null
+                        || fullTextQuery.isBlank()
+        ) {
+            return List.of();
+        }
+
+        String sql =
+                buildTextSearchCte(
+                        criteria,
+                        excludedInventoryIds
+                )
+                        + """
+                        
+                        SELECT rm.inventory_id
+                        FROM ranked_matches rm
+                        ORDER BY rm.inventory_id ASC
+                        """;
+
+        Query query =
+                entityManager.createNativeQuery(sql);
+
+        bindSearchFilters(
+                query,
+                bookstoreId,
+                criteria
+        );
+
+        bindExcludedInventoryIds(
+                query,
+                excludedInventoryIds
+        );
+
+        query.setParameter(
+                "query",
+                searchQuery
+        );
+
+        query.setParameter(
+                "fullTextQuery",
+                fullTextQuery
+        );
+
+        return extractIds(query);
+    }
+
     private String normalizeSearchIdentifier(
             String value
     ) {
@@ -806,5 +1412,26 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         return value != null
                 ? ((Number) value).longValue()
                 : 0L;
+    }
+
+    private InventoryFilterOption mapFilterOption(
+            Object result
+    ) {
+        Object[] row = (Object[]) result;
+
+        return new InventoryFilterOption(
+                ((Number) row[0]).longValue(),
+                (String) row[1]
+        );
+    }
+
+    private String normalizeSearchQuery(String value) {
+        String normalized = TextNormalizer.normalizeForMatch(value);
+
+        if (normalized == null || normalized.length() < 2) {
+            return null;
+        }
+
+        return normalized;
     }
 }

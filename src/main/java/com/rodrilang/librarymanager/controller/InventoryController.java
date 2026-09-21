@@ -11,6 +11,7 @@ import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.enums.BookCondition;
+import com.rodrilang.librarymanager.enums.InventoryActiveFilter;
 import com.rodrilang.librarymanager.enums.InventoryPriceMode;
 import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 import com.rodrilang.librarymanager.repository.criteria.InventorySearchCriteria;
@@ -34,6 +35,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/inventory")
@@ -92,19 +95,25 @@ public class InventoryController {
             @RequestParam(defaultValue = "false") boolean force,
             @RequestParam(defaultValue = "ALL") InventoryStockFilter stock,
             @RequestParam(required = false) BookCondition condition,
-            @RequestParam(required = false) Long publisherId,
-            @RequestParam(required = false) Long authorId,
+            @RequestParam(required = false) List<Long> publisherIds,
+            @RequestParam(required = false) List<Long> authorIds,
             @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
+            @RequestParam(defaultValue = "ACTIVE") InventoryActiveFilter active,
             @ParameterObject
-            @PageableDefault(size = 30, sort = "createdAt", direction = Sort.Direction.DESC)
+            @PageableDefault(
+                    size = 30,
+                    sort = "createdAt",
+                    direction = Sort.Direction.DESC
+            )
             Pageable pageable
     ) {
         InventoryAdvancedFilters filters =
                 new InventoryAdvancedFilters(
                         condition,
-                        publisherId,
-                        authorId,
-                        priceMode
+                        publisherIds,
+                        authorIds,
+                        priceMode,
+                        active
                 );
 
         InventorySearchCriteria criteria =
@@ -128,16 +137,18 @@ public class InventoryController {
     @GetMapping("/summary")
     public ResponseEntity<InventoryStockSummaryResponse> getSummary(
             @RequestParam(required = false) BookCondition condition,
-            @RequestParam(required = false) Long publisherId,
-            @RequestParam(required = false) Long authorId,
-            @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode
+            @RequestParam(required = false) List<Long> publisherIds,
+            @RequestParam(required = false) List<Long> authorIds,
+            @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
+            @RequestParam(defaultValue = "ACTIVE") InventoryActiveFilter active
     ) {
         InventoryAdvancedFilters filters =
                 new InventoryAdvancedFilters(
                         condition,
-                        publisherId,
-                        authorId,
-                        priceMode
+                        publisherIds,
+                        authorIds,
+                        priceMode,
+                        active
                 );
 
         return ResponseEntity.ok(

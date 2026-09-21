@@ -267,34 +267,51 @@ public class InventoryBulkService {
     private String selectionSummary(
             InventoryBulkActionRequest request
     ) {
-        if (request.selection().type()
-                == InventoryBulkSelectionType.IDS) {
+        if (
+                request.selection().type()
+                        == InventoryBulkSelectionType.IDS
+        ) {
             int count =
                     request.selection().inventoryIds() != null
-                            ? request.selection().inventoryIds().size()
+                            ? request.selection()
+                            .inventoryIds()
+                            .size()
                             : 0;
 
             return "IDS count=" + count;
         }
 
-        var filter = request.selection().filter();
+        var filter =
+                request.selection().filter();
 
         int excluded =
-                request.selection().excludedInventoryIds() != null
+                request.selection()
+                        .excludedInventoryIds() != null
                         ? request.selection()
                         .excludedInventoryIds()
                         .size()
                         : 0;
 
         if (filter == null) {
-            return "FILTER all; excluded=" + excluded;
+            return "FILTER all; excluded="
+                    + excluded;
         }
 
-        return "FILTER q=" + filter.q()
-                + "; condition=" + filter.condition()
-                + "; active=" + filter.active()
-                + "; publisherId=" + filter.publisherId()
-                + "; stock=" + filter.stock()
-                + "; excluded=" + excluded;
+        return "FILTER q="
+                + filter.q()
+                + "; condition="
+                + filter.condition()
+                + "; active="
+                + filter.active()
+                + "; publisherIds="
+                + filter.publisherIds()
+                + "; authorIds="
+                + filter.authorIds()
+                + "; priceMode="
+                + filter.priceMode()
+                + "; stock="
+                + filter.stock()
+                + "; excluded="
+                + excluded;
     }
 }

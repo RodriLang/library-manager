@@ -1,12 +1,12 @@
 package com.rodrilang.librarymanager.inventory.bulk.service;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.inventory.bulk.dto.request.InventoryBulkFilterRequest;
 import com.rodrilang.librarymanager.inventory.bulk.dto.request.InventoryBulkSelectionRequest;
-import com.rodrilang.librarymanager.inventory.bulk.repository.InventoryBulkSelectionRepository;
-import com.rodrilang.librarymanager.inventory.bulk.specification.InventoryBulkSpecificationFactory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.repository.criteria.InventorySearchCriteria;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,8 +19,6 @@ import java.util.Set;
 public class InventoryBulkSelectionService {
 
     private final InventoryRepository inventoryRepository;
-    private final InventoryBulkSelectionRepository selectionRepository;
-    private final InventoryBulkSpecificationFactory specificationFactory;
     private final BookstoreContext bookstoreContext;
 
     public List<Long> resolveIds(
@@ -52,21 +50,25 @@ public class InventoryBulkSelectionService {
             throw new BusinessException("Debe seleccionar al menos un inventario");
         }
 
-        List<Long> ids = requestedIds
-                .stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted()
-                .toList();
+        List<Long> ids =
+                requestedIds
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .sorted()
+                        .toList();
 
         List<Long> existingIds =
-                inventoryRepository.findIdsByBookstoreIdAndIdIn(
-                        bookstoreId,
-                        ids
-                );
+                inventoryRepository
+                        .findIdsByBookstoreIdAndIdIn(
+                                bookstoreId,
+                                ids
+                        );
 
         if (existingIds.size() != ids.size()) {
-            throw new BusinessException("Uno o más inventarios no pertenecen a la librería actual");
+            throw new BusinessException(
+                    "Uno o más inventarios no pertenecen a la librería actual"
+            );
         }
 
         return existingIds;
@@ -75,11 +77,60 @@ public class InventoryBulkSelectionService {
     private List<Long> resolveFilter(
             Long bookstoreId,
             InventoryBulkFilterRequest filter,
-            Set<Long> excludedIds
+            Set<Long> excludedInventoryIds
     ) {
-        return selectionRepository.findIds(
-                specificationFactory.build(bookstoreId, filter),
-                excludedIds
+        InventoryBulkFilterRequest resolved =
+                filter != null
+                        ? filter
+                        : new InventoryBulkFilterRequest(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                );
+
+        InventoryAdvancedFilters advancedFilters =
+                new InventoryAdvancedFilters(
+                        resolved.condition(),
+                        resolved.publisherIds(),
+                        resolved.authorIds(),
+                        resolved.priceMode(),
+                        resolved.active()
+                );
+
+        /*
+         * force=true es intencional.
+         *
+         * Si el usuario llegó a seleccionar "todos los resultados",
+         * la búsqueda ya fue ejecutada en InventoryPage.
+         *
+         * También permite reproducir búsquedas cortas que fueron
+         * ejecutadas manualmente.
+         */
+        InventorySearchCriteria criteria =
+                new InventorySearchCriteria(
+                        resolved.q(),
+                        true,
+                        resolved.stock(),
+                        advancedFilters
+                );
+
+        List<Long> excluded =
+                excludedInventoryIds == null
+                        ? List.of()
+                        : excludedInventoryIds
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList();
+
+        return inventoryRepository.findIds(
+                bookstoreId,
+                criteria,
+                excluded
         );
     }
 }
