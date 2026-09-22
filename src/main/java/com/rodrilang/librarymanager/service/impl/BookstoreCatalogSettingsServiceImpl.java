@@ -21,6 +21,7 @@ import com.rodrilang.librarymanager.repository.PublisherRepository;
 import com.rodrilang.librarymanager.repository.projection.PublisherCatalogConfigurationProjection;
 import com.rodrilang.librarymanager.repository.projection.PublisherConfigurationDetailProjection;
 import com.rodrilang.librarymanager.service.BookstoreCatalogSettingsService;
+import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -52,8 +53,17 @@ public class BookstoreCatalogSettingsServiceImpl implements BookstoreCatalogSett
     ) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
+        String tokenQuery = TextNormalizer.normalizeForTokenPrefixSearch(query);
+        String resolvedTokenQuery = tokenQuery.isBlank() ? null : tokenQuery;
+
         return publisherRepository
-                .searchForCatalogConfiguration(bookstoreId, query, excluded, resolveSort(sort), pageable)
+                .searchForCatalogConfiguration(
+                        bookstoreId,
+                        resolvedTokenQuery,
+                        excluded,
+                        resolveSort(sort),
+                        pageable
+                )
                 .map(this::toResponse);
     }
 

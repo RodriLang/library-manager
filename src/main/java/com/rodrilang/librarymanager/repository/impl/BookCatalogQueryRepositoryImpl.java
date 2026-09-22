@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.repository.BookCatalogQueryRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.query.NativeQuery;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -167,6 +169,7 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
             BookCatalogCriteria criteria,
             String query,
             String fullTextQuery,
+            String entityTokenQuery,
             long bookstoreId,
             Pageable pageable
     ) {
@@ -224,24 +227,16 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
                     FROM publishers p
                     JOIN visible_books b
                       ON b.publisher_id = p.id
-                    WHERE immutable_unaccent(lower(p.name))
-                          LIKE CONCAT(
-                              '%%',
-                              immutable_unaccent(lower(:query)),
-                              '%%'
-                          )
+                    WHERE to_tsvector('simple', p.name_normalized)
+                          @@ to_tsquery('simple', :entityTokenQuery)
                 
                     UNION ALL
                 
                     SELECT
                         ba.book_id,
                         CASE
-                            WHEN immutable_unaccent(lower(a.name))
-                                 LIKE CONCAT(
-                                     immutable_unaccent(lower(:query)),
-                                     '%%'
-                                 )
-                                THEN 3
+                            WHEN a.name_normalized = :query THEN 3
+                            WHEN a.name_normalized LIKE CONCAT(:query, '%%') THEN 3
                             ELSE 4
                         END AS priority
                     FROM authors a
@@ -249,12 +244,8 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
                       ON ba.author_id = a.id
                     JOIN visible_books b
                       ON b.id = ba.book_id
-                    WHERE immutable_unaccent(lower(a.name))
-                          LIKE CONCAT(
-                              '%%',
-                              immutable_unaccent(lower(:query)),
-                              '%%'
-                          )
+                    WHERE to_tsvector('simple', a.name_normalized)
+                          @@ to_tsquery('simple', :entityTokenQuery)
                 ),
                 ranked_matches AS (
                     SELECT
@@ -310,12 +301,8 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
                     FROM publishers p
                     JOIN visible_books b
                       ON b.publisher_id = p.id
-                    WHERE immutable_unaccent(lower(p.name))
-                          LIKE CONCAT(
-                              '%%',
-                              immutable_unaccent(lower(:query)),
-                              '%%'
-                          )
+                    WHERE to_tsvector('simple', p.name_normalized)
+                          @@ to_tsquery('simple', :entityTokenQuery)
                 
                     UNION ALL
                 
@@ -325,12 +312,8 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
                       ON ba.author_id = a.id
                     JOIN visible_books b
                       ON b.id = ba.book_id
-                    WHERE immutable_unaccent(lower(a.name))
-                          LIKE CONCAT(
-                              '%%',
-                              immutable_unaccent(lower(:query)),
-                              '%%'
-                          )
+                    WHERE to_tsvector('simple', a.name_normalized)
+                          @@ to_tsquery('simple', :entityTokenQuery)
                 ) matches
                 """.formatted(
                 currentPrices,
@@ -347,6 +330,7 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
                 nativeQuery -> {
                     nativeQuery.setParameter("query", query);
                     nativeQuery.setParameter("fullTextQuery", fullTextQuery);
+                    nativeQuery.setParameter("entityTokenQuery", entityTokenQuery);
                 }
         );
     }
@@ -362,21 +346,21 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
                 )
                 """);
 
-        if (criteria.publisherId() != null) {
+        if (!criteria.publisherIds().isEmpty()) {
             sql.append("""
                     
-                    AND b.publisher_id = :publisherId
+                    AND b.publisher_id IN (:publisherIds)
                     """);
         }
 
-        if (criteria.authorId() != null) {
+        if (!criteria.authorIds().isEmpty()) {
             sql.append("""
                     
                     AND EXISTS (
                         SELECT 1
                         FROM book_authors filter_ba
                         WHERE filter_ba.book_id = b.id
-                          AND filter_ba.author_id = :authorId
+                          AND filter_ba.author_id IN (:authorIds)
                     )
                     """);
         }
@@ -503,12 +487,20 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
     ) {
         query.setParameter("bookstoreId", bookstoreId);
 
-        if (criteria.publisherId() != null) {
-            query.setParameter("publisherId", criteria.publisherId());
+        if (!criteria.publisherIds().isEmpty()) {
+            bindIdList(
+                    query,
+                    "publisherIds",
+                    criteria.publisherIds()
+            );
         }
 
-        if (criteria.authorId() != null) {
-            query.setParameter("authorId", criteria.authorId());
+        if (!criteria.authorIds().isEmpty()) {
+            bindIdList(
+                    query,
+                    "authorIds",
+                    criteria.authorIds()
+            );
         }
 
         if (criteria.minPrice() != null) {
@@ -518,6 +510,18 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
         if (criteria.maxPrice() != null) {
             query.setParameter("maxPrice", criteria.maxPrice());
         }
+    }
+
+    private void bindIdList(
+            Query query,
+            String parameterName,
+            Collection<Long> values
+    ) {
+        query.unwrap(NativeQuery.class)
+                .setParameterList(
+                        parameterName,
+                        values
+                );
     }
 
     @FunctionalInterface

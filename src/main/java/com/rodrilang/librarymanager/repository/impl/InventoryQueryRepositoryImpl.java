@@ -146,8 +146,9 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
             Pageable pageable
     ) {
         String query = normalizeSearchQuery(value);
+        String tokenQuery = TextNormalizer.normalizeForTokenPrefixSearch(value);
 
-        if (query == null || query.isBlank()) {
+        if (query == null || query.isBlank() || tokenQuery.isBlank()) {
             return Page.empty(pageable);
         }
 
@@ -168,7 +169,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                 WHERE i.bookstore_id = :bookstoreId
                   AND i.active = TRUE
                   AND b.active = TRUE
-                  AND a.name_normalized LIKE concat('%', :query, '%')
+                  AND to_tsvector('simple', a.name_normalized)
+                      @@ to_tsquery('simple', :tokenQuery)
                 
                 ORDER BY
                     a.name_normalized ASC,
@@ -189,7 +191,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                 WHERE i.bookstore_id = :bookstoreId
                   AND i.active = TRUE
                   AND b.active = TRUE
-                  AND a.name_normalized LIKE concat('%', :query, '%')
+                  AND to_tsvector('simple', a.name_normalized)
+                      @@ to_tsquery('simple', :tokenQuery)
                 """;
 
         Query dataQuery =
@@ -201,8 +204,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         );
 
         dataQuery.setParameter(
-                "query",
-                query
+                "tokenQuery",
+                tokenQuery
         );
 
         if (pageable.isPaged()) {
@@ -231,8 +234,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         );
 
         totalQuery.setParameter(
-                "query",
-                query
+                "tokenQuery",
+                tokenQuery
         );
 
         long total =
@@ -253,8 +256,9 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
             Pageable pageable
     ) {
         String query = normalizeSearchQuery(value);
+        String tokenQuery = TextNormalizer.normalizeForTokenPrefixSearch(value);
 
-        if (query == null || query.isBlank()) {
+        if (query == null || query.isBlank() || tokenQuery.isBlank()) {
             return Page.empty(pageable);
         }
 
@@ -273,7 +277,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                 WHERE i.bookstore_id = :bookstoreId
                   AND i.active = TRUE
                   AND b.active = TRUE
-                  AND p.name_normalized LIKE concat('%', :query, '%')
+                  AND to_tsvector('simple', p.name_normalized)
+                      @@ to_tsquery('simple', :tokenQuery)
                 
                 ORDER BY
                     p.name_normalized ASC,
@@ -292,7 +297,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                 WHERE i.bookstore_id = :bookstoreId
                   AND i.active = TRUE
                   AND b.active = TRUE
-                  AND p.name_normalized LIKE concat('%', :query, '%')
+                  AND to_tsvector('simple', p.name_normalized)
+                      @@ to_tsquery('simple', :tokenQuery)
                 """;
 
         Query dataQuery =
@@ -304,8 +310,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         );
 
         dataQuery.setParameter(
-                "query",
-                query
+                "tokenQuery",
+                tokenQuery
         );
 
         if (pageable.isPaged()) {
@@ -334,8 +340,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         );
 
         totalQuery.setParameter(
-                "query",
-                query
+                "tokenQuery",
+                tokenQuery
         );
 
         long total =
@@ -600,11 +606,15 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         String fullTextQuery =
                 TextNormalizer.normalizeForFullTextSearch(value);
 
+        String entityTokenQuery =
+                TextNormalizer.normalizeForTokenPrefixSearch(value);
+
         if (
                 searchQuery == null
                         || searchQuery.isBlank()
                         || fullTextQuery == null
                         || fullTextQuery.isBlank()
+                        || entityTokenQuery.isBlank()
         ) {
             return Page.empty(pageable);
         }
@@ -652,6 +662,11 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     query.setParameter(
                             "fullTextQuery",
                             fullTextQuery
+                    );
+
+                    query.setParameter(
+                            "entityTokenQuery",
+                            entityTokenQuery
                     );
                 }
         );
@@ -795,15 +810,13 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     JOIN publishers p
                       ON p.id = b.publisher_id
                 
-                    WHERE immutable_unaccent(
-                              lower(p.name)
+                    WHERE to_tsvector(
+                              'simple',
+                              p.name_normalized
                           )
-                          LIKE concat(
-                              '%',
-                              immutable_unaccent(
-                                  lower(:query)
-                              ),
-                              '%'
+                          @@ to_tsquery(
+                              'simple',
+                              :entityTokenQuery
                           )
                 
                     UNION ALL
@@ -811,16 +824,8 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     SELECT
                         fi.id AS inventory_id,
                         CASE
-                            WHEN immutable_unaccent(
-                                     lower(a.name)
-                                 )
-                                 LIKE concat(
-                                     immutable_unaccent(
-                                         lower(:query)
-                                     ),
-                                     '%'
-                                 )
-                                THEN 3
+                            WHEN a.name_normalized = :query THEN 3
+                            WHEN a.name_normalized LIKE concat(:query, '%') THEN 3
                             ELSE 4
                         END AS priority
                 
@@ -830,15 +835,13 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     JOIN authors a
                       ON a.id = ba.author_id
                 
-                    WHERE immutable_unaccent(
-                              lower(a.name)
+                    WHERE to_tsvector(
+                              'simple',
+                              a.name_normalized
                           )
-                          LIKE concat(
-                              '%',
-                              immutable_unaccent(
-                                  lower(:query)
-                              ),
-                              '%'
+                          @@ to_tsquery(
+                              'simple',
+                              :entityTokenQuery
                           )
                 ),
                 
@@ -1334,11 +1337,15 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         String fullTextQuery =
                 TextNormalizer.normalizeForFullTextSearch(value);
 
+        String entityTokenQuery =
+                TextNormalizer.normalizeForTokenPrefixSearch(value);
+
         if (
                 searchQuery == null
                         || searchQuery.isBlank()
                         || fullTextQuery == null
                         || fullTextQuery.isBlank()
+                        || entityTokenQuery.isBlank()
         ) {
             return List.of();
         }
@@ -1377,6 +1384,11 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         query.setParameter(
                 "fullTextQuery",
                 fullTextQuery
+        );
+
+        query.setParameter(
+                "entityTokenQuery",
+                entityTokenQuery
         );
 
         return extractIds(query);

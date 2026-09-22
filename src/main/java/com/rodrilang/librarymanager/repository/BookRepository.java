@@ -139,35 +139,23 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                             5 AS priority
                         FROM publishers p
                         JOIN visible_books b ON b.publisher_id = p.id
-                        WHERE immutable_unaccent(lower(p.name))
-                            LIKE concat(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        WHERE to_tsvector('simple', p.name_normalized)
+                              @@ to_tsquery('simple', :entityTokenQuery)
                     
                         UNION ALL
                     
                         SELECT
                             ba.book_id,
                             CASE
-                                WHEN immutable_unaccent(lower(a.name))
-                                     LIKE concat(
-                                         immutable_unaccent(lower(:query)),
-                                         '%'
-                                     )
-                                    THEN 3
+                                WHEN a.name_normalized = :query THEN 3
+                                WHEN a.name_normalized LIKE concat(:query, '%') THEN 3
                                 ELSE 4
                             END AS priority
                         FROM authors a
                         JOIN book_authors ba ON ba.author_id = a.id
                         JOIN visible_books b ON b.id = ba.book_id
-                        WHERE immutable_unaccent(lower(a.name))
-                            LIKE concat(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        WHERE to_tsvector('simple', a.name_normalized)
+                              @@ to_tsquery('simple', :entityTokenQuery)
                     ),
                     ranked_matches AS (
                         SELECT
@@ -219,12 +207,8 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                         SELECT b.id AS book_id
                         FROM publishers p
                         JOIN visible_books b ON b.publisher_id = p.id
-                        WHERE immutable_unaccent(lower(p.name))
-                            LIKE concat(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        WHERE to_tsvector('simple', p.name_normalized)
+                              @@ to_tsquery('simple', :entityTokenQuery)
                     
                         UNION ALL
                     
@@ -232,12 +216,8 @@ public interface BookRepository extends JpaRepository<Book, Long> {
                         FROM authors a
                         JOIN book_authors ba ON ba.author_id = a.id
                         JOIN visible_books b ON b.id = ba.book_id
-                        WHERE immutable_unaccent(lower(a.name))
-                            LIKE concat(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        WHERE to_tsvector('simple', a.name_normalized)
+                              @@ to_tsquery('simple', :entityTokenQuery)
                     ) matches
                     """,
             nativeQuery = true
@@ -245,6 +225,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     Page<Book> searchText(
             @Param("query") String query,
             @Param("fullTextQuery") String fullTextQuery,
+            @Param("entityTokenQuery") String entityTokenQuery,
             @Param("bookstoreId") Long bookstoreId,
             Pageable pageable
     );

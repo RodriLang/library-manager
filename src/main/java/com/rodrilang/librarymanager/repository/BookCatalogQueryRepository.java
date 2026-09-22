@@ -24,6 +24,7 @@ public interface BookCatalogQueryRepository {
             BookCatalogCriteria criteria,
             String query,
             String fullTextQuery,
+            String entityTokenQuery,
             long bookstoreId,
             Pageable pageable
     );

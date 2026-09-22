@@ -276,10 +276,10 @@ public class BookServiceImpl implements BookService {
         long mappingTime = System.currentTimeMillis() - mappingStart;
 
         log.info(
-                "Book catalog timing. query={} publisherId={} authorId={} minPrice={} maxPrice={} priceStatus={} repositoryTime={}ms mappingTime={}ms results={} totalElements={}",
+                "Book catalog timing. query={} publisherIds={} authorIds={} minPrice={} maxPrice={} priceStatus={} repositoryTime={}ms mappingTime={}ms results={} totalElements={}",
                 criteria.query(),
-                criteria.publisherId(),
-                criteria.authorId(),
+                criteria.publisherIds(),
+                criteria.authorIds(),
                 criteria.minPrice(),
                 criteria.maxPrice(),
                 criteria.priceStatus(),
@@ -327,11 +327,13 @@ public class BookServiceImpl implements BookService {
         String searchQuery = TextNormalizer.normalizeForSearch(query);
 
         String fullTextQuery = TextNormalizer.normalizeForFullTextSearch(query);
+        String entityTokenQuery = TextNormalizer.normalizeForTokenPrefixSearch(query);
 
         return bookCatalogQueryRepository.searchText(
                 criteria,
                 searchQuery,
                 fullTextQuery,
+                entityTokenQuery,
                 bookstoreId,
                 pageable
         );

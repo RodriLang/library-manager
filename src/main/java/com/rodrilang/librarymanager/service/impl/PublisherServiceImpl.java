@@ -11,6 +11,7 @@ import com.rodrilang.librarymanager.service.PublisherService;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,9 +59,24 @@ public class PublisherServiceImpl implements PublisherService {
     @Transactional(readOnly = true)
     @Override
     public Page<PublisherResponse> search(String query, Pageable pageable) {
+        String normalizedQuery = TextNormalizer.normalizeForSearch(query);
+        String tokenQuery = TextNormalizer.normalizeForTokenPrefixSearch(query);
+
+        if (normalizedQuery.isBlank() || tokenQuery.isBlank()) {
+            return Page.empty(pageable);
+        }
+
+        Pageable repositoryPageable = PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize()
+        );
 
         return publisherRepository
-                .searchByName(query, pageable)
+                .searchByTokens(
+                        normalizedQuery,
+                        tokenQuery,
+                        repositoryPageable
+                )
                 .map(publisherMapper::toResponse);
     }
 

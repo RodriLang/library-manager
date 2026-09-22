@@ -85,6 +85,18 @@ public final class TextNormalizer {
         return query.toString();
     }
 
+    public static String normalizeForTokenPrefixSearch(String value) {
+        String normalized = normalizeForSearch(value);
+
+        if (normalized.isBlank()) {
+            return "";
+        }
+
+        return Arrays.stream(normalized.split("\\s+"))
+                .map(token -> token + ":*")
+                .collect(Collectors.joining(" & "));
+    }
+
     public static String normalizeForMatch(String value) {
         if (value == null || value.isBlank()) {
             return "";

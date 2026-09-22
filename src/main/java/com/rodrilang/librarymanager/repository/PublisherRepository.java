@@ -25,27 +25,28 @@ public interface PublisherRepository extends JpaRepository<Publisher, Long> {
             value = """
                     SELECT p.*
                     FROM publishers p
-                    WHERE immutable_unaccent(lower(p.name))
-                        LIKE CONCAT(
-                            '%',
-                            immutable_unaccent(lower(:name)),
-                            '%'
-                        )
+                    WHERE to_tsvector('simple', p.name_normalized)
+                          @@ to_tsquery('simple', :tokenQuery)
+                    ORDER BY
+                        CASE
+                            WHEN p.name_normalized = :query THEN 1
+                            WHEN p.name_normalized LIKE CONCAT(:query, '%') THEN 2
+                            ELSE 3
+                        END,
+                        p.name_normalized ASC,
+                        p.id ASC
                     """,
             countQuery = """
                     SELECT COUNT(*)
                     FROM publishers p
-                    WHERE immutable_unaccent(lower(p.name))
-                        LIKE CONCAT(
-                            '%',
-                            immutable_unaccent(lower(:name)),
-                            '%'
-                        )
+                    WHERE to_tsvector('simple', p.name_normalized)
+                          @@ to_tsquery('simple', :tokenQuery)
                     """,
             nativeQuery = true
     )
-    Page<Publisher> searchByName(
-            String name,
+    Page<Publisher> searchByTokens(
+            @Param("query") String query,
+            @Param("tokenQuery") String tokenQuery,
             Pageable pageable
     );
 
@@ -92,14 +93,9 @@ public interface PublisherRepository extends JpaRepository<Publisher, Long> {
                         ON b.publisher_id = p.id
                        AND b.active = true
                     WHERE (
-                        :query IS NULL
-                        OR :query = ''
-                        OR immutable_unaccent(lower(p.name))
-                            LIKE CONCAT(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        :tokenQuery IS NULL
+                        OR to_tsvector('simple', p.name_normalized)
+                           @@ to_tsquery('simple', :tokenQuery)
                     )
                     AND (
                         :excluded IS NULL
@@ -128,14 +124,9 @@ public interface PublisherRepository extends JpaRepository<Publisher, Long> {
                           AND b.active = true
                     )
                     AND (
-                        :query IS NULL
-                        OR :query = ''
-                        OR immutable_unaccent(lower(p.name))
-                            LIKE CONCAT(
-                                '%',
-                                immutable_unaccent(lower(:query)),
-                                '%'
-                            )
+                        :tokenQuery IS NULL
+                        OR to_tsvector('simple', p.name_normalized)
+                           @@ to_tsquery('simple', :tokenQuery)
                     )
                     AND (
                         :excluded IS NULL
@@ -150,10 +141,10 @@ public interface PublisherRepository extends JpaRepository<Publisher, Long> {
             nativeQuery = true
     )
     Page<PublisherCatalogConfigurationProjection> searchForCatalogConfiguration(
-            Long bookstoreId,
-            String query,
-            Boolean excluded,
-            String sort,
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("tokenQuery") String tokenQuery,
+            @Param("excluded") Boolean excluded,
+            @Param("sort") String sort,
             Pageable pageable
     );
 }

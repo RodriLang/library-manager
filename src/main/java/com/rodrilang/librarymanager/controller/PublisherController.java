@@ -55,7 +55,7 @@ public class PublisherController {
     @GetMapping("/search")
     public ResponseEntity<PageResponse<PublisherResponse>> search(
             @RequestParam String q,
-            @PageableDefault(size = 4, sort = "name")
+            @PageableDefault(size = 8)
             Pageable pageable
     ) {
         return ResponseEntity.ok(
