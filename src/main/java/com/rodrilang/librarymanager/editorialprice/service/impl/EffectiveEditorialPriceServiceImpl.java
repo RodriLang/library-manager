@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceOrigin;
 import com.rodrilang.librarymanager.editorialprice.enums.EditorialPriceResolutionType;
 import com.rodrilang.librarymanager.editorialprice.enums.EffectiveEditorialPriceDeterminationType;
 import com.rodrilang.librarymanager.editorialprice.enums.EffectiveEditorialPriceInvalidationReason;
+import com.rodrilang.librarymanager.editorialprice.event.EffectiveEditorialPriceChangedEvent;
 import com.rodrilang.librarymanager.editorialprice.model.EditorialPriceResolution;
 import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.editorialprice.repository.EditorialPriceResolutionRepository;
@@ -18,6 +19,7 @@ import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,6 +60,7 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
     private final EffectiveEditorialPriceRepository effectivePriceRepository;
     private final EffectiveEditorialPriceBatchRepository effectivePriceBatchRepository;
     private final EditorialPriceResolutionRepository resolutionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -422,6 +425,10 @@ public class EffectiveEditorialPriceServiceImpl implements EffectiveEditorialPri
                 conflictedBookIds.size(),
                 elapsedMs(totalStartedAt)
         );
+
+        if (!changedBookIds.isEmpty()) {
+            eventPublisher.publishEvent(new EffectiveEditorialPriceChangedEvent(Set.copyOf(changedBookIds)));
+        }
 
         return new EffectiveEditorialPriceRefreshResult(
                 Set.copyOf(changedBookIds),

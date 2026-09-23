@@ -24,6 +24,40 @@ public interface InventoryCountResultRepository extends JpaRepository<InventoryC
     @EntityGraph(attributePaths = {"book", "inventory"})
     Page<InventoryCountResult> findAllBySessionIdAndCountedQuantityIsNotNull(Long sessionId, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"book", "inventory"})
+    Page<InventoryCountResult> findAllBySessionIdAndCountedQuantityIsNotNullAndDifferenceType(
+            Long sessionId,
+            InventoryCountDifferenceType differenceType,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"book", "inventory"})
+    @Query("""
+            SELECT result
+            FROM InventoryCountResult result
+            JOIN result.book book
+            WHERE result.session.id = :sessionId
+              AND result.countedQuantity IS NOT NULL
+              AND (:difference IS NULL OR result.differenceType = :difference)
+              AND (
+                    LOWER(book.title) LIKE CONCAT('%', :query, '%')
+                    OR (
+                        :identifier IS NOT NULL
+                        AND (
+                            book.isbn13 LIKE CONCAT('%', :identifier, '%')
+                            OR book.isbn10 LIKE CONCAT('%', :identifier, '%')
+                        )
+                    )
+              )
+            """)
+    Page<InventoryCountResult> search(
+            @Param("sessionId") Long sessionId,
+            @Param("difference") InventoryCountDifferenceType difference,
+            @Param("query") String query,
+            @Param("identifier") String identifier,
+            Pageable pageable
+    );
+
     Optional<InventoryCountResult> findBySessionIdAndBookId(Long sessionId, Long bookId);
 
     void deleteBySessionIdAndBookIdAndBaselineFalseAndAppliedAtIsNull(Long sessionId, Long bookId);

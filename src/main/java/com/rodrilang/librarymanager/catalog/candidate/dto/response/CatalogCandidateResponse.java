@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.catalog.candidate.dto.response;
 
 import com.rodrilang.librarymanager.catalog.candidate.model.CatalogCandidateStatus;
+import com.rodrilang.librarymanager.inventory.count.model.InventoryCountPurpose;
 
 import java.time.Instant;
 
@@ -18,13 +19,19 @@ public record CatalogCandidateResponse(
 
         String resolvedBookTitle,
 
-        Long firstSeenByBookstoreId,
+        Integer pendingInventoryUnits,
 
-        Instant resolvedAt,
+        Integer pendingInventorySessions,
 
-        Instant createdAt,
+        Long latestInventoryCountSessionId,
 
-        Instant updatedAt
+        InventoryCountPurpose latestInventoryCountPurpose,
+
+        boolean resolutionReused,
+
+        Instant firstDetectedAt,
+
+        Instant resolvedAt
 
 ) {
 }

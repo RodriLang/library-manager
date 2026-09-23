@@ -8,32 +8,22 @@ import com.rodrilang.librarymanager.inventory.count.model.InventoryCountStatus;
 import java.time.Instant;
 
 public record InventoryCountSessionResponse(
-
         Long id,
-
         InventoryCountMode mode,
-
         InventoryCountPurpose purpose,
-
         InventoryCountStatus status,
-
         BookCondition condition,
-
         String notes,
-
         InventoryCountSummaryResponse summary,
-
+        Boolean defaultEditorialPriceSyncEnabled,
+        Boolean defaultPublishOnTiendanube,
+        Boolean defaultTiendanubePriceSyncEnabled,
+        Integer defaultMinimumStock,
         Instant baselineAt,
-
         Instant reviewedAt,
-
         Instant appliedAt,
-
         Instant revertedAt,
-
         Instant createdAt,
-
         Instant updatedAt
-
 ) {
 }

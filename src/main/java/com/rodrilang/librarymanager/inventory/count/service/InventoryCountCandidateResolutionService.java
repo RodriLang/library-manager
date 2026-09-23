@@ -36,6 +36,12 @@ public class InventoryCountCandidateResolutionService {
         Set<Long> reviewedSessions = new HashSet<>();
 
         for (InventoryCountItem item : items) {
+            // Un conteo absoluto más nuevo puede haber invalidado esta intención.
+            // Resolver el catálogo nunca debe reactivar un pendiente SUPERSEDED.
+            if (item.getStatus() == InventoryCountItemStatus.SUPERSEDED) {
+                continue;
+            }
+
             item.setBook(book);
             item.setStatus(resolveStatus(item));
 

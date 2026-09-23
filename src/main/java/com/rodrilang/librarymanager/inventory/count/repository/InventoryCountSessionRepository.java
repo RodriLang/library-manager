@@ -15,6 +15,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface InventoryCountSessionRepository extends JpaRepository<InventoryCountSession, Long> {
@@ -37,6 +38,16 @@ public interface InventoryCountSessionRepository extends JpaRepository<Inventory
             BookCondition condition,
             InventoryCountMode mode,
             Collection<InventoryCountStatus> statuses,
+            Instant appliedAt
+    );
+
+
+    @EntityGraph(attributePaths = {"bookstore", "createdByUser"})
+    List<InventoryCountSession> findAllByBookstoreIdAndConditionAndModeAndStatusAndAppliedAtBefore(
+            Long bookstoreId,
+            BookCondition condition,
+            InventoryCountMode mode,
+            InventoryCountStatus status,
             Instant appliedAt
     );
 

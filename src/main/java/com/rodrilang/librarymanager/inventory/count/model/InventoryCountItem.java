@@ -71,6 +71,18 @@ public class InventoryCountItem extends AuditableEntity {
     @Column(name = "sale_price_override", precision = 12, scale = 2)
     private BigDecimal salePriceOverride;
 
+    @Column(name = "editorial_price_sync_override")
+    private Boolean editorialPriceSyncOverride;
+
+    @Column(name = "publish_on_tiendanube_override")
+    private Boolean publishOnTiendanubeOverride;
+
+    @Column(name = "tiendanube_price_sync_override")
+    private Boolean tiendanubePriceSyncOverride;
+
+    @Column(name = "minimum_stock_override")
+    private Integer minimumStockOverride;
+
     @Column(name = "first_scanned_at", nullable = false)
     private Instant firstScannedAt;
 

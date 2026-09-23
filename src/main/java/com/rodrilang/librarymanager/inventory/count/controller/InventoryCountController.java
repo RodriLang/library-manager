@@ -6,11 +6,14 @@ import com.rodrilang.librarymanager.inventory.count.dto.request.AddInventoryCoun
 import com.rodrilang.librarymanager.inventory.count.dto.request.ApplyInventoryCountRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.CreateInventoryCountRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.ScanInventoryCountRequest;
+import com.rodrilang.librarymanager.inventory.count.dto.request.UpdateInventoryCountConfigurationRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.request.UpdateInventoryCountItemRequest;
 import com.rodrilang.librarymanager.inventory.count.dto.response.InventoryCountItemResponse;
 import com.rodrilang.librarymanager.inventory.count.dto.response.InventoryCountReportSummaryResponse;
 import com.rodrilang.librarymanager.inventory.count.dto.response.InventoryCountResultResponse;
 import com.rodrilang.librarymanager.inventory.count.dto.response.InventoryCountSessionResponse;
+import com.rodrilang.librarymanager.inventory.count.model.InventoryCountDifferenceType;
+import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItemStatus;
 import com.rodrilang.librarymanager.inventory.count.service.InventoryCountItemService;
 import com.rodrilang.librarymanager.inventory.count.service.InventoryCountService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -80,10 +83,12 @@ public class InventoryCountController {
     @GetMapping("/{sessionId}/items")
     public ResponseEntity<PageResponse<InventoryCountItemResponse>> findItems(
             @PathVariable Long sessionId,
+            @RequestParam(required = false) InventoryCountItemStatus status,
+            @RequestParam(required = false) String q,
             @ParameterObject
-            @PageableDefault(size = 100, sort = "lastScannedAt", direction = Sort.Direction.DESC) Pageable pageable
+            @PageableDefault(size = 50, sort = "lastScannedAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return ResponseEntity.ok(PageResponse.of(service.findItems(sessionId, pageable)));
+        return ResponseEntity.ok(PageResponse.of(service.findItems(sessionId, status, q, pageable)));
     }
 
     @PostMapping("/{sessionId}/scan")
@@ -109,6 +114,14 @@ public class InventoryCountController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{sessionId}/configuration")
+    public ResponseEntity<InventoryCountSessionResponse> updateConfiguration(
+            @PathVariable Long sessionId,
+            @Valid @RequestBody UpdateInventoryCountConfigurationRequest request
+    ) {
+        return ResponseEntity.ok(service.updateConfiguration(sessionId, request));
+    }
+
     @PostMapping("/{sessionId}/review")
     public ResponseEntity<InventoryCountSessionResponse> review(@PathVariable Long sessionId) {
         return ResponseEntity.ok(service.review(sessionId));
@@ -122,10 +135,12 @@ public class InventoryCountController {
     @GetMapping("/{sessionId}/results")
     public ResponseEntity<PageResponse<InventoryCountResultResponse>> findResults(
             @PathVariable Long sessionId,
+            @RequestParam(required = false) InventoryCountDifferenceType difference,
+            @RequestParam(required = false) String q,
             @ParameterObject
-            @PageableDefault(size = 100, sort = "id", direction = Sort.Direction.ASC) Pageable pageable
+            @PageableDefault(size = 50, sort = "id", direction = Sort.Direction.ASC) Pageable pageable
     ) {
-        return ResponseEntity.ok(PageResponse.of(service.findResults(sessionId, pageable)));
+        return ResponseEntity.ok(PageResponse.of(service.findResults(sessionId, difference, q, pageable)));
     }
 
     @PostMapping("/{sessionId}/apply")

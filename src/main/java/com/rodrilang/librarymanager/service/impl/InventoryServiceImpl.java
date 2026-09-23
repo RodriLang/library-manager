@@ -26,6 +26,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInve
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePublicationRequestedEvent;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
+import com.rodrilang.librarymanager.inventory.count.model.InventoryCountStatus;
+import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemRepository;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
@@ -62,6 +64,7 @@ import java.util.Objects;
 public class InventoryServiceImpl implements InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final InventoryCountItemRepository inventoryCountItemRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
@@ -80,6 +83,24 @@ public class InventoryServiceImpl implements InventoryService {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
         BookCondition condition = request.condition() != null ? request.condition() : BookCondition.NEW;
+
+        if (inventoryCountItemRepository.existsActiveInventoryCountIntentForBook(
+                bookId,
+                book.getIsbn13(),
+                book.getIsbn10(),
+                bookstoreId,
+                condition,
+                List.of(
+                        InventoryCountStatus.OPEN,
+                        InventoryCountStatus.REVIEW,
+                        InventoryCountStatus.APPLIED_WITH_PENDING
+                )
+        )) {
+            throw new BusinessException(
+                    "Este libro ya forma parte de una carga o conteo de inventario activo. "
+                            + "Completá esa operación para incorporarlo sin duplicar ni alterar las unidades registradas."
+            );
+        }
 
         if (inventoryRepository.existsByBookIdAndBookstoreIdAndCondition(bookId, bookstoreId, condition)) {
             throw new DuplicateResourceException(String.format(

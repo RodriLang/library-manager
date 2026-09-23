@@ -30,6 +30,7 @@ public class InventoryCountApplyService {
     private final InventoryCountResultRepository resultRepository;
     private final InventoryMovementRepository movementRepository;
     private final InventoryCountStockOperationService stockOperationService;
+    private final InventoryCountSupersessionService supersessionService;
     private final ApplicationEventPublisher eventPublisher;
 
     public void apply(InventoryCountSession session, boolean allowConcurrentMovements) {
@@ -55,6 +56,8 @@ public class InventoryCountApplyService {
                 session.getId(), InventoryCountItemStatus.SUPERSEDED
         );
         session.setStatus(hasPending ? InventoryCountStatus.APPLIED_WITH_PENDING : InventoryCountStatus.APPLIED);
+
+        supersessionService.supersedeOlderPendingAbsoluteLoads(session);
 
         if (!affectedInventoryIds.isEmpty()) {
             eventPublisher.publishEvent(new InventoryCountStockChangedEvent(Set.copyOf(affectedInventoryIds)));
