@@ -2,6 +2,8 @@ package com.rodrilang.librarymanager.invitation.repository;
 
 import com.rodrilang.librarymanager.invitation.model.BookstoreInvitation;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -25,5 +27,30 @@ public interface BookstoreInvitationRepository extends JpaRepository<BookstoreIn
             @Param("tokenHash") String tokenHash
     );
 
-    List<BookstoreInvitation> findByBookstore_IdOrderByCreatedAtDesc(Long bookstoreId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT i
+            FROM BookstoreInvitation i
+            WHERE i.id = :id
+            """)
+    Optional<BookstoreInvitation> findByIdForUpdate(
+            @Param("id") Long id
+    );
+
+    @Query(
+            value = """
+                    SELECT i
+                    FROM BookstoreInvitation i
+                    JOIN FETCH i.bookstore
+                    """,
+            countQuery = """
+                    SELECT COUNT(i)
+                    FROM BookstoreInvitation i
+                    """
+    )
+    Page<BookstoreInvitation> findAllForAdmin(Pageable pageable);
+
+    List<BookstoreInvitation> findByBookstore_IdOrderByCreatedAtDesc(
+            Long bookstoreId
+    );
 }

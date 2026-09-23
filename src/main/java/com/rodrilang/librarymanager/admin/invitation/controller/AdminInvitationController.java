@@ -1,41 +1,32 @@
 package com.rodrilang.librarymanager.admin.invitation.controller;
 
 import com.rodrilang.librarymanager.admin.invitation.dto.AdminInvitationResponse;
+import com.rodrilang.librarymanager.admin.invitation.service.AdminInvitationService;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
-import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
-import com.rodrilang.librarymanager.invitation.model.BookstoreInvitation;
-import com.rodrilang.librarymanager.invitation.repository.BookstoreInvitationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
-import java.time.Instant;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/invitations")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminInvitationController {
-    private final BookstoreInvitationRepository repository;
+
+    private final AdminInvitationService service;
 
     @GetMapping
     public PageResponse<AdminInvitationResponse> list(Pageable pageable) {
-        return PageResponse.of(repository.findAll(pageable).map(this::toResponse));
+        return service.findAll(pageable);
     }
 
     @PostMapping("/{invitationId}/revoke")
     public void revoke(@PathVariable Long invitationId) {
-        BookstoreInvitation invitation = repository.findById(invitationId)
-                .orElseThrow(() -> new ResourceNotFoundException("No se encontró la invitación."));
-        if (invitation.getRevokedAt() == null && invitation.getUsedAt() == null) {
-            invitation.setRevokedAt(Instant.now());
-            repository.save(invitation);
-        }
-    }
-
-    private AdminInvitationResponse toResponse(BookstoreInvitation i) {
-        String status = i.isRevoked() ? "REVOKED" : i.isUsed() ? "ACCEPTED" : i.isExpired() ? "EXPIRED" : "PENDING";
-        return new AdminInvitationResponse(i.getId(), i.getBookstore().getId(), i.getBookstore().getName(), i.getEmail(), i.getRole(), status, i.getExpiresAt(), i.getCreatedAt());
+        service.revoke(invitationId);
     }
 }
