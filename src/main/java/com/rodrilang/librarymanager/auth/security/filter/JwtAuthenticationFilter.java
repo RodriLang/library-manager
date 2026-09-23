@@ -15,7 +15,7 @@ import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import com.rodrilang.librarymanager.auth.security.user.UserDetailsServiceImpl;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -30,7 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtService jwtService;
-    private final UserDetailsService userDetailsService;
+    private final UserDetailsServiceImpl userDetailsService;
     private final JwtAuthenticationEntryPoint authenticationEntryPoint;
 
     @Override
@@ -88,6 +88,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    private Long parseBookstoreId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(raw);
+        } catch (NumberFormatException exception) {
+            throw new BadCredentialsException("La librería seleccionada no es válida.", exception);
+        }
+    }
+
     private void authenticateRequest(
             String jwt,
             HttpServletRequest request
@@ -104,8 +115,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             );
         }
 
+        Long requestedBookstoreId = parseBookstoreId(request.getHeader("X-Bookstore-Id"));
+
         UserDetails userDetails =
-                userDetailsService.loadUserByUsername(username);
+                userDetailsService.loadUserByUsername(username, requestedBookstoreId);
 
         if (!jwtService.isTokenValid(jwt, userDetails)) {
             throw new BadCredentialsException(

@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.auth.dtos.response;
 
+import com.rodrilang.librarymanager.auth.access.dto.BookstoreMembershipResponse;
 import java.util.List;
 
 public record UserResponse(
@@ -11,6 +12,7 @@ public record UserResponse(
         String displayName,
         List<RoleResponse> roles,
         boolean enabled,
-        BookstoreAuthResponse bookstore
+        BookstoreAuthResponse bookstore,
+        List<BookstoreMembershipResponse> memberships
 ) {
 }

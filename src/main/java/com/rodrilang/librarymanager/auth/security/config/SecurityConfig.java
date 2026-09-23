@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.auth.security.config;
 
 import com.rodrilang.librarymanager.auth.security.filter.JwtAuthenticationFilter;
+import com.rodrilang.librarymanager.admin.audit.filter.AdminAuditFilter;
 import com.rodrilang.librarymanager.auth.security.handler.JwtAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -31,6 +32,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    private final AdminAuditFilter adminAuditFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -84,6 +86,10 @@ public class SecurityConfig {
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
+                )
+                .addFilterAfter(
+                        adminAuditFilter,
+                        JwtAuthenticationFilter.class
                 )
 
                 .build();

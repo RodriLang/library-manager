@@ -34,6 +34,8 @@ public class BookstoreInvitationService {
     @Transactional
     public CreateBookstoreInvitationResponse create(CreateBookstoreInvitationRequest request) {
 
+        validateBookstoreRole(request.role());
+
         Bookstore bookstore = bookstoreService.getEntityById(request.bookstoreId());
 
         if (!Boolean.TRUE.equals(bookstore.getActive())) {
@@ -165,6 +167,13 @@ public class BookstoreInvitationService {
 
         if (invitation.isExpired()) {
             throw new BusinessException("La invitación ha vencido");
+        }
+    }
+
+    private void validateBookstoreRole(com.rodrilang.librarymanager.auth.enums.RoleType role) {
+        if (role != com.rodrilang.librarymanager.auth.enums.RoleType.BOOKSTORE_ADMIN
+                && role != com.rodrilang.librarymanager.auth.enums.RoleType.BOOKSTORE_USER) {
+            throw new BusinessException("La invitación debe usar un rol de ámbito librería.");
         }
     }
 

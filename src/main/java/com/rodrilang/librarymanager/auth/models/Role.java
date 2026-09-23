@@ -1,6 +1,14 @@
 package com.rodrilang.librarymanager.auth.models;
 
 import com.rodrilang.librarymanager.auth.enums.RoleType;
+import com.rodrilang.librarymanager.auth.access.model.AccessScope;
+import com.rodrilang.librarymanager.auth.access.model.Permission;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import java.util.HashSet;
+import java.util.Set;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,4 +39,22 @@ public class Role {
     @Enumerated(EnumType.STRING)
     @Column(name = "role_name", nullable = false, unique = true, length = 50)
     private RoleType roleName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private AccessScope scope = AccessScope.BOOKSTORE;
+
+    @Column(name = "system_role", nullable = false)
+    @Builder.Default
+    private boolean systemRole = true;
+
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "role_permissions",
+            joinColumns = @JoinColumn(name = "role_id"),
+            inverseJoinColumns = @JoinColumn(name = "permission_id")
+    )
+    @Builder.Default
+    private Set<Permission> permissions = new HashSet<>();
 }
