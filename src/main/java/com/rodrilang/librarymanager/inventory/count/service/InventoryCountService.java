@@ -24,6 +24,7 @@ import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 
 import java.math.BigDecimal;
+
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -138,7 +139,16 @@ public class InventoryCountService {
                     ? itemRepository.findAllBySessionId(sessionId, pageable)
                     : itemRepository.findAllBySessionIdAndStatus(sessionId, status, pageable);
         } else {
-            page = itemRepository.search(sessionId, status, searchQuery, identifierQuery, pageable);
+            boolean searchIdentifier = identifierQuery != null;
+
+            page = itemRepository.search(
+                    sessionId,
+                    status,
+                    searchQuery,
+                    searchIdentifier,
+                    searchIdentifier ? identifierQuery : "",
+                    pageable
+            );
         }
 
         List<Long> bookIds = page.getContent().stream()
@@ -173,14 +183,26 @@ public class InventoryCountService {
 
         if (searchQuery == null) {
             page = difference == null
-                    ? resultRepository.findAllBySessionIdAndCountedQuantityIsNotNull(sessionId, pageable)
+                    ? resultRepository.findAllBySessionIdAndCountedQuantityIsNotNull(
+                    sessionId,
+                    pageable
+            )
                     : resultRepository.findAllBySessionIdAndCountedQuantityIsNotNullAndDifferenceType(
-                            sessionId,
-                            difference,
-                            pageable
-                    );
+                    sessionId,
+                    difference,
+                    pageable
+            );
         } else {
-            page = resultRepository.search(sessionId, difference, searchQuery, identifierQuery, pageable);
+            boolean searchIdentifier = identifierQuery != null;
+
+            page = resultRepository.search(
+                    sessionId,
+                    difference,
+                    searchQuery,
+                    searchIdentifier,
+                    searchIdentifier ? identifierQuery : "",
+                    pageable
+            );
         }
 
         return page.map(responseMapper::toResultResponse);

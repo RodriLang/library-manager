@@ -39,7 +39,7 @@ public interface InventoryCountItemRepository extends JpaRepository<InventoryCou
               AND (
                     LOWER(book.title) LIKE CONCAT('%', :query, '%')
                     OR (
-                        :identifier IS NOT NULL
+                        :searchIdentifier = true
                         AND (
                             item.isbn13 LIKE CONCAT('%', :identifier, '%')
                             OR item.isbn10 LIKE CONCAT('%', :identifier, '%')
@@ -52,6 +52,7 @@ public interface InventoryCountItemRepository extends JpaRepository<InventoryCou
             @Param("sessionId") Long sessionId,
             @Param("status") InventoryCountItemStatus status,
             @Param("query") String query,
+            @Param("searchIdentifier") boolean searchIdentifier,
             @Param("identifier") String identifier,
             Pageable pageable
     );

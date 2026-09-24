@@ -42,7 +42,7 @@ public interface InventoryCountResultRepository extends JpaRepository<InventoryC
               AND (
                     LOWER(book.title) LIKE CONCAT('%', :query, '%')
                     OR (
-                        :identifier IS NOT NULL
+                        :searchIdentifier = true
                         AND (
                             book.isbn13 LIKE CONCAT('%', :identifier, '%')
                             OR book.isbn10 LIKE CONCAT('%', :identifier, '%')
@@ -54,6 +54,7 @@ public interface InventoryCountResultRepository extends JpaRepository<InventoryC
             @Param("sessionId") Long sessionId,
             @Param("difference") InventoryCountDifferenceType difference,
             @Param("query") String query,
+            @Param("searchIdentifier") boolean searchIdentifier,
             @Param("identifier") String identifier,
             Pageable pageable
     );
