@@ -161,12 +161,27 @@ public class InventoryCountItemService {
                 && request.editorialPriceSyncEnabled() == null
                 && request.publishOnTiendanube() == null
                 && request.tiendanubePriceSyncEnabled() == null
-                && request.minimumStock() == null) {
+                && request.minimumStock() == null
+                && request.useCustomConfiguration() == null) {
             throw new BusinessException("Debe indicar al menos un dato para modificar");
         }
 
         if (session.getStatus() == InventoryCountStatus.REVIEW) {
             reviewResetService.resetToOpen(session);
+        }
+
+        if (Boolean.FALSE.equals(request.useCustomConfiguration())) {
+            clearCustomConfiguration(item);
+
+            refreshKnownItemStatus(item);
+
+            InventoryCountItem saved = itemRepository.save(item);
+
+            if (session.getStatus() == InventoryCountStatus.APPLIED_WITH_PENDING) {
+                pendingApplyService.applyIfReady(saved);
+            }
+
+            return responseMapper.toItemResponse(saved);
         }
 
         if (request.quantity() != null) {
@@ -181,7 +196,9 @@ public class InventoryCountItemService {
         if (request.editorialPriceSyncEnabled() != null) {
             if (Boolean.TRUE.equals(request.editorialPriceSyncEnabled())
                     && session.getCondition() != BookCondition.NEW) {
-                throw new BusinessException("La sincronización con precio editorial solo está disponible para libros nuevos");
+                throw new BusinessException(
+                        "La sincronización con precio editorial solo está disponible para libros nuevos"
+                );
             }
 
             boolean wasEditorialSync = isEditorialSyncEnabled(item);
@@ -280,5 +297,13 @@ public class InventoryCountItemService {
         }
 
         throw new BusinessException("El ítem ya no puede modificarse en el estado actual del conteo");
+    }
+
+    private void clearCustomConfiguration(InventoryCountItem item) {
+        item.setSalePriceOverride(null);
+        item.setEditorialPriceSyncOverride(null);
+        item.setPublishOnTiendanubeOverride(null);
+        item.setTiendanubePriceSyncOverride(null);
+        item.setMinimumStockOverride(null);
     }
 }
