@@ -51,7 +51,19 @@ public record UpdateFiscalSettingsRequest(
         @NotNull
         @Min(1)
         @Max(99999)
-        Integer pointOfSale
+        Integer pointOfSale,
+
+        boolean ticketPrintingEnabled,
+
+        @NotNull
+        @Min(58)
+        @Max(80)
+        Integer ticketPaperWidthMm,
+
+        @NotNull
+        @Min(0)
+        @Max(8)
+        Integer ticketMarginMm
 
 ) {
 }

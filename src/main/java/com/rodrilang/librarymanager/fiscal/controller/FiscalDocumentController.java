@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.fiscal.model.FiscalDocumentStatus;
 import com.rodrilang.librarymanager.fiscal.model.FiscalDocumentType;
 import com.rodrilang.librarymanager.fiscal.service.FiscalDocumentService;
 import com.rodrilang.librarymanager.fiscal.service.FiscalPdfService;
+import com.rodrilang.librarymanager.fiscal.service.FiscalTicketService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class FiscalDocumentController {
 
     private final FiscalDocumentService documentService;
     private final FiscalPdfService pdfService;
+    private final FiscalTicketService ticketService;
 
     @PostMapping("/sales/{saleId}/invoice")
     public ResponseEntity<FiscalDocumentResponse> issueInvoice(
@@ -123,4 +125,14 @@ public class FiscalDocumentController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
     }
+    @GetMapping(value = "/fiscal-documents/{documentId}/ticket", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> ticket(
+            @PathVariable Long documentId,
+            @RequestParam(defaultValue = "false") boolean autoPrint
+    ) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .body(ticketService.generate(documentId, autoPrint));
+    }
+
 }
