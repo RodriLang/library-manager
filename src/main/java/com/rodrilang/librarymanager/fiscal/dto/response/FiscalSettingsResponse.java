@@ -29,7 +29,10 @@ public record FiscalSettingsResponse(
         ArcaEnvironment environment,
         boolean arcaClientEnabled,
         String delegateCuit,
-        BigDecimal consumerFinalIdentificationThreshold
+        BigDecimal consumerFinalIdentificationThreshold,
+        boolean ticketPrintingEnabled,
+        Integer ticketPaperWidthMm,
+        Integer ticketMarginMm
 
 ) {
 }

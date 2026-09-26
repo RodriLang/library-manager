@@ -80,6 +80,22 @@ public class BookstoreFiscalSettingsServiceImpl implements BookstoreFiscalSettin
         settings.setPostalCode(normalize(request.postalCode()));
         settings.setPointOfSale(request.pointOfSale());
 
+        if (request.ticketPrintingEnabled()
+                && (settings.getId() == null
+                || settings.getArcaStatus() != ArcaAuthorizationStatus.VERIFIED)) {
+            throw new BusinessException(
+                    "Verificá primero la facturación electrónica con ARCA antes de habilitar la impresión de tickets."
+            );
+        }
+
+        if (request.ticketPaperWidthMm() != 58 && request.ticketPaperWidthMm() != 80) {
+            throw new BusinessException("El ancho del ticket debe ser de 58 mm u 80 mm.");
+        }
+
+        settings.setTicketPrintingEnabled(connectionRelevantChange ? false : request.ticketPrintingEnabled());
+        settings.setTicketPaperWidthMm(request.ticketPaperWidthMm());
+        settings.setTicketMarginMm(request.ticketMarginMm());
+
         if (connectionRelevantChange) {
             settings.setArcaStatus(ArcaAuthorizationStatus.PENDING_AUTHORIZATION);
             settings.setVerifiedAt(null);
@@ -208,7 +224,10 @@ public class BookstoreFiscalSettingsServiceImpl implements BookstoreFiscalSettin
                 arcaProperties.environment(),
                 arcaProperties.enabled(),
                 arcaProperties.delegateCuit(),
-                arcaProperties.consumerFinalIdentificationThreshold()
+                arcaProperties.consumerFinalIdentificationThreshold(),
+                settings.isTicketPrintingEnabled(),
+                settings.getTicketPaperWidthMm(),
+                settings.getTicketMarginMm()
         );
     }
 
@@ -232,7 +251,10 @@ public class BookstoreFiscalSettingsServiceImpl implements BookstoreFiscalSettin
                 arcaProperties.environment(),
                 arcaProperties.enabled(),
                 arcaProperties.delegateCuit(),
-                arcaProperties.consumerFinalIdentificationThreshold()
+                arcaProperties.consumerFinalIdentificationThreshold(),
+                false,
+                80,
+                2
         );
     }
 

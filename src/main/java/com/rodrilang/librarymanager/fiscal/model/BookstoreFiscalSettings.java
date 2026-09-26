@@ -93,4 +93,16 @@ public class BookstoreFiscalSettings extends AuditableEntity {
 
     @Column(name = "last_verification_error", length = 1000)
     private String lastVerificationError;
+
+    @Column(name = "ticket_printing_enabled", nullable = false)
+    @Builder.Default
+    private boolean ticketPrintingEnabled = false;
+
+    @Column(name = "ticket_paper_width_mm", nullable = false)
+    @Builder.Default
+    private Integer ticketPaperWidthMm = 80;
+
+    @Column(name = "ticket_margin_mm", nullable = false)
+    @Builder.Default
+    private Integer ticketMarginMm = 2;
 }
