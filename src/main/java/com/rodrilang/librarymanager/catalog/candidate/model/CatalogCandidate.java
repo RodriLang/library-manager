@@ -59,6 +59,9 @@ public class CatalogCandidate extends AuditableEntity {
     @JoinColumn(name = "resolved_by_user_id")
     private User resolvedByUser;
 
+    @Column(name = "automatic_lookup_attempted_at")
+    private Instant automaticLookupAttemptedAt;
+
     @Column(name = "resolved_at")
     private Instant resolvedAt;
 }
