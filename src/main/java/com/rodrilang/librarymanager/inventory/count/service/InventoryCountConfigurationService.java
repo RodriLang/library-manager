@@ -28,15 +28,7 @@ public class InventoryCountConfigurationService {
     public void update(InventoryCountSession session, UpdateInventoryCountConfigurationRequest request) {
         requireConfigurable(session);
 
-        if (Boolean.TRUE.equals(request.editorialPriceSyncEnabled()) && session.getCondition() != BookCondition.NEW) {
-            throw new BusinessException("La sincronización con precio editorial solo está disponible para libros nuevos");
-        }
-
-        boolean previousDefaultEditorialSync = Boolean.TRUE.equals(session.getDefaultEditorialPriceSyncEnabled());
-
-        if (request.editorialPriceSyncEnabled() != null) {
-            session.setDefaultEditorialPriceSyncEnabled(request.editorialPriceSyncEnabled());
-        }
+        session.setDefaultEditorialPriceSyncEnabled(false);
         if (request.publishOnTiendanube() != null) {
             session.setDefaultPublishOnTiendanube(request.publishOnTiendanube());
         }
@@ -61,7 +53,6 @@ public class InventoryCountConfigurationService {
                 .map(item -> item.getBook().getId())
                 .distinct()
                 .toList();
-        Map<Long, BigDecimal> editorialPrices = priceResolver.currentEditorialPrices(bookIds);
         Map<Long, Inventory> inventories = priceResolver.existingInventories(session, bookIds);
 
         for (InventoryCountItem item : items) {
@@ -70,26 +61,8 @@ public class InventoryCountConfigurationService {
             }
 
             Inventory inventory = item.getBook() != null ? inventories.get(item.getBook().getId()) : null;
-            BigDecimal editorialPrice = item.getBook() != null ? editorialPrices.get(item.getBook().getId()) : null;
 
-            // Las elecciones globales también se copian a candidatos todavía sin resolver
-            // para que la intención sobreviva hasta que exista un libro de catálogo.
-            if (request.editorialPriceSyncEnabled() != null) {
-                boolean wasEditorialSync = effectiveEditorialSync(
-                        item,
-                        inventory,
-                        previousDefaultEditorialSync,
-                        editorialPrice
-                );
-
-                if (editorialPrice != null
-                        && (Boolean.TRUE.equals(request.editorialPriceSyncEnabled()) || wasEditorialSync)) {
-                    // Al activar se toma el precio editorial ahora. Al desactivar se congela
-                    // el valor editorial vigente como precio independiente.
-                    item.setSalePriceOverride(editorialPrice);
-                }
-                item.setEditorialPriceSyncOverride(request.editorialPriceSyncEnabled());
-            }
+            item.setEditorialPriceSyncOverride(false);
             if (request.publishOnTiendanube() != null) {
                 item.setPublishOnTiendanubeOverride(request.publishOnTiendanube());
             }
@@ -105,7 +78,7 @@ public class InventoryCountConfigurationService {
                 continue;
             }
 
-            refreshStatus(item, inventory, editorialPrice);
+            refreshStatus(item, inventory, null);
             itemRepository.save(item);
 
             if (session.getStatus() == InventoryCountStatus.APPLIED_WITH_PENDING) {
@@ -114,29 +87,8 @@ public class InventoryCountConfigurationService {
         }
     }
 
-    private boolean effectiveEditorialSync(
-            InventoryCountItem item,
-            Inventory inventory,
-            boolean previousDefaultEditorialSync,
-            BigDecimal editorialPrice
-    ) {
-        if (item.getSession().getCondition() != BookCondition.NEW || editorialPrice == null) {
-            return false;
-        }
-        if (item.getEditorialPriceSyncOverride() != null) {
-            return Boolean.TRUE.equals(item.getEditorialPriceSyncOverride());
-        }
-        if (inventory != null) {
-            return Boolean.TRUE.equals(inventory.getEditorialPriceSyncEnabled());
-        }
-        return previousDefaultEditorialSync;
-    }
-
     private void refreshStatus(InventoryCountItem item, Inventory inventory, BigDecimal editorialPrice) {
-        boolean hasPrice = item.getSalePriceOverride() != null
-                || inventory != null
-                || editorialPrice != null;
-        item.setStatus(hasPrice ? InventoryCountItemStatus.RESOLVED : InventoryCountItemStatus.PENDING_PRICE);
+        item.setStatus(InventoryCountItemStatus.RESOLVED);
     }
 
     private void requireConfigurable(InventoryCountSession session) {

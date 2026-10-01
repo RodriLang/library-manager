@@ -34,6 +34,13 @@ public interface InventoryRepository
 
     boolean existsByBookId(Long bookId);
 
+    @EntityGraph(attributePaths = {
+            "book",
+            "book.authors",
+            "book.publisher"
+    })
+    List<Inventory> findAllByBookstoreIdAndActiveTrue(Long bookstoreId);
+
     Optional<Inventory> findByBookIdAndBookstoreIdAndCondition(
             Long bookId,
             Long bookstoreId,

@@ -16,6 +16,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSync
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.profitability.service.SaleProfitabilityService;
@@ -66,6 +68,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
     private final SalePaymentRepository paymentRepository;
     private final FiscalDocumentRepository fiscalDocumentRepository;
     private final InventoryRepository inventoryRepository;
+    private final InventoryPriceService inventoryPriceService;
     private final UserRepository userRepository;
 
     private final InventoryStockService inventoryStockService;
@@ -110,6 +113,12 @@ public class SaleCommandServiceImpl implements SaleCommandService {
                         (left, right) -> left,
                         LinkedHashMap::new
                 ));
+
+        Map<Long, InventoryPrice> currentPrices = inventoryPriceService.currentFor(inventoryIds);
+        for (Inventory inventory : lockedInventories) {
+            InventoryPrice current = currentPrices.get(inventory.getId());
+            inventory.setSalePrice(current != null ? current.getAmount() : null);
+        }
 
         Map<Long, BigDecimal> lineSubtotalByInventoryId = new LinkedHashMap<>();
 
@@ -368,6 +377,11 @@ public class SaleCommandServiceImpl implements SaleCommandService {
         if (!Boolean.TRUE.equals(inventory.getBook().getActive())) {
             throw new BusinessException(
                     "El libro \"" + inventory.getBook().getTitle() + "\" se encuentra inactivo en el catálogo."
+            );
+        }
+        if (inventory.getSalePrice() == null || inventory.getSalePrice().signum() <= 0) {
+            throw new BusinessException(
+                    "El libro \"" + inventory.getBook().getTitle() + "\" no tiene un precio de venta definido."
             );
         }
         if (quantity == null || quantity <= 0) {

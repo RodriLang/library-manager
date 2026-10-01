@@ -12,12 +12,13 @@ import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryStockSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
-import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
-import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.DuplicateResourceException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
@@ -70,7 +71,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
-    private final EffectiveEditorialPriceService effectiveEditorialPriceService;
+    private final InventoryPriceService inventoryPriceService;
     private final InventoryStockService inventoryStockService;
     private final PurchaseRequirementService purchaseRequirementService;
     private final ProviderPreferenceService providerPreferenceService;
@@ -119,10 +120,6 @@ public class InventoryServiceImpl implements InventoryService {
                 ? TiendanubeInventoryStatus.PENDING_PUBLICATION
                 : TiendanubeInventoryStatus.NOT_PUBLISHED;
 
-        boolean editorialPriceSyncEnabled =
-                condition == BookCondition.NEW
-                        && Boolean.TRUE.equals(request.editorialPriceSyncEnabled());
-
         Inventory inventory = Inventory.builder()
                 .book(book)
                 .bookstore(bookstore)
@@ -130,13 +127,23 @@ public class InventoryServiceImpl implements InventoryService {
                 .stock(0)
                 .minimumStock(request.minimumStock() != null ? request.minimumStock() : 0)
                 .salePrice(request.salePrice())
-                .editorialPriceSyncEnabled(editorialPriceSyncEnabled)
+                .editorialPriceSyncEnabled(false)
                 .tiendanubePriceSyncEnabled(Boolean.TRUE.equals(request.tiendanubePriceSyncEnabled()))
                 .tiendanubeStatus(tiendanubeStatus)
                 .active(true)
                 .build();
 
         Inventory saved = inventoryRepository.save(inventory);
+
+        if (request.salePrice() != null) {
+            inventoryPriceService.upsertSystem(
+                    saved,
+                    request.salePrice(),
+                    inventoryPriceService.today(),
+                    InventoryPriceSource.MANUAL,
+                    bookstoreContext.getCurrentUserId()
+            );
+        }
 
         if (request.initialStock() > 0) {
 
@@ -262,13 +269,9 @@ public class InventoryServiceImpl implements InventoryService {
         }
 
         inventory.setActive(true);
-        inventory.setSalePrice(request.salePrice());
         inventory.setMinimumStock(request.minimumStock() != null ? request.minimumStock() : 0);
         inventory.setCondition(request.condition() != null ? request.condition() : BookCondition.NEW);
-        inventory.setEditorialPriceSyncEnabled(
-                inventory.getCondition() == BookCondition.NEW
-                        && Boolean.TRUE.equals(request.editorialPriceSyncEnabled())
-        );
+        inventory.setEditorialPriceSyncEnabled(false);
         inventory.setTiendanubePriceSyncEnabled(Boolean.TRUE.equals(request.tiendanubePriceSyncEnabled()));
 
         if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.NOT_PUBLISHED
@@ -287,6 +290,16 @@ public class InventoryServiceImpl implements InventoryService {
                                 "Stock informado al reactivar el inventario"
                         )
                 ).inventory();
+
+        if (request.salePrice() != null) {
+            inventoryPriceService.upsertSystem(
+                    adjusted,
+                    request.salePrice(),
+                    inventoryPriceService.today(),
+                    InventoryPriceSource.MANUAL,
+                    bookstoreContext.getCurrentUserId()
+            );
+        }
 
         if (adjusted.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED) {
             eventPublisher.publishEvent(
@@ -318,6 +331,17 @@ public class InventoryServiceImpl implements InventoryService {
         Boolean previousPriceSyncEnabled = inventory.getTiendanubePriceSyncEnabled();
 
         inventoryMapper.updateEntity(request, inventory);
+        inventory.setEditorialPriceSyncEnabled(false);
+
+        if (request.salePrice() != null) {
+            inventoryPriceService.upsertSystem(
+                    inventory,
+                    request.salePrice(),
+                    inventoryPriceService.today(),
+                    InventoryPriceSource.MANUAL,
+                    bookstoreContext.getCurrentUserId()
+            );
+        }
 
         boolean priceChanged = !Objects.equals(previousSalePrice, inventory.getSalePrice());
 
@@ -538,25 +562,27 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     private Page<InventorySummaryResponse> toSummaryResponsePage(Page<Inventory> inventoryPage) {
-        List<Long> bookIds = inventoryPage.getContent().stream()
-                .map(inventory -> inventory.getBook().getId())
-                .distinct()
+        List<Long> inventoryIds = inventoryPage.getContent().stream()
+                .map(Inventory::getId)
                 .toList();
-
-        Map<Long, EffectiveEditorialPrice> pricesByBookId = effectiveEditorialPriceService.findCurrentByBookIds(bookIds);
+        Map<Long, InventoryPrice> currentPrices = inventoryPriceService.currentFor(inventoryIds);
+        Map<Long, InventoryPrice> nextPrices = inventoryPriceService.nextFor(inventoryIds);
 
         return inventoryPage.map(inventory ->
-                inventoryMapper.toSummaryResponse(inventory, pricesByBookId.get(inventory.getBook().getId())));
+                inventoryMapper.toSummaryResponse(
+                        inventory,
+                        currentPrices.get(inventory.getId()),
+                        nextPrices.get(inventory.getId())
+                ));
     }
 
     private InventoryDetailResponse toDetailResponse(Inventory inventory) {
-        EffectiveEditorialPrice editorialPrice =
-                effectiveEditorialPriceService.findCurrentByBookId(inventory.getBook().getId()).orElse(null);
-
+        InventoryPrice currentPrice = inventoryPriceService.current(inventory.getId()).orElse(null);
+        InventoryPrice nextPrice = inventoryPriceService.next(inventory.getId()).orElse(null);
         List<BookProviderResponse> providers = providerBookService.getProvidersForBook(inventory.getBook().getId());
         PreferredProviderResponse preferredProvider =
                 providerPreferenceService.findForCurrentBookstore(inventory.getBook().getId());
 
-        return inventoryMapper.toDetailResponse(inventory, editorialPrice, providers, preferredProvider);
+        return inventoryMapper.toDetailResponse(inventory, currentPrice, nextPrice, providers, preferredProvider);
     }
 }

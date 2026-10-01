@@ -6,34 +6,24 @@ import com.rodrilang.librarymanager.purchasing.preference.dto.response.Preferred
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 public record InventoryDetailResponse(
-
         Long id,
-
         BookDetailResponse book,
-
         PreferredProviderResponse preferredProvider,
-
         Integer stock,
-
         Integer minimumStock,
-
         BookCondition condition,
-
         BigDecimal salePrice,
-
-        Boolean editorialPriceSyncEnabled,
-
+        LocalDate currentPriceEffectiveFrom,
+        BigDecimal nextSalePrice,
+        LocalDate nextPriceEffectiveFrom,
+        LocalDate lastPriceCheckedAt,
         Boolean tiendanubePriceSyncEnabled,
-
         TiendanubeInventoryStatus tiendanubeStatus,
-
         Boolean active,
-
         Instant createdAt,
-
         Instant updatedAt
-
 ) {
 }

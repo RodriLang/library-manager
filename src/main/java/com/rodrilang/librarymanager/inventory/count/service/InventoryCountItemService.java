@@ -257,7 +257,7 @@ public class InventoryCountItemService {
                 item.getSession().getCondition()
         );
 
-        item.setStatus(hasPrice ? InventoryCountItemStatus.RESOLVED : InventoryCountItemStatus.PENDING_PRICE);
+        item.setStatus(InventoryCountItemStatus.RESOLVED);
     }
 
     private InventoryCountItem requireItem(Long itemId, Long sessionId) {

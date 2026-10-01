@@ -1,15 +1,14 @@
 package com.rodrilang.librarymanager.inventory.bulk.service.action;
 
-import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.inventory.bulk.dto.request.InventoryBulkActionRequest;
 import com.rodrilang.librarymanager.inventory.bulk.model.InventoryBulkAction;
 import com.rodrilang.librarymanager.inventory.bulk.model.InventoryBulkMutationResult;
 import com.rodrilang.librarymanager.model.Inventory;
 import org.springframework.stereotype.Component;
 
+/** Legacy bulk action kept for API compatibility. Editorial-price sync is no longer supported. */
 @Component
-public class InventoryBulkEditorialPriceSyncHandler
-        implements InventoryBulkActionHandler {
+public class InventoryBulkEditorialPriceSyncHandler implements InventoryBulkActionHandler {
 
     @Override
     public boolean supports(InventoryBulkAction action) {
@@ -18,30 +17,11 @@ public class InventoryBulkEditorialPriceSyncHandler
     }
 
     @Override
-    public InventoryBulkMutationResult apply(
-            Inventory inventory,
-            InventoryBulkActionRequest request
-    ) {
-        boolean enable =
-                request.action()
-                        == InventoryBulkAction.ENABLE_EDITORIAL_PRICE_SYNC;
-
-        if (enable
-                && inventory.getCondition() != BookCondition.NEW) {
-            return InventoryBulkMutationResult.skipped();
+    public InventoryBulkMutationResult apply(Inventory inventory, InventoryBulkActionRequest request) {
+        if (Boolean.TRUE.equals(inventory.getEditorialPriceSyncEnabled())) {
+            inventory.setEditorialPriceSyncEnabled(false);
+            return InventoryBulkMutationResult.modified();
         }
-
-        boolean current =
-                Boolean.TRUE.equals(
-                        inventory.getEditorialPriceSyncEnabled()
-                );
-
-        if (current == enable) {
-            return InventoryBulkMutationResult.skipped();
-        }
-
-        inventory.setEditorialPriceSyncEnabled(enable);
-
-        return InventoryBulkMutationResult.modified();
+        return InventoryBulkMutationResult.skipped();
     }
 }

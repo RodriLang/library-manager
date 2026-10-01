@@ -990,17 +990,18 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         }
 
         switch (filters.resolvedPriceMode()) {
-            case EDITORIAL -> sql.append("""
+            case WITH_PRICE -> sql.append("""
                     
-                    AND i.editorial_price_sync_enabled = TRUE
+                    AND i.sale_price IS NOT NULL
                     """);
 
-            case INDEPENDENT -> sql.append("""
+            case WITHOUT_PRICE -> sql.append("""
                     
-                    AND i.editorial_price_sync_enabled = FALSE
+                    AND i.sale_price IS NULL
                     """);
 
-            case ALL -> {
+            case EDITORIAL, INDEPENDENT, ALL -> {
+                // EDITORIAL/INDEPENDENT se conservan únicamente por compatibilidad con clientes antiguos.
             }
         }
     }

@@ -47,7 +47,7 @@ public class InventoryCountEditorialPriceReconciliationService {
                     item.getSession().getBookstore().getId(),
                     item.getSession().getCondition()
             );
-            item.setStatus(hasPrice ? InventoryCountItemStatus.RESOLVED : InventoryCountItemStatus.PENDING_PRICE);
+            item.setStatus(InventoryCountItemStatus.RESOLVED);
 
             InventoryCountSession session = item.getSession();
             if (session.getStatus() == InventoryCountStatus.REVIEW) {

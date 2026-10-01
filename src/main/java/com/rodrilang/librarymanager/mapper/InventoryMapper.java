@@ -5,7 +5,7 @@ import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.InventoryDetailResponse;
 import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
-import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
@@ -33,52 +33,52 @@ public abstract class InventoryMapper {
     @Mapping(target = "createdAt", source = "inventory.createdAt")
     @Mapping(target = "updatedAt", source = "inventory.updatedAt")
     @Mapping(target = "preferredProvider", source = "preferredProvider")
-    @Mapping(
-            target = "book",
-            expression = "java(toBookDetailResponse(inventory, editorialPrice, providers))"
-    )
+    @Mapping(target = "book", expression = "java(toBookDetailResponse(inventory, providers))")
+    @Mapping(target = "salePrice", expression = "java(currentPrice != null ? currentPrice.getAmount() : null)")
+    @Mapping(target = "currentPriceEffectiveFrom", expression = "java(currentPrice != null ? currentPrice.getEffectiveFrom() : null)")
+    @Mapping(target = "nextSalePrice", expression = "java(nextPrice != null ? nextPrice.getAmount() : null)")
+    @Mapping(target = "nextPriceEffectiveFrom", expression = "java(nextPrice != null ? nextPrice.getEffectiveFrom() : null)")
     public abstract InventoryDetailResponse toDetailResponse(
             Inventory inventory,
-            EffectiveEditorialPrice editorialPrice,
+            InventoryPrice currentPrice,
+            InventoryPrice nextPrice,
             List<BookProviderResponse> providers,
             PreferredProviderResponse preferredProvider
     );
 
     protected BookDetailResponse toBookDetailResponse(
             Inventory inventory,
-            EffectiveEditorialPrice editorialPrice,
             List<BookProviderResponse> providers
     ) {
         if (inventory == null || inventory.getBook() == null) {
             return null;
         }
-
-        return bookMapper.toDetailResponse(
-                inventory.getBook(),
-                editorialPrice,
-                providers
-        );
+        return bookMapper.toDetailResponse(inventory.getBook(), null, providers);
     }
 
     @Mapping(target = "id", source = "inventory.id")
     @Mapping(target = "bookId", source = "inventory.book.id")
     @Mapping(target = "isbn", expression = "java(inventory.getBook().getPreferredIsbn())")
     @Mapping(target = "title", source = "inventory.book.title")
-    @Mapping(target = "publisherName", source = "inventory.book.publisher.name")
+    @Mapping(target = "publisherName", expression = "java(inventory.getBook().getPublisher() != null ? inventory.getBook().getPublisher().getName() : null)")
     @Mapping(target = "coverUrl", source = "inventory.book.coverUrl")
     @Mapping(target = "active", source = "inventory.active")
-    @Mapping(target = "editorialPrice", source = "editorialPrice.price")
-    @Mapping(target = "editorialPriceValidFrom", source = "editorialPrice.validFrom")
+    @Mapping(target = "salePrice", expression = "java(currentPrice != null ? currentPrice.getAmount() : null)")
+    @Mapping(target = "currentPriceEffectiveFrom", expression = "java(currentPrice != null ? currentPrice.getEffectiveFrom() : null)")
+    @Mapping(target = "nextSalePrice", expression = "java(nextPrice != null ? nextPrice.getAmount() : null)")
+    @Mapping(target = "nextPriceEffectiveFrom", expression = "java(nextPrice != null ? nextPrice.getEffectiveFrom() : null)")
     @Mapping(target = "authorNames", expression = "java(toAuthorNames(inventory))")
-    public abstract InventorySummaryResponse toSummaryResponse(Inventory inventory, EffectiveEditorialPrice editorialPrice);
+    public abstract InventorySummaryResponse toSummaryResponse(
+            Inventory inventory,
+            InventoryPrice currentPrice,
+            InventoryPrice nextPrice
+    );
 
     protected List<String> toAuthorNames(Inventory inventory) {
         if (inventory == null || inventory.getBook() == null || inventory.getBook().getAuthors() == null) {
             return List.of();
         }
-
-        return inventory.getBook().getAuthors()
-                .stream()
+        return inventory.getBook().getAuthors().stream()
                 .map(Author::getName)
                 .sorted()
                 .toList();
@@ -88,6 +88,9 @@ public abstract class InventoryMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "book", ignore = true)
     @Mapping(target = "stock", ignore = true)
+    @Mapping(target = "salePrice", ignore = true)
+    @Mapping(target = "editorialPriceSyncEnabled", ignore = true)
+    @Mapping(target = "lastPriceCheckedAt", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "bookstore", ignore = true)

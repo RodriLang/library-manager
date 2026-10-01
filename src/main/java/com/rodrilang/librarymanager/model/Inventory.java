@@ -21,6 +21,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -56,8 +57,11 @@ public class Inventory extends AuditableEntity {
     @Builder.Default
     private BookCondition condition = BookCondition.NEW;
 
-    @Column(nullable = false, precision = 12, scale = 2)
+    @Column(precision = 12, scale = 2)
     private BigDecimal salePrice;
+
+    @Column(name = "last_price_checked_at")
+    private LocalDate lastPriceCheckedAt;
 
     @Builder.Default
     @Column(nullable = false)

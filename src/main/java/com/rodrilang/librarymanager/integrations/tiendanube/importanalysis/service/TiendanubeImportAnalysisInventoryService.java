@@ -9,6 +9,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.T
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -26,6 +28,7 @@ public class TiendanubeImportAnalysisInventoryService {
     private final InventoryRepository inventoryRepository;
     private final BookstoreService bookstoreService;
     private final InventoryStockService inventoryStockService;
+    private final InventoryPriceService inventoryPriceService;
 
     public Inventory createOrReactivate(
             Long bookstoreId,
@@ -71,6 +74,13 @@ public class TiendanubeImportAnalysisInventoryService {
                 .build();
 
         Inventory saved = inventoryRepository.save(inventory);
+        inventoryPriceService.upsertSystem(
+                saved,
+                request.salePrice(),
+                inventoryPriceService.today(),
+                InventoryPriceSource.TIENDANUBE_IMPORT,
+                null
+        );
 
         if (request.initialStock() == 0) {
             return saved;
@@ -116,6 +126,13 @@ public class TiendanubeImportAnalysisInventoryService {
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED);
         inventory.setTiendanubePriceSyncEnabled(false);
         inventory.setEditorialPriceSyncEnabled(false);
+        inventoryPriceService.upsertSystem(
+                inventory,
+                request.salePrice(),
+                inventoryPriceService.today(),
+                InventoryPriceSource.TIENDANUBE_IMPORT,
+                null
+        );
 
         return inventoryStockService.adjustStockTo(
                 inventory.getId(),

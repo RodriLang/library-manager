@@ -1,7 +1,5 @@
 package com.rodrilang.librarymanager.inventory.count.service;
 
-import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
-import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItem;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountSession;
@@ -23,60 +21,38 @@ import java.util.stream.Collectors;
 public class InventoryCountPriceResolver {
 
     private final InventoryRepository inventoryRepository;
-    private final EffectiveEditorialPriceService editorialPriceService;
 
     public boolean requiresPrice(Book book, Long bookstoreId, BookCondition condition) {
-        if (inventoryRepository.findByBookIdAndBookstoreIdAndCondition(book.getId(), bookstoreId, condition).isPresent()) {
-            return false;
-        }
-        return currentEditorialPrice(book).isEmpty();
+        return false;
     }
 
+    /** @deprecated el flujo de carga ya no depende de precios editoriales */
+    @Deprecated
     public Optional<BigDecimal> currentEditorialPrice(Book book) {
-        return editorialPriceService.findCurrentByBookId(book.getId()).map(EffectiveEditorialPrice::getPrice);
+        return Optional.empty();
     }
 
+    /** @deprecated el flujo de carga ya no depende de precios editoriales */
+    @Deprecated
     public Map<Long, BigDecimal> currentEditorialPrices(Collection<Long> bookIds) {
-        if (bookIds == null || bookIds.isEmpty()) {
-            return Map.of();
-        }
-        return editorialPriceService.findCurrentByBookIds(bookIds).entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getPrice()));
+        return Map.of();
     }
 
     public Optional<Inventory> existingInventory(InventoryCountItem item) {
-        if (item.getBook() == null) {
-            return Optional.empty();
-        }
+        if (item.getBook() == null) return Optional.empty();
         return inventoryRepository.findByBookIdAndBookstoreIdAndCondition(
-                item.getBook().getId(),
-                item.getSession().getBookstore().getId(),
-                item.getSession().getCondition()
-        );
+                item.getBook().getId(), item.getSession().getBookstore().getId(), item.getSession().getCondition());
     }
 
     public Map<Long, Inventory> existingInventories(InventoryCountSession session, Collection<Long> bookIds) {
-        if (bookIds == null || bookIds.isEmpty()) {
-            return Map.of();
-        }
+        if (bookIds == null || bookIds.isEmpty()) return Map.of();
         return inventoryRepository.findAllByBookstoreIdAndBookIdInAndCondition(
-                        session.getBookstore().getId(),
-                        bookIds,
-                        session.getCondition()
-                ).stream()
-                .collect(Collectors.toMap(inventory -> inventory.getBook().getId(), Function.identity()));
+                        session.getBookstore().getId(), bookIds, session.getCondition())
+                .stream().collect(Collectors.toMap(inventory -> inventory.getBook().getId(), Function.identity()));
     }
 
     public Optional<BigDecimal> resolve(InventoryCountItem item) {
-        if (item.getSalePriceOverride() != null) {
-            return Optional.of(item.getSalePriceOverride());
-        }
-
-        Optional<Inventory> inventory = existingInventory(item);
-        if (inventory.isPresent()) {
-            return Optional.of(inventory.get().getSalePrice());
-        }
-
-        return currentEditorialPrice(item.getBook());
+        if (item.getSalePriceOverride() != null) return Optional.of(item.getSalePriceOverride());
+        return existingInventory(item).map(Inventory::getSalePrice).filter(java.util.Objects::nonNull);
     }
 }
