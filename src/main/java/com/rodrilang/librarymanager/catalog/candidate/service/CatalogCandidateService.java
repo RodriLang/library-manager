@@ -1,10 +1,9 @@
 package com.rodrilang.librarymanager.catalog.candidate.service;
 
+import com.rodrilang.librarymanager.auth.models.User;
+import com.rodrilang.librarymanager.auth.repositories.UserRepository;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
-import com.rodrilang.librarymanager.catalog.candidate.dto.internal.CatalogCandidateBookResolutionResult;
-import com.rodrilang.librarymanager.catalog.candidate.dto.internal.CatalogCandidateLookupData;
 import com.rodrilang.librarymanager.catalog.candidate.dto.request.CreateCatalogCandidateBookRequest;
-import com.rodrilang.librarymanager.catalog.candidate.dto.response.CatalogCandidateLookupResponse;
 import com.rodrilang.librarymanager.catalog.candidate.dto.response.CatalogCandidateResponse;
 import com.rodrilang.librarymanager.catalog.candidate.model.CatalogCandidate;
 import com.rodrilang.librarymanager.catalog.candidate.model.CatalogCandidateStatus;
@@ -12,13 +11,16 @@ import com.rodrilang.librarymanager.catalog.candidate.repository.CatalogCandidat
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.exception.ManualBookRequiredException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItem;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItemStatus;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountPurpose;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountStatus;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemRepository;
+import com.rodrilang.librarymanager.inventory.count.service.InventoryCountCandidateResolutionService;
+import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
+import com.rodrilang.librarymanager.isbn.service.IsbnService;
+import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.service.BookService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -42,9 +44,10 @@ public class CatalogCandidateService {
     private final CatalogCandidateRepository repository;
     private final InventoryCountItemRepository countItemRepository;
     private final BookService bookService;
+    private final UserRepository userRepository;
+    private final IsbnService isbnService;
     private final BookstoreContext bookstoreContext;
-    private final CatalogCandidateLookupAttemptService lookupAttemptService;
-    private final CatalogCandidateBookResolutionService bookResolutionService;
+    private final InventoryCountCandidateResolutionService candidateResolutionService;
 
     @Transactional(readOnly = true)
     public Page<CatalogCandidateResponse> findAll(CatalogCandidateStatus status, Pageable pageable) {
@@ -80,100 +83,72 @@ public class CatalogCandidateService {
         return toResponse(candidate, contexts.get(candidateId), false);
     }
 
+    @Transactional
     public CatalogCandidateResponse resolveWithBook(Long candidateId, Long bookId) {
-        CatalogCandidateBookResolutionResult result = bookResolutionService.resolveWithBook(candidateId, bookId);
-
-        return toResponse(result.candidate(), null, result.resolutionReused());
+        CatalogCandidate candidate = requireAccessibleForUpdate(candidateId);
+        Book book = bookService.getEntityById(bookId);
+        validateMatchingIsbn(candidate, book);
+        return resolve(candidate, book);
     }
 
     @Transactional
     public CatalogCandidateResponse createBookAndResolve(Long candidateId, CreateCatalogCandidateBookRequest request) {
         CatalogCandidate candidate = requireAccessibleForUpdate(candidateId);
 
-        // Otra librería pudo resolver este mismo ISBN
-        // mientras el formulario estaba abierto.
+        // Otra librería pudo resolver este mismo ISBN mientras el formulario estaba abierto.
+        // Reutilizamos la resolución global y nunca intentamos crear un segundo libro.
         if (candidate.getStatus() == CatalogCandidateStatus.RESOLVED && candidate.getResolvedBook() != null) {
-            CatalogCandidateBookResolutionResult result =
-                    bookResolutionService.resolveLocked(candidate, candidate.getResolvedBook());
-
-            return toResponse(result.candidate(), null, result.resolutionReused());
+            candidateResolutionService.resolve(candidate.getId(), candidate.getResolvedBook().getId());
+            return toResponse(candidate, null, true);
         }
 
         requirePending(candidate);
 
-        BookDetailResponse created =
-                bookService.create(
-                        new BookRequest(
-                                candidate.getIsbn13(),
-                                false,
-                                request.title(),
-                                request.subtitle(),
-                                request.description(),
-                                request.language(),
-                                request.publicationYear(),
-                                request.publicationMonth(),
-                                request.coverUrl(),
-                                request.categoryName(),
-                                request.genreName(),
-                                request.pageCount(),
-                                request.weightGrams(),
-                                request.widthCm(),
-                                request.heightCm(),
-                                request.depthCm(),
-                                request.publisherId(),
-                                request.authorIds()
-                        )
-                );
+        BookDetailResponse created = bookService.create(new BookRequest(
+                candidate.getIsbn13(),
+                false,
+                request.title(),
+                request.subtitle(),
+                request.description(),
+                request.language(),
+                request.publicationYear(),
+                request.publicationMonth(),
+                request.coverUrl(),
+                request.categoryName(),
+                request.genreName(),
+                request.pageCount(),
+                request.weightGrams(),
+                request.widthCm(),
+                request.heightCm(),
+                request.depthCm(),
+                request.publisherId(),
+                request.authorIds()
+        ));
 
-        CatalogCandidateBookResolutionResult result =
-                bookResolutionService.resolveLocked(
-                        candidate,
-                        bookService.getEntityById(created.id())
-                );
-
-        return toResponse(
-                result.candidate(),
-                null,
-                result.resolutionReused()
-        );
+        return resolve(candidate, bookService.getEntityById(created.id()));
     }
 
-    public CatalogCandidateLookupResponse automaticLookup(Long candidateId) {
-        CatalogCandidate candidate = requireAccessible(candidateId);
-
-        CatalogCandidateLookupData lookupData = lookupAttemptService.begin(candidate.getId());
-
-        try {
-            BookDetailResponse book = bookService.lookupByIsbn(lookupData.isbn13());
-
-            bookResolutionService.resolveWithBook(candidateId, book.id());
-
-            return new CatalogCandidateLookupResponse(
-                    true,
-                    lookupData.attemptedAt(),
-                    book.id(),
-                    book.title()
-            );
-
-        } catch (ManualBookRequiredException ex) {
-
-            // La búsqueda funcionó correctamente, pero ningún
-            // proveedor pudo identificar el libro.
-            // Conservamos automaticLookupAttemptedAt.
-            return new CatalogCandidateLookupResponse(
-                    false,
-                    lookupData.attemptedAt(),
-                    null,
-                    null
-            );
-
-        } catch (RuntimeException ex) {
-
-            // Un error técnico no consume el único intento.
-            lookupAttemptService.clear(candidateId);
-
-            throw ex;
+    private CatalogCandidateResponse resolve(CatalogCandidate candidate, Book book) {
+        if (candidate.getStatus() == CatalogCandidateStatus.RESOLVED) {
+            if (candidate.getResolvedBook() != null && candidate.getResolvedBook().getId().equals(book.getId())) {
+                candidateResolutionService.resolve(candidate.getId(), book.getId());
+                return toResponse(candidate, null, true);
+            }
+            throw new BusinessException("El ISBN ya fue resuelto con otro libro del catálogo");
         }
+
+        requirePending(candidate);
+        User user = userRepository.findByIdAndEnabledTrueAndAccountLockedFalse(bookstoreContext.getCurrentUserId())
+                .orElseThrow(() -> new BusinessException("No se encontró el usuario autenticado"));
+
+        candidate.setResolvedBook(book);
+        candidate.setResolvedByUser(user);
+        candidate.setResolvedAt(Instant.now());
+        candidate.setStatus(CatalogCandidateStatus.RESOLVED);
+
+        CatalogCandidate saved = repository.save(candidate);
+        candidateResolutionService.resolve(saved.getId(), book.getId());
+        return toResponse(saved, null, false);
     }
 
     private CatalogCandidate requireAccessible(Long candidateId) {
@@ -215,6 +190,13 @@ public class CatalogCandidateService {
         throw new ResourceNotFoundException("No se encontró el candidato de catálogo");
     }
 
+    private void validateMatchingIsbn(CatalogCandidate candidate, Book book) {
+        ParsedIsbn bookIsbn = isbnService.parse(book.getPreferredIsbn());
+        if (!bookIsbn.valid() || !candidate.getIsbn13().equals(bookIsbn.isbn13())) {
+            throw new BusinessException("El ISBN del libro seleccionado no coincide con el candidato");
+        }
+    }
+
     private void requirePending(CatalogCandidate candidate) {
         if (candidate.getStatus() != CatalogCandidateStatus.PENDING) {
             throw new BusinessException("El candidato no se encuentra pendiente de resolución");
@@ -243,7 +225,6 @@ public class CatalogCandidateService {
                 context.latestPurpose(),
                 resolutionReused,
                 context.firstDetectedAt(),
-                candidate.getAutomaticLookupAttemptedAt(),
                 candidate.getResolvedAt()
         );
     }

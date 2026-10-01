@@ -29,6 +29,7 @@ import com.rodrilang.librarymanager.purchasing.order.repository.PurchaseOrderSpe
 import com.rodrilang.librarymanager.purchasing.order.repository.projection.PurchaseOrderTotalsProjection;
 import com.rodrilang.librarymanager.purchasing.order.repository.projection.PurchaseRequirementOrderedQuantityProjection;
 import com.rodrilang.librarymanager.purchasing.order.service.PurchaseOrderService;
+import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirement;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
@@ -70,6 +71,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final EditorialPriceRepository editorialPriceRepository;
 
     private final PurchaseOrderMapper mapper;
+    private final ProviderPreferenceService providerPreferenceService;
 
     private final BookService bookService;
     private final BookstoreService bookstoreService;
@@ -409,7 +411,17 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         order.setStatus(PurchaseOrderStatus.SENT);
 
-        order.setSentAt(Instant.now());
+        Instant sentAt = Instant.now();
+        order.setSentAt(sentAt);
+
+        for (PurchaseOrderItem item : items) {
+            providerPreferenceService.rememberLastUsed(
+                    bookstoreId,
+                    item.getBook().getId(),
+                    order.getProvider().getId(),
+                    sentAt
+            );
+        }
 
         return buildDetailResponse(order, items);
     }

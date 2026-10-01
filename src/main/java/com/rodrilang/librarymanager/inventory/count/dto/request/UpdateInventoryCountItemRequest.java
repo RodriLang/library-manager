@@ -11,7 +11,6 @@ public record UpdateInventoryCountItemRequest(
         Boolean editorialPriceSyncEnabled,
         Boolean publishOnTiendanube,
         Boolean tiendanubePriceSyncEnabled,
-        @PositiveOrZero Integer minimumStock,
-        Boolean useCustomConfiguration
+        @PositiveOrZero Integer minimumStock
 ) {
 }

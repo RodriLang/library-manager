@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.dto.response.InventorySummaryResponse;
 import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -31,6 +32,7 @@ public abstract class InventoryMapper {
     @Mapping(target = "active", source = "inventory.active")
     @Mapping(target = "createdAt", source = "inventory.createdAt")
     @Mapping(target = "updatedAt", source = "inventory.updatedAt")
+    @Mapping(target = "preferredProvider", source = "preferredProvider")
     @Mapping(
             target = "book",
             expression = "java(toBookDetailResponse(inventory, editorialPrice, providers))"
@@ -38,7 +40,8 @@ public abstract class InventoryMapper {
     public abstract InventoryDetailResponse toDetailResponse(
             Inventory inventory,
             EffectiveEditorialPrice editorialPrice,
-            List<BookProviderResponse> providers
+            List<BookProviderResponse> providers,
+            PreferredProviderResponse preferredProvider
     );
 
     protected BookDetailResponse toBookDetailResponse(

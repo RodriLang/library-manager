@@ -17,6 +17,7 @@ import com.rodrilang.librarymanager.purchasing.dto.response.PurchaseResponse;
 import com.rodrilang.librarymanager.purchasing.model.*;
 import com.rodrilang.librarymanager.purchasing.repository.PurchaseItemRepository;
 import com.rodrilang.librarymanager.purchasing.repository.PurchaseRepository;
+import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -40,6 +42,7 @@ public class PurchaseService {
     private final InventoryCostCalculator calculator;
     private final IsbnService isbnService;
     private final BookstoreContext bookstoreContext;
+    private final ProviderPreferenceService providerPreferenceService;
     private final PurchasingMapper mapper;
 
     @Transactional(readOnly = true)
@@ -173,6 +176,12 @@ public class PurchaseService {
             termService.rememberPurchase(
                     purchase.getBookstore(), purchase.getProvider(), item.getBook(),
                     item.getDiscountPercentage(), purchase.getPurchaseDate()
+            );
+            providerPreferenceService.rememberLastUsed(
+                    purchase.getBookstore().getId(),
+                    item.getBook().getId(),
+                    purchase.getProvider().getId(),
+                    Instant.now()
             );
         });
 

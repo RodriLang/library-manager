@@ -37,6 +37,8 @@ import com.rodrilang.librarymanager.mapper.InventoryMapper;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
+import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementSourceType;
 import com.rodrilang.librarymanager.purchasing.requirement.service.PurchaseRequirementService;
@@ -71,6 +73,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final EffectiveEditorialPriceService effectiveEditorialPriceService;
     private final InventoryStockService inventoryStockService;
     private final PurchaseRequirementService purchaseRequirementService;
+    private final ProviderPreferenceService providerPreferenceService;
     private final BookstoreService bookstoreService;
     private final ProviderBookService providerBookService;
     private final BookstoreContext bookstoreContext;
@@ -551,7 +554,9 @@ public class InventoryServiceImpl implements InventoryService {
                 effectiveEditorialPriceService.findCurrentByBookId(inventory.getBook().getId()).orElse(null);
 
         List<BookProviderResponse> providers = providerBookService.getProvidersForBook(inventory.getBook().getId());
+        PreferredProviderResponse preferredProvider =
+                providerPreferenceService.findForCurrentBookstore(inventory.getBook().getId());
 
-        return inventoryMapper.toDetailResponse(inventory, editorialPrice, providers);
+        return inventoryMapper.toDetailResponse(inventory, editorialPrice, providers, preferredProvider);
     }
 }

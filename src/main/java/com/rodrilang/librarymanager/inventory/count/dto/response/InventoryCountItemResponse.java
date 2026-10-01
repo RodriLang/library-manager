@@ -24,7 +24,6 @@ public record InventoryCountItemResponse(
         Integer minimumStock,
         InventoryCountBookResponse book,
         Long catalogCandidateId,
-        Instant catalogAutomaticLookupAttemptedAt,
         Instant firstScannedAt,
         Instant lastScannedAt,
         Instant appliedAt

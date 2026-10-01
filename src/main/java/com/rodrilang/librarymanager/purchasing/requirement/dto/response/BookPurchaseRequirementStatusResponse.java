@@ -11,14 +11,21 @@ public record BookPurchaseRequirementStatusResponse(
 ) {
 
     public static BookPurchaseRequirementStatusResponse notPending() {
+        return notPending(null, null);
+    }
+
+    public static BookPurchaseRequirementStatusResponse notPending(
+            Long preferredProviderId,
+            String preferredProviderName
+    ) {
         return new BookPurchaseRequirementStatusResponse(
                 false,
                 null,
                 0,
                 0,
                 0,
-                null,
-                null
+                preferredProviderId,
+                preferredProviderName
         );
     }
 }

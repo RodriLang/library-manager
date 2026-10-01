@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.dto.response;
 
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -11,6 +12,8 @@ public record InventoryDetailResponse(
         Long id,
 
         BookDetailResponse book,
+
+        PreferredProviderResponse preferredProvider,
 
         Integer stock,
 

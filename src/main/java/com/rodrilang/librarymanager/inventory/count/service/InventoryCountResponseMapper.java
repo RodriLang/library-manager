@@ -124,7 +124,6 @@ public class InventoryCountResponseMapper {
                 minimumStock,
                 toBookResponse(item.getBook()),
                 item.getCatalogCandidate() != null ? item.getCatalogCandidate().getId() : null,
-                item.getCatalogCandidate() != null ? item.getCatalogCandidate().getAutomaticLookupAttemptedAt() : null,
                 item.getFirstScannedAt(),
                 item.getLastScannedAt(),
                 item.getAppliedAt()
