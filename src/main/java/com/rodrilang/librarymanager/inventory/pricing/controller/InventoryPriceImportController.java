@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.inventory.pricing.controller;
 
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.inventory.pricing.dto.*;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceImportApplyService;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceImportService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.time.LocalDate;
 public class InventoryPriceImportController {
 
     private final InventoryPriceImportService service;
+    private final InventoryPriceImportApplyService applyService;
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public InventoryPriceImportPreviewResponse preview(
@@ -45,11 +47,16 @@ public class InventoryPriceImportController {
     }
 
     @PostMapping("/{importId}/apply")
-    public InventoryPriceImportApplyResponse apply(
+    public ResponseEntity<InventoryPriceImportApplyStartResponse> apply(
             @PathVariable Long importId,
             @RequestBody(required = false) ApplyInventoryPriceImportRequest request
     ) {
-        return service.apply(importId, request);
+        return ResponseEntity.accepted().body(applyService.start(importId, request));
+    }
+
+    @GetMapping("/{importId}/status")
+    public InventoryPriceImportProcessingStatusResponse status(@PathVariable Long importId) {
+        return applyService.status(importId);
     }
 
     @PostMapping("/{importId}/cancel")

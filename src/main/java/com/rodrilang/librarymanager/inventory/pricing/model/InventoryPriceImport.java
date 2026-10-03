@@ -93,4 +93,17 @@ public class InventoryPriceImport extends AuditableEntity {
 
     @Column(name = "applied_at")
     private Instant appliedAt;
+
+    @Column(name = "processing_started_at")
+    private Instant processingStartedAt;
+
+    @Column(name = "processing_finished_at")
+    private Instant processingFinishedAt;
+
+    @Column(name = "skipped_rows", nullable = false)
+    @Builder.Default
+    private Integer skippedRows = 0;
+
+    @Column(name = "processing_error", columnDefinition = "TEXT")
+    private String processingError;
 }

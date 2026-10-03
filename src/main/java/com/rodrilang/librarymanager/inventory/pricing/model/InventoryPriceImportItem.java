@@ -77,7 +77,12 @@ public class InventoryPriceImportItem {
     private boolean discarded = false;
 
     @Column(name = "applied", nullable = false)
+    @Builder.Default
     private boolean applied = false;
+
+    @Column(name = "selected_for_apply", nullable = false)
+    @Builder.Default
+    private boolean selectedForApply = false;
 
     @Column(name = "created_at", nullable = false)
     @Builder.Default

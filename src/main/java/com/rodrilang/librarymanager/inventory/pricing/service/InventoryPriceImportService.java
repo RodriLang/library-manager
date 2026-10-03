@@ -40,7 +40,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -195,88 +194,6 @@ public class InventoryPriceImportService {
                 }
             }
         }
-    }
-
-    @Transactional
-    public InventoryPriceImportApplyResponse apply(Long importId, ApplyInventoryPriceImportRequest request) {
-        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-        InventoryPriceImport priceImport = getImport(importId, bookstoreId);
-        if (priceImport.getStatus() != InventoryPriceImportStatus.PREVIEW_READY) {
-            throw new BusinessException("Esta importación ya no se encuentra pendiente de aplicación.");
-        }
-
-        List<InventoryPriceImportItem> allItems = itemRepository.findAllByPriceImportIdOrderByRowNumberAsc(importId);
-        Set<Long> requestedIds = request != null && request.itemIds() != null
-                ? new HashSet<>(request.itemIds())
-                : allItems.stream().filter(InventoryPriceImportItem::isSelectedDefault).map(InventoryPriceImportItem::getId).collect(Collectors.toSet());
-
-        int applied = 0;
-        int skipped = 0;
-        Long userId = bookstoreContext.getCurrentUserId();
-
-        for (InventoryPriceImportItem item : allItems) {
-
-            if (item.isDiscarded()) {
-                continue;
-            }
-
-            if (item.getInventory() == null) {
-                skipped++;
-                continue;
-            }
-
-            if (!requestedIds.contains(item.getId())) {
-                skipped++;
-                continue;
-            }
-
-            if (item.getIncomingPrice() == null
-                    || item.getIncomingPrice().signum() <= 0) {
-                skipped++;
-                continue;
-            }
-
-            if (item.getClassification() == InventoryPriceImportClassification.DUPLICATE_CONFLICT
-                    || item.getClassification() == InventoryPriceImportClassification.AMBIGUOUS_MATCH
-                    || item.getClassification() == InventoryPriceImportClassification.INVALID_PRICE) {
-                skipped++;
-                continue;
-            }
-
-            if (item.getClassification()
-                    == InventoryPriceImportClassification.UNCHANGED) {
-
-                priceService.confirmPrice(
-                        item.getInventory(),
-                        item.getIncomingPrice(),
-                        priceImport.getEffectiveFrom(),
-                        priceImport.getSourceName()
-                );
-
-                item.setApplied(true);
-                applied++;
-                continue;
-            }
-
-            priceService.upsertImported(
-                    item.getInventory(),
-                    item.getIncomingPrice(),
-                    priceImport.getEffectiveFrom(),
-                    priceImport,
-                    userId
-            );
-
-            item.setApplied(true);
-            applied++;
-        }
-
-        priceImport.setAppliedRows(applied);
-        priceImport.setAppliedAt(Instant.now());
-        priceImport.setStatus(InventoryPriceImportStatus.APPLIED);
-
-        itemRepository.saveAll(allItems);
-
-        return new InventoryPriceImportApplyResponse(importId, applied, skipped);
     }
 
     @Transactional(readOnly = true)
