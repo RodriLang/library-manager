@@ -41,6 +41,12 @@ public class InventoryPrice extends AuditableEntity {
     @Column(nullable = false, length = 40)
     private InventoryPriceSource source;
 
+    @Column(name = "last_confirmed_at")
+    private LocalDate lastConfirmedAt;
+
+    @Column(name = "last_confirmed_source", length = 150)
+    private String lastConfirmedSource;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "price_import_id")
     private InventoryPriceImport priceImport;

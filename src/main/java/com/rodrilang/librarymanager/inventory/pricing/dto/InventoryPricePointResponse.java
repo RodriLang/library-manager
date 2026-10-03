@@ -12,6 +12,8 @@ public record InventoryPricePointResponse(
         LocalDate effectiveFrom,
         InventoryPriceSource source,
         Long priceImportId,
+        LocalDate lastConfirmedAt,
+        String lastConfirmedSource,
         Instant createdAt
 ) {
 }

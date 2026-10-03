@@ -992,16 +992,15 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         switch (filters.resolvedPriceMode()) {
             case WITH_PRICE -> sql.append("""
                     
-                    AND i.sale_price IS NOT NULL
+                    AND (SELECT ip.amount FROM inventory_prices ip WHERE ip.inventory_id = i.id AND ip.effective_from <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date ORDER BY ip.effective_from DESC, ip.id DESC LIMIT 1) IS NOT NULL
                     """);
 
             case WITHOUT_PRICE -> sql.append("""
                     
-                    AND i.sale_price IS NULL
+                    AND (SELECT ip.amount FROM inventory_prices ip WHERE ip.inventory_id = i.id AND ip.effective_from <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date ORDER BY ip.effective_from DESC, ip.id DESC LIMIT 1) IS NULL
                     """);
 
-            case EDITORIAL, INDEPENDENT, ALL -> {
-                // EDITORIAL/INDEPENDENT se conservan únicamente por compatibilidad con clientes antiguos.
+            case ALL -> {
             }
         }
     }
@@ -1223,7 +1222,7 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
 
             case "createdAt" -> "i.created_at";
 
-            case "salePrice" -> "i.sale_price";
+            case "salePrice" -> "(SELECT ip.amount FROM inventory_prices ip WHERE ip.inventory_id = i.id AND ip.effective_from <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date ORDER BY ip.effective_from DESC, ip.id DESC LIMIT 1)";
 
             case "stock" -> "i.stock";
 

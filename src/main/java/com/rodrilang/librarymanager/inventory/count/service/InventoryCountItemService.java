@@ -158,7 +158,6 @@ public class InventoryCountItemService {
 
         if (request.quantity() == null
                 && request.salePrice() == null
-                && request.editorialPriceSyncEnabled() == null
                 && request.publishOnTiendanube() == null
                 && request.tiendanubePriceSyncEnabled() == null
                 && request.minimumStock() == null) {
@@ -174,26 +173,6 @@ public class InventoryCountItemService {
         }
         if (request.salePrice() != null) {
             item.setSalePriceOverride(request.salePrice());
-            if (request.editorialPriceSyncEnabled() == null) {
-                item.setEditorialPriceSyncOverride(false);
-            }
-        }
-        if (request.editorialPriceSyncEnabled() != null) {
-            if (Boolean.TRUE.equals(request.editorialPriceSyncEnabled())
-                    && session.getCondition() != BookCondition.NEW) {
-                throw new BusinessException("La sincronización con precio editorial solo está disponible para libros nuevos");
-            }
-
-            boolean wasEditorialSync = isEditorialSyncEnabled(item);
-            BigDecimal editorialPrice = item.getBook() != null
-                    ? priceResolver.currentEditorialPrice(item.getBook()).orElse(null)
-                    : null;
-
-            if (editorialPrice != null
-                    && (Boolean.TRUE.equals(request.editorialPriceSyncEnabled()) || wasEditorialSync)) {
-                item.setSalePriceOverride(editorialPrice);
-            }
-            item.setEditorialPriceSyncOverride(request.editorialPriceSyncEnabled());
         }
         if (request.publishOnTiendanube() != null) {
             item.setPublishOnTiendanubeOverride(request.publishOnTiendanube());
@@ -231,19 +210,6 @@ public class InventoryCountItemService {
 
         itemRepository.delete(item);
         pendingApplyService.refreshSessionStatus(session);
-    }
-
-    private boolean isEditorialSyncEnabled(InventoryCountItem item) {
-        if (item.getBook() == null || item.getSession().getCondition() != BookCondition.NEW) {
-            return false;
-        }
-        if (item.getEditorialPriceSyncOverride() != null) {
-            return Boolean.TRUE.equals(item.getEditorialPriceSyncOverride());
-        }
-
-        return priceResolver.existingInventory(item)
-                .map(inventory -> Boolean.TRUE.equals(inventory.getEditorialPriceSyncEnabled()))
-                .orElse(Boolean.TRUE.equals(item.getSession().getDefaultEditorialPriceSyncEnabled()));
     }
 
     private void refreshKnownItemStatus(InventoryCountItem item) {

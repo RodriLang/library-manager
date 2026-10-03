@@ -9,9 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 public interface InventoryPriceImportRepository extends JpaRepository<InventoryPriceImport, Long> {
-    @EntityGraph(attributePaths = {"format", "provider"})
+    @EntityGraph(attributePaths = {"format"})
     Page<InventoryPriceImport> findAllByBookstoreIdOrderByCreatedAtDesc(Long bookstoreId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"format", "provider"})
+    @EntityGraph(attributePaths = {"format"})
     Optional<InventoryPriceImport> findByIdAndBookstoreId(Long id, Long bookstoreId);
 }

@@ -20,7 +20,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -57,9 +56,6 @@ public class Inventory extends AuditableEntity {
     @Builder.Default
     private BookCondition condition = BookCondition.NEW;
 
-    @Column(precision = 12, scale = 2)
-    private BigDecimal salePrice;
-
     @Column(name = "last_price_checked_at")
     private LocalDate lastPriceCheckedAt;
 
@@ -79,10 +75,6 @@ public class Inventory extends AuditableEntity {
     @Builder.Default
     @Column(name = "tiendanube_price_sync_enabled", nullable = false)
     private Boolean tiendanubePriceSyncEnabled = false;
-
-    @Builder.Default
-    @Column(name = "editorial_price_sync_enabled", nullable = false)
-    private Boolean editorialPriceSyncEnabled = false;
 
     @Builder.Default
     @Column(nullable = false)

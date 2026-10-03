@@ -54,8 +54,6 @@ public record BookDetailResponse(
 
         Set<AuthorResponse> authors,
 
-        EditorialPriceResponse editorialPrice,
-
         List<BookProviderResponse> providers,
 
         Instant createdAt,

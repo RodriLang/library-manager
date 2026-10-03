@@ -21,7 +21,6 @@ public record AddBookToInventoryRequest(
 
         Boolean publishOnTiendanube,
 
-        Boolean editorialPriceSyncEnabled,
 
         Boolean tiendanubePriceSyncEnabled
 

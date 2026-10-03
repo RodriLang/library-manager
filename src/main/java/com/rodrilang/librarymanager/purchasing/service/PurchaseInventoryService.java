@@ -40,7 +40,7 @@ public class PurchaseInventoryService {
                 item,
                 item.getUnitCost(),
                 item.getDiscountPercentage(),
-                item.getEditorialPriceSnapshot()
+                item.getSalePriceSnapshot()
         );
     }
 
@@ -64,12 +64,10 @@ public class PurchaseInventoryService {
                 .book(item.getBook())
                 .bookstore(item.getPurchase().getBookstore())
                 .condition(item.getCondition())
-                .salePrice(null)
                 .stock(0)
                 .minimumStock(0)
                 .tiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED)
                 .tiendanubePriceSyncEnabled(false)
-                .editorialPriceSyncEnabled(false)
                 .active(true)
                 .build());
     }

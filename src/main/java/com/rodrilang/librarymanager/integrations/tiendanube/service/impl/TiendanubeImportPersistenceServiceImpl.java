@@ -61,10 +61,8 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
                 .condition(command.condition())
                 .stock(0)
                 .minimumStock(0)
-                .salePrice(command.salePrice())
                 .tiendanubeStatus(TiendanubeInventoryStatus.LINKED)
                 .tiendanubePriceSyncEnabled(Boolean.TRUE.equals(command.syncPrice()))
-                .editorialPriceSyncEnabled(false)
                 .active(true)
                 .build();
 

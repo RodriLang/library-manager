@@ -13,6 +13,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.job.exception.Tienda
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.util.TextNormalizer;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class TiendanubeJobExecutionDataService {
     private final InventoryRepository inventoryRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeProductRequestFactory productRequestFactory;
+    private final InventoryPriceService inventoryPriceService;
 
     @Transactional(readOnly = true)
     public Optional<TiendanubeLinkedInventorySnapshot> prepareLinkedInventory(Long inventoryId, Long expectedStoreId) {
@@ -74,7 +76,7 @@ public class TiendanubeJobExecutionDataService {
         TiendanubeUpdateVariantRequest variantRequest = new TiendanubeUpdateVariantRequest(
                 sku,
                 isbn,
-                inventory.getSalePrice(),
+                inventoryPriceService.currentAmount(inventory.getId()),
                 inventory.getStock(),
                 true,
                 inventory.getBook().getWeightGrams(),
@@ -124,7 +126,7 @@ public class TiendanubeJobExecutionDataService {
         TiendanubeUpdateVariantRequest fullVariantRequest = new TiendanubeUpdateVariantRequest(
                 resolvedSku,
                 isbn,
-                inventory.getSalePrice(),
+                inventoryPriceService.currentAmount(inventory.getId()),
                 inventory.getStock(),
                 true,
                 inventory.getBook().getWeightGrams(),
@@ -140,7 +142,7 @@ public class TiendanubeJobExecutionDataService {
                 link.getTiendanubeProductId(),
                 link.getTiendanubeVariantId(),
                 inventory.getStock(),
-                inventory.getSalePrice(),
+                inventoryPriceService.currentAmount(inventory.getId()),
                 link.getSku(),
                 resolvedSku,
                 fullVariantRequest
@@ -185,7 +187,7 @@ public class TiendanubeJobExecutionDataService {
             );
         }
 
-        if (inventory.getSalePrice() == null || inventory.getSalePrice().signum() <= 0) {
+        if (inventoryPriceService.currentAmount(inventory.getId()) == null || inventoryPriceService.currentAmount(inventory.getId()).signum() <= 0) {
             throw TiendanubeJobExecutionException.nonRetryable(
                     "INVALID_PRICE", "El inventario debe tener un precio de venta mayor que cero", null
             );

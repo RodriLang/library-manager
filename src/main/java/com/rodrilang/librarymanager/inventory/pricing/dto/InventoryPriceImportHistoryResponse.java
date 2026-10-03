@@ -9,7 +9,7 @@ public record InventoryPriceImportHistoryResponse(
         Long id,
         String originalFilename,
         String formatName,
-        String providerName,
+        String sourceName,
         LocalDate effectiveFrom,
         InventoryPriceImportStatus status,
         InventoryPriceImportSummaryResponse summary,

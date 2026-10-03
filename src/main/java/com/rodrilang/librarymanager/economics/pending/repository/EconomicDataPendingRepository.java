@@ -175,7 +175,11 @@ public class EconomicDataPendingRepository {
                         FILTER (WHERE layer.cost_type = 'ESTIMATED'), 0) AS estimated_cost_units,
                     COALESCE(SUM(layer.quantity_remaining)
                         FILTER (WHERE layer.discount_percentage IS NULL), 0) AS missing_discount_units,
-                    MAX(inventory.sale_price) AS current_sale_price,
+                    MAX((SELECT ip.amount FROM inventory_prices ip
+                         WHERE ip.inventory_id = inventory.id
+                           AND ip.effective_from <= :asOf
+                         ORDER BY ip.effective_from DESC, ip.id DESC
+                         LIMIT 1)) AS current_sale_price,
                     BOOL_OR(term_book.book_id IS NOT NULL) AS has_commercial_term
                 FROM inventory_cost_layers layer
                 JOIN inventory inventory ON inventory.id = layer.inventory_id

@@ -15,7 +15,6 @@ public record InventoryCountSessionResponse(
         BookCondition condition,
         String notes,
         InventoryCountSummaryResponse summary,
-        Boolean defaultEditorialPriceSyncEnabled,
         Boolean defaultPublishOnTiendanube,
         Boolean defaultTiendanubePriceSyncEnabled,
         Integer defaultMinimumStock,

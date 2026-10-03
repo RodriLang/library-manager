@@ -11,7 +11,7 @@ public record PurchaseItemResponse(
         String title,
         BookCondition condition,
         Integer quantity,
-        BigDecimal editorialPriceSnapshot,
+        BigDecimal salePriceSnapshot,
         BigDecimal discountPercentage,
         BigDecimal unitCost,
         BigDecimal totalCost

@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.inventory.pricing.controller;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.inventory.pricing.dto.*;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceImportService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
@@ -22,11 +23,20 @@ public class InventoryPriceImportController {
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public InventoryPriceImportPreviewResponse preview(
             @RequestParam Long formatId,
-            @RequestParam(required = false) Long providerId,
+            @RequestParam(required = false) String sourceName,
             @RequestParam LocalDate effectiveFrom,
             @RequestParam MultipartFile file
     ) {
-        return service.preview(formatId, providerId, effectiveFrom, file);
+        return service.preview(formatId, sourceName, effectiveFrom, file);
+    }
+
+    @PostMapping("/{importId}/duplicates/{inventoryId}/resolve")
+    public InventoryPriceImportPreviewResponse resolveDuplicate(
+            @PathVariable Long importId,
+            @PathVariable Long inventoryId,
+            @Valid @RequestBody ResolveInventoryPriceImportDuplicateRequest request
+    ) {
+        return service.resolveDuplicate(importId, inventoryId, request);
     }
 
     @GetMapping("/{importId}")

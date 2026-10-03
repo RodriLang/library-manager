@@ -1,7 +1,6 @@
 package com.rodrilang.librarymanager.purchasing.service;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
-import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.inventory.cost.service.InventoryCostCalculator;
@@ -19,6 +18,8 @@ import com.rodrilang.librarymanager.purchasing.repository.PurchaseItemRepository
 import com.rodrilang.librarymanager.purchasing.repository.PurchaseRepository;
 import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.repository.BookRepository;
+import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -38,7 +39,8 @@ public class PurchaseService {
     private final ProviderBookTermService termService;
     private final ProviderResolver providerResolver;
     private final PurchaseInventoryService purchaseInventoryService;
-    private final EffectiveEditorialPriceService editorialPriceService;
+    private final InventoryRepository inventoryRepository;
+    private final InventoryPriceService inventoryPriceService;
     private final InventoryCostCalculator calculator;
     private final IsbnService isbnService;
     private final BookstoreContext bookstoreContext;
@@ -91,15 +93,13 @@ public class PurchaseService {
                 .orElse(null);
 
         if (item == null) {
-            BigDecimal editorialPrice = editorialPriceService.findCurrentByBookId(book.getId())
-                    .map(price -> price.getPrice())
-                    .orElse(null);
+            BigDecimal salePrice = findCurrentLocalSalePrice(book.getId());
             item = PurchaseItem.builder()
                     .purchase(purchase)
                     .book(book)
                     .condition(BookCondition.NEW)
                     .quantity(1)
-                    .editorialPriceSnapshot(editorialPrice)
+                    .salePriceSnapshot(salePrice)
                     .build();
             purchase.getItems().add(item);
         } else {
@@ -130,15 +130,15 @@ public class PurchaseService {
                     return created;
                 });
 
-        BigDecimal editorialPrice = calculator.money(request.editorialPriceSnapshot());
-        if (editorialPrice == null) {
-            editorialPrice = editorialPriceService.findCurrentByBookId(book.getId()).map(p -> p.getPrice()).orElse(null);
+        BigDecimal salePrice = calculator.money(request.salePriceSnapshot());
+        if (salePrice == null) {
+            salePrice = findCurrentLocalSalePrice(book.getId());
         }
         BigDecimal unitCost = calculator.money(request.unitCost());
         BigDecimal discount = calculator.percentage(request.discountPercentage());
 
         item.setQuantity(request.quantity());
-        item.setEditorialPriceSnapshot(editorialPrice);
+        item.setSalePriceSnapshot(salePrice);
         item.setDiscountPercentage(discount);
         item.setUnitCost(unitCost);
         item.setTotalCost(unitCost == null
@@ -217,4 +217,11 @@ public class PurchaseService {
     }
 
     private String clean(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    private BigDecimal findCurrentLocalSalePrice(Long bookId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        return inventoryRepository.findByBookIdAndBookstoreIdAndCondition(bookId, bookstoreId, BookCondition.NEW)
+                .map(inventory -> inventoryPriceService.currentAmount(inventory.getId()))
+                .orElse(null);
+    }
+
 }

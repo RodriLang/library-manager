@@ -23,8 +23,6 @@ import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceLis
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
-import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -63,7 +61,6 @@ public class InventoryPriceImportService {
     private final BookstorePriceListFormatService formatService;
     private final InventoryPriceImportRepository importRepository;
     private final InventoryPriceImportItemRepository itemRepository;
-    private final ProviderRepository providerRepository;
     private final PriceListImportFileStorage fileStorage;
     private final StreamingConfigurablePriceListParser parser;
     private final NormalizedPriceListStorage normalizedStorage;
@@ -71,7 +68,7 @@ public class InventoryPriceImportService {
     @Transactional
     public InventoryPriceImportPreviewResponse preview(
             Long formatId,
-            Long providerId,
+            String sourceName,
             LocalDate effectiveFrom,
             MultipartFile file
     ) {
@@ -86,13 +83,10 @@ public class InventoryPriceImportService {
         Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró la librería seleccionada."));
         BookstorePriceListFormat format = formatService.getForCurrentBookstore(formatId);
-        Provider provider = providerId == null ? null : providerRepository.findById(providerId)
-                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el proveedor seleccionado."));
-
         InventoryPriceImport priceImport = importRepository.save(InventoryPriceImport.builder()
                 .bookstore(bookstore)
                 .format(format)
-                .provider(provider)
+                .sourceName(normalizeSourceName(sourceName))
                 .originalFilename(resolveFilename(file))
                 .effectiveFrom(effectiveFrom)
                 .status(InventoryPriceImportStatus.PREVIEW_READY)
@@ -101,8 +95,9 @@ public class InventoryPriceImportService {
 
         List<Inventory> inventories = inventoryRepository.findAllByBookstoreIdAndActiveTrue(bookstoreId);
         MatchIndex matchIndex = buildMatchIndex(inventories);
-        Map<Long, InventoryPrice> currentPrices = priceService.currentFor(inventories.stream().map(Inventory::getId).toList());
-        Map<Long, InventoryPriceImportItem> firstItemByInventory = new HashMap<>();
+        Map<Long, InventoryPrice> currentPrices = priceService.pricesAt(inventories.stream()
+                .map(Inventory::getId).toList(), effectiveFrom);
+        Map<Long, List<InventoryPriceImportItem>> itemsByInventory = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
 
         AtomicInteger total = new AtomicInteger();
@@ -146,20 +141,29 @@ public class InventoryPriceImportService {
                             currentPrices.get(inventory.getId())
                     );
 
-                    InventoryPriceImportItem first = firstItemByInventory.get(inventory.getId());
-                    if (first != null) {
-                        if (samePrice(first.getIncomingPrice(), item.getIncomingPrice())) {
-                            return;
-                        }
-                        first.setClassification(InventoryPriceImportClassification.DUPLICATE_CONFLICT);
-                        first.setSelectedDefault(false);
-                        first.setConflictReason("El mismo libro aparece más de una vez en la lista con precios diferentes.");
-                        item.setClassification(InventoryPriceImportClassification.DUPLICATE_CONFLICT);
-                        item.setSelectedDefault(false);
-                        item.setConflictReason("El mismo libro aparece más de una vez en la lista con precios diferentes.");
-                    } else {
-                        firstItemByInventory.put(inventory.getId(), item);
+                    List<InventoryPriceImportItem> existingItems =
+                            itemsByInventory.computeIfAbsent(inventory.getId(), ignored -> new ArrayList<>());
+
+                    boolean samePriceAlreadyPresent = existingItems.stream()
+                            .anyMatch(existing -> samePrice(
+                                            existing.getIncomingPrice(),
+                                            item.getIncomingPrice()
+                                    )
+                            );
+
+                    if (samePriceAlreadyPresent) {
+                        return;
                     }
+
+                    if (!existingItems.isEmpty()) {
+                        for (InventoryPriceImportItem existing : existingItems) {
+                            markDuplicateConflict(existing);
+                        }
+
+                        markDuplicateConflict(item);
+                    }
+
+                    existingItems.add(item);
                     items.add(item);
                 });
             }
@@ -211,13 +215,13 @@ public class InventoryPriceImportService {
         Long userId = bookstoreContext.getCurrentUserId();
 
         for (InventoryPriceImportItem item : allItems) {
-            if (item.getInventory() == null) {
-                skipped++;
+
+            if (item.isDiscarded()) {
                 continue;
             }
 
-            if (item.getClassification() == InventoryPriceImportClassification.UNCHANGED) {
-                priceService.confirmPrice(item.getInventory());
+            if (item.getInventory() == null) {
+                skipped++;
                 continue;
             }
 
@@ -226,14 +230,31 @@ public class InventoryPriceImportService {
                 continue;
             }
 
-            if (item.getIncomingPrice() == null || item.getIncomingPrice().signum() <= 0) {
+            if (item.getIncomingPrice() == null
+                    || item.getIncomingPrice().signum() <= 0) {
                 skipped++;
                 continue;
             }
 
             if (item.getClassification() == InventoryPriceImportClassification.DUPLICATE_CONFLICT
-                    || item.getClassification() == InventoryPriceImportClassification.AMBIGUOUS_MATCH) {
+                    || item.getClassification() == InventoryPriceImportClassification.AMBIGUOUS_MATCH
+                    || item.getClassification() == InventoryPriceImportClassification.INVALID_PRICE) {
                 skipped++;
+                continue;
+            }
+
+            if (item.getClassification()
+                    == InventoryPriceImportClassification.UNCHANGED) {
+
+                priceService.confirmPrice(
+                        item.getInventory(),
+                        item.getIncomingPrice(),
+                        priceImport.getEffectiveFrom(),
+                        priceImport.getSourceName()
+                );
+
+                item.setApplied(true);
+                applied++;
                 continue;
             }
 
@@ -244,12 +265,16 @@ public class InventoryPriceImportService {
                     priceImport,
                     userId
             );
+
+            item.setApplied(true);
             applied++;
         }
 
         priceImport.setAppliedRows(applied);
         priceImport.setAppliedAt(Instant.now());
         priceImport.setStatus(InventoryPriceImportStatus.APPLIED);
+
+        itemRepository.saveAll(allItems);
 
         return new InventoryPriceImportApplyResponse(importId, applied, skipped);
     }
@@ -280,6 +305,73 @@ public class InventoryPriceImportService {
         priceImport.setStatus(InventoryPriceImportStatus.CANCELLED);
     }
 
+    @Transactional
+    public InventoryPriceImportPreviewResponse resolveDuplicate(
+            Long importId,
+            Long inventoryId,
+            ResolveInventoryPriceImportDuplicateRequest request
+    ) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        InventoryPriceImport priceImport = getImport(importId, bookstoreId);
+
+        if (priceImport.getStatus() != InventoryPriceImportStatus.PREVIEW_READY) {
+            throw new BusinessException("Esta importación ya no se encuentra pendiente de aplicación.");
+        }
+
+        List<InventoryPriceImportItem> group =
+                itemRepository
+                        .findAllByPriceImportIdAndInventoryIdOrderByRowNumberAsc(importId, inventoryId)
+                        .stream()
+                        .filter(InventoryPriceImportItem::isDuplicateGroup)
+                        .toList();
+
+        if (group.size() < 2) {
+            throw new BusinessException("No se encontró un conflicto de precios duplicados para este libro.");
+        }
+
+        InventoryPriceImportItem selected = group.stream()
+                .filter(item -> Objects.equals(item.getId(), request.selectedItemId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("El precio seleccionado no pertenece a este conflicto."));
+
+        for (InventoryPriceImportItem item : group) {
+            if (Objects.equals(item.getId(), selected.getId())) {
+                ClassificationResult result =
+                        classifyPrice(
+                                item.getIncomingPrice(),
+                                item.getCurrentPrice(),
+                                item.getExistingScheduledPrice()
+                        );
+
+                item.setClassification(result.classification());
+                item.setConflictReason(result.reason());
+                item.setSelectedDefault(result.selectedDefault());
+                item.setChangePercent(result.changePercent());
+                item.setDiscarded(false);
+            } else {
+                item.setClassification(InventoryPriceImportClassification.DUPLICATE_CONFLICT);
+                item.setConflictReason("Versión descartada al resolver el precio duplicado.");
+                item.setSelectedDefault(false);
+                item.setDiscarded(true);
+            }
+        }
+
+        itemRepository.saveAll(group);
+
+        List<InventoryPriceImportItem> allItems = itemRepository.findAllByPriceImportIdOrderByRowNumberAsc(importId);
+
+        updateCounters(
+                priceImport,
+                priceImport.getTotalRows(),
+                priceImport.getMatchedRows(),
+                priceImport.getUnmatchedRows(),
+                allItems
+        );
+
+        return toPreview(priceImport, allItems);
+    }
+
     private InventoryPriceImportItem classify(
             InventoryPriceImport priceImport,
             Inventory inventory,
@@ -288,42 +380,24 @@ public class InventoryPriceImportService {
             InventoryPrice current
     ) {
         BigDecimal incoming = row.retailPrice();
-        BigDecimal currentAmount = current != null ? current.getAmount() : null;
-        InventoryPrice existingAtDate = priceRepository.findByInventoryIdAndEffectiveFrom(inventory.getId(), effectiveFrom).orElse(null);
-        BigDecimal scheduledAmount = existingAtDate != null ? existingAtDate.getAmount() : null;
 
-        InventoryPriceImportClassification classification;
-        String reason = null;
-        boolean selected = true;
-        BigDecimal change = percent(currentAmount, incoming);
+        BigDecimal currentAmount = current != null
+                ? current.getAmount()
+                : null;
 
-        if (incoming == null || incoming.signum() <= 0) {
-            classification = InventoryPriceImportClassification.INVALID_PRICE;
-            reason = "La fila no contiene un precio válido.";
-            selected = false;
-        } else if (existingAtDate != null) {
-            if (samePrice(existingAtDate.getAmount(), incoming)) {
-                classification = InventoryPriceImportClassification.UNCHANGED;
-                selected = false;
-            } else {
-                classification = InventoryPriceImportClassification.EXISTING_SCHEDULED_CONFLICT;
-                reason = "Ya existe un precio para la misma fecha de vigencia.";
-                selected = false;
-            }
-        } else if (currentAmount == null) {
-            classification = InventoryPriceImportClassification.NEW_PRICE;
-        } else if (samePrice(currentAmount, incoming)) {
-            classification = InventoryPriceImportClassification.UNCHANGED;
-            selected = false;
-        } else if (change != null && change.abs().compareTo(LARGE_CHANGE_PERCENT) >= 0) {
-            classification = InventoryPriceImportClassification.LARGE_CHANGE;
-            reason = "El cambio supera el 50% y requiere revisión.";
-            selected = false;
-        } else if (incoming.compareTo(currentAmount) > 0) {
-            classification = InventoryPriceImportClassification.INCREASE;
-        } else {
-            classification = InventoryPriceImportClassification.DECREASE;
-        }
+        InventoryPrice existingAtDate = priceRepository.findByInventoryIdAndEffectiveFrom(inventory.getId(), effectiveFrom)
+                .orElse(null);
+
+        BigDecimal scheduledAmount = existingAtDate != null
+                ? existingAtDate.getAmount()
+                : null;
+
+        ClassificationResult result =
+                classifyPrice(
+                        incoming,
+                        currentAmount,
+                        scheduledAmount
+                );
 
         return InventoryPriceImportItem.builder()
                 .priceImport(priceImport)
@@ -335,10 +409,12 @@ public class InventoryPriceImportService {
                 .incomingPrice(incoming)
                 .currentPrice(currentAmount)
                 .existingScheduledPrice(scheduledAmount)
-                .changePercent(change)
-                .classification(classification)
-                .conflictReason(reason)
-                .selectedDefault(selected)
+                .changePercent(result.changePercent())
+                .classification(result.classification())
+                .conflictReason(result.reason())
+                .selectedDefault(result.selectedDefault())
+                .duplicateGroup(false)
+                .discarded(false)
                 .build();
     }
 
@@ -380,7 +456,10 @@ public class InventoryPriceImportService {
     }
 
     private int count(List<InventoryPriceImportItem> items, InventoryPriceImportClassification classification) {
-        return (int) items.stream().filter(item -> item.getClassification() == classification).count();
+        return (int) items.stream()
+                .filter(item -> !item.isDiscarded())
+                .filter(item -> item.getClassification() == classification)
+                .count();
     }
 
     private MatchIndex buildMatchIndex(List<Inventory> inventories) {
@@ -407,10 +486,10 @@ public class InventoryPriceImportService {
         if (!isbn.isBlank()) {
             List<Inventory> candidates = distinct(index.byIsbn().getOrDefault(isbn, List.of()));
             if (candidates.size() == 1) {
-                return new MatchResult(candidates.get(0), false, null);
+                return new MatchResult(candidates.getFirst(), false, null);
             }
             if (candidates.size() > 1) {
-                return new MatchResult(null, true, "El ISBN coincide con más de un registro de inventario (por ejemplo, distintas condiciones)." );
+                return new MatchResult(null, true, "El ISBN coincide con más de un registro de inventario (por ejemplo, distintas condiciones).");
             }
         }
 
@@ -418,7 +497,7 @@ public class InventoryPriceImportService {
         if (!key.isBlank()) {
             List<Inventory> candidates = distinct(index.byTitleAuthor().getOrDefault(key, List.of()));
             if (candidates.size() == 1) {
-                return new MatchResult(candidates.get(0), false, null);
+                return new MatchResult(candidates.getFirst(), false, null);
             }
             if (candidates.size() > 1) {
                 return new MatchResult(null, true, "Título y autor coinciden con más de un registro de inventario.");
@@ -461,7 +540,6 @@ public class InventoryPriceImportService {
             return;
         }
         PriceListColumnMapping mapping = PriceListColumnMapping.builder()
-                .importConfig(config)
                 .targetField(field)
                 .columnIndex(column)
                 .valueType(type)
@@ -493,12 +571,144 @@ public class InventoryPriceImportService {
                 priceImport.getId(),
                 priceImport.getOriginalFilename(),
                 priceImport.getFormat() != null ? priceImport.getFormat().getName() : null,
-                priceImport.getProvider() != null ? priceImport.getProvider().getName() : null,
+                priceImport.getSourceName(),
                 priceImport.getEffectiveFrom(),
                 priceImport.getStatus(),
                 summary(priceImport),
-                items.stream().map(this::toItem).toList()
+                toPreviewItems(items)
         );
+    }
+
+    private List<InventoryPriceImportItemResponse> toPreviewItems(List<InventoryPriceImportItem> items) {
+        Map<Long, List<InventoryPriceImportItem>> duplicatesByInventory =
+                items.stream()
+                        .filter(InventoryPriceImportItem::isDuplicateGroup)
+                        .filter(item -> item.getInventory() != null)
+                        .collect(Collectors.groupingBy(
+                                item -> item.getInventory().getId(),
+                                LinkedHashMap::new,
+                                Collectors.toList()
+                        ));
+
+        Set<Long> emittedDuplicateInventories = new HashSet<>();
+
+        List<InventoryPriceImportItemResponse> result = new ArrayList<>();
+
+        for (InventoryPriceImportItem item : items) {
+
+            if (!item.isDuplicateGroup()) {
+                result.add(toItem(item));
+                continue;
+            }
+
+            if (item.getInventory() == null) {
+                result.add(toItem(item));
+                continue;
+            }
+
+            Long inventoryId = item.getInventory().getId();
+
+            if (!emittedDuplicateInventories.add(inventoryId)) {
+                continue;
+            }
+
+            result.add(toDuplicateItem(duplicatesByInventory.getOrDefault(inventoryId, List.of(item))));
+        }
+
+        result.sort(Comparator.comparing(InventoryPriceImportItemResponse::rowNumber, Comparator.nullsLast(Integer::compareTo)));
+
+        return result;
+    }
+
+    private InventoryPriceImportItemResponse toDuplicateItem(List<InventoryPriceImportItem> items) {
+        List<InventoryPriceImportItem> ordered = items.stream()
+                .sorted(Comparator.comparing(InventoryPriceImportItem::getRowNumber))
+                .toList();
+
+        InventoryPriceImportItem selected = ordered.stream()
+                .filter(item -> !item.isDiscarded())
+                .filter(item ->
+                        item.getClassification() != InventoryPriceImportClassification.DUPLICATE_CONFLICT)
+                .findFirst()
+                .orElse(null);
+
+        boolean resolved = selected != null;
+
+        InventoryPriceImportItem representative = resolved
+                ? selected
+                : ordered.getFirst();
+
+        List<InventoryPriceImportDuplicateRowResponse> duplicateRows =
+                ordered.stream()
+                        .map(item ->
+                                new InventoryPriceImportDuplicateRowResponse(
+                                        item.getId(),
+                                        item.getRowNumber(),
+                                        item.getIncomingPrice()
+                                )
+                        )
+                        .toList();
+
+        String conflictReason = getString(resolved, representative, duplicateRows);
+
+        return new InventoryPriceImportItemResponse(
+                representative.getId(),
+                representative.getInventory() != null
+                        ? representative.getInventory().getId()
+                        : null,
+                representative.getInventory() != null
+                        ? representative.getInventory()
+                        .getBook()
+                        .getId()
+                        : null,
+                representative.getRowNumber(),
+                representative.getIsbn(),
+                representative.getTitle(),
+                representative.getAuthor(),
+
+                resolved
+                        ? representative.getIncomingPrice()
+                        : null,
+
+                representative.getCurrentPrice(),
+                representative.getExistingScheduledPrice(),
+
+                resolved
+                        ? representative.getChangePercent()
+                        : null,
+
+                resolved
+                        ? representative.getClassification()
+                        : InventoryPriceImportClassification.DUPLICATE_CONFLICT,
+
+                conflictReason,
+
+                resolved
+                        && representative.isSelectedDefault(),
+                resolved && representative.isApplied(),
+                resolved
+                        ? representative.getId()
+                        : null,
+
+                duplicateRows
+        );
+    }
+
+    private static String getString(boolean resolved, InventoryPriceImportItem representative, List<InventoryPriceImportDuplicateRowResponse> duplicateRows) {
+        String conflictReason;
+
+        if (resolved) {
+            conflictReason =
+                    representative.getConflictReason();
+        } else {
+            conflictReason =
+                    duplicateRows.size() == 2
+                            ? "El libro aparece 2 veces en la lista con precios diferentes."
+                            : "El libro aparece "
+                              + duplicateRows.size()
+                              + " veces en la lista con precios diferentes.";
+        }
+        return conflictReason;
     }
 
     private InventoryPriceImportHistoryResponse toHistory(InventoryPriceImport priceImport) {
@@ -506,7 +716,7 @@ public class InventoryPriceImportService {
                 priceImport.getId(),
                 priceImport.getOriginalFilename(),
                 priceImport.getFormat() != null ? priceImport.getFormat().getName() : null,
-                priceImport.getProvider() != null ? priceImport.getProvider().getName() : null,
+                priceImport.getSourceName(),
                 priceImport.getEffectiveFrom(),
                 priceImport.getStatus(),
                 summary(priceImport),
@@ -529,9 +739,115 @@ public class InventoryPriceImportService {
                 item.getId(),
                 item.getInventory() != null ? item.getInventory().getId() : null,
                 item.getInventory() != null ? item.getInventory().getBook().getId() : null,
-                item.getRowNumber(), item.getIsbn(), item.getTitle(), item.getAuthor(), item.getIncomingPrice(),
-                item.getCurrentPrice(), item.getExistingScheduledPrice(), item.getChangePercent(),
-                item.getClassification(), item.getConflictReason(), item.isSelectedDefault()
+                item.getRowNumber(),
+                item.getIsbn(),
+                item.getTitle(),
+                item.getAuthor(),
+                item.getIncomingPrice(),
+                item.getCurrentPrice(),
+                item.getExistingScheduledPrice(),
+                item.getChangePercent(),
+                item.getClassification(),
+                item.getConflictReason(),
+                item.isSelectedDefault(),
+                item.isApplied(),
+                null,
+                List.of()
+        );
+    }
+
+    private void markDuplicateConflict(
+            InventoryPriceImportItem item
+    ) {
+        item.setClassification(
+                InventoryPriceImportClassification.DUPLICATE_CONFLICT
+        );
+        item.setConflictReason(
+                "El mismo libro aparece más de una vez en la lista con precios diferentes."
+        );
+        item.setSelectedDefault(false);
+        item.setDuplicateGroup(true);
+        item.setDiscarded(false);
+    }
+
+    private ClassificationResult classifyPrice(
+            BigDecimal incoming,
+            BigDecimal currentAmount,
+            BigDecimal scheduledAmount
+    ) {
+        BigDecimal change = percent(
+                currentAmount,
+                incoming
+        );
+
+        if (incoming == null || incoming.signum() <= 0) {
+            return new ClassificationResult(
+                    InventoryPriceImportClassification.INVALID_PRICE,
+                    "La fila no contiene un precio válido.",
+                    false,
+                    change
+            );
+        }
+
+        if (scheduledAmount != null) {
+            if (samePrice(scheduledAmount, incoming)) {
+                return new ClassificationResult(
+                        InventoryPriceImportClassification.UNCHANGED,
+                        null,
+                        true,
+                        change
+                );
+            }
+
+            return new ClassificationResult(
+                    InventoryPriceImportClassification.EXISTING_SCHEDULED_CONFLICT,
+                    "Ya existe un precio para la misma fecha de vigencia.",
+                    false,
+                    change
+            );
+        }
+
+        if (currentAmount == null) {
+            return new ClassificationResult(
+                    InventoryPriceImportClassification.NEW_PRICE,
+                    null,
+                    true,
+                    change
+            );
+        }
+
+        if (samePrice(currentAmount, incoming)) {
+            return new ClassificationResult(
+                    InventoryPriceImportClassification.UNCHANGED,
+                    null,
+                    true,
+                    change
+            );
+        }
+
+        if (change != null && change.abs().compareTo(LARGE_CHANGE_PERCENT) >= 0) {
+            return new ClassificationResult(
+                    InventoryPriceImportClassification.LARGE_CHANGE,
+                    "El cambio supera el 50% y requiere revisión.",
+                    false,
+                    change
+            );
+        }
+
+        if (incoming.compareTo(currentAmount) > 0) {
+            return new ClassificationResult(
+                    InventoryPriceImportClassification.INCREASE,
+                    null,
+                    true,
+                    change
+            );
+        }
+
+        return new ClassificationResult(
+                InventoryPriceImportClassification.DECREASE,
+                null,
+                true,
+                change
         );
     }
 
@@ -608,6 +924,14 @@ public class InventoryPriceImportService {
         return value == null || value.isBlank();
     }
 
+    private String normalizeSourceName(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.length() <= 150 ? normalized : normalized.substring(0, 150);
+    }
+
     private String safeMessage(Exception exception) {
         return exception.getMessage() == null || exception.getMessage().isBlank() ? "formato inválido." : exception.getMessage();
     }
@@ -616,5 +940,13 @@ public class InventoryPriceImportService {
     }
 
     private record MatchResult(Inventory inventory, boolean ambiguous, String reason) {
+    }
+
+    private record ClassificationResult(
+            InventoryPriceImportClassification classification,
+            String reason,
+            boolean selectedDefault,
+            BigDecimal changePercent
+    ) {
     }
 }

@@ -8,7 +8,6 @@ import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.purchasing.order.dto.PurchaseOrderFilter;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.AddPurchaseOrderItemRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrderRequest;
@@ -33,8 +32,10 @@ import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPrefer
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirement;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
-import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
 import com.rodrilang.librarymanager.service.BookService;
+import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
+import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -45,7 +46,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.Year;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -68,7 +68,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     private final ProviderRepository providerRepository;
     private final ProviderBookRepository providerBookRepository;
-    private final EditorialPriceRepository editorialPriceRepository;
+    private final InventoryRepository inventoryRepository;
+    private final InventoryPriceService inventoryPriceService;
 
     private final PurchaseOrderMapper mapper;
     private final ProviderPreferenceService providerPreferenceService;
@@ -595,14 +596,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     }
 
     private BigDecimal findCurrentPrice(Long providerId, Long bookId) {
-
-        return editorialPriceRepository
-                .findFirstByBookIdAndProviderIdAndActiveTrueAndValidFromLessThanEqualOrderByValidFromDesc(
-                        bookId,
-                        providerId,
-                        LocalDate.now(ZoneId.systemDefault())
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        return inventoryRepository.findByBookIdAndBookstoreIdAndCondition(
+                        bookId, bookstoreId, BookCondition.NEW
                 )
-                .map(EditorialPrice::getPrice)
+                .map(inventory -> inventoryPriceService.currentAmount(inventory.getId()))
                 .orElse(null);
     }
 

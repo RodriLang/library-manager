@@ -1,78 +1,38 @@
 package com.rodrilang.librarymanager.importer.price.configuration.model;
 
-import com.rodrilang.librarymanager.provider.model.Provider;
-
 import com.rodrilang.librarymanager.importer.price.configuration.enums.HeaderStrategy;
 import com.rodrilang.librarymanager.importer.price.configuration.enums.SheetStrategy;
-import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "price_list_import_configs")
+/**
+ * Configuración transitoria usada por el parser de planillas.
+ *
+ * Ya no es una entidad global persistida: los formatos que guarda cada librería
+ * viven en bookstore_price_list_formats y se traducen a este objeto al procesar
+ * una importación.
+ */
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class PriceListImportConfig {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(
-            name = "provider_id",
-            nullable = false,
-            foreignKey = @ForeignKey(
-                    name = "fk_price_list_import_configs_provider"
-            )
-    )
-    private Provider provider;
-
-    @Column(nullable = false, length = 100)
     private String name;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "sheet_strategy", nullable = false, length = 30)
     private SheetStrategy sheetStrategy;
-
-    @Column(name = "sheet_index")
     private Integer sheetIndex;
-
-    @Column(name = "sheet_name", length = 200)
     private String sheetName;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "header_strategy", nullable = false, length = 30)
     private HeaderStrategy headerStrategy;
-
-    @Column(name = "header_row_index")
     private Integer headerRowIndex;
-
-    @Column(name = "first_data_row_index", nullable = false)
     private Integer firstDataRowIndex;
-
-    @Column(nullable = false)
     @Builder.Default
     private boolean active = true;
-
-    @OneToMany(
-            mappedBy = "importConfig",
-            cascade = CascadeType.ALL,
-            orphanRemoval = true
-    )
-    @OrderBy("columnIndex ASC")
     @Builder.Default
     private List<PriceListColumnMapping> mappings = new ArrayList<>();
-
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
 }

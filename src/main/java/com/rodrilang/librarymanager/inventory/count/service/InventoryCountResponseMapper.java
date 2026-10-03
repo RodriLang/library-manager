@@ -45,7 +45,6 @@ public class InventoryCountResponseMapper {
                         value(summary.getSupersededItems()),
                         value(summary.getAppliedItems())
                 ),
-                session.getDefaultEditorialPriceSyncEnabled(),
                 session.getDefaultPublishOnTiendanube(),
                 session.getDefaultTiendanubePriceSyncEnabled(),
                 session.getDefaultMinimumStock(),
@@ -60,36 +59,22 @@ public class InventoryCountResponseMapper {
 
     public InventoryCountItemResponse toItemResponse(InventoryCountItem item) {
         Inventory existing = item.getBook() != null ? priceResolver.existingInventory(item).orElse(null) : null;
-        BigDecimal editorialPrice = item.getBook() != null
-                ? priceResolver.currentEditorialPrice(item.getBook()).orElse(null)
-                : null;
-        return toItemResponse(item, existing, editorialPrice);
+        return toItemResponse(item, existing);
     }
 
     public InventoryCountItemResponse toItemResponse(
             InventoryCountItem item,
-            Inventory existing,
-            BigDecimal editorialPrice
+            Inventory existing
     ) {
-        boolean editorialSyncRequested = item.getEditorialPriceSyncOverride() != null
-                ? item.getEditorialPriceSyncOverride()
-                : existing != null
-                    ? Boolean.TRUE.equals(existing.getEditorialPriceSyncEnabled())
-                    : Boolean.TRUE.equals(item.getSession().getDefaultEditorialPriceSyncEnabled());
-        boolean editorialSync = item.getSession().getCondition() == com.rodrilang.librarymanager.enums.BookCondition.NEW
-                && editorialPrice != null
-                && editorialSyncRequested;
-
-        BigDecimal effectiveSalePrice = editorialSync
-                ? editorialPrice
-                : item.getSalePriceOverride() != null
-                    ? item.getSalePriceOverride()
-                    : existing != null ? existing.getSalePrice() : editorialPrice;
-        String priceSource = editorialSync
-                ? "EDITORIAL"
-                : item.getSalePriceOverride() != null
-                    ? "MANUAL"
-                    : existing != null ? "INVENTORY" : editorialPrice != null ? "EDITORIAL" : "MISSING";
+        BigDecimal currentInventoryPrice = existing != null
+                ? priceResolver.resolve(item).orElse(null)
+                : null;
+        BigDecimal effectiveSalePrice = item.getSalePriceOverride() != null
+                ? item.getSalePriceOverride()
+                : currentInventoryPrice;
+        String priceSource = item.getSalePriceOverride() != null
+                ? "MANUAL"
+                : currentInventoryPrice != null ? "INVENTORY" : "MISSING";
 
         boolean alreadyPublished = existing != null
                 && existing.getTiendanubeStatus() != TiendanubeInventoryStatus.NOT_PUBLISHED;
@@ -114,11 +99,9 @@ public class InventoryCountResponseMapper {
                 item.getQuantity(),
                 item.getStatus(),
                 item.getSalePriceOverride(),
-                editorialPrice,
                 effectiveSalePrice,
                 priceSource,
                 existing != null,
-                editorialSync,
                 publish,
                 tiendanubePriceSync,
                 minimumStock,

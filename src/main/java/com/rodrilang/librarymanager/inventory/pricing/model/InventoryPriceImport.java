@@ -2,7 +2,6 @@ package com.rodrilang.librarymanager.inventory.pricing.model;
 
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Bookstore;
-import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,9 +29,8 @@ public class InventoryPriceImport extends AuditableEntity {
     @JoinColumn(name = "format_id")
     private BookstorePriceListFormat format;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "provider_id")
-    private Provider provider;
+    @Column(name = "source_name", length = 150)
+    private String sourceName;
 
     @Column(name = "original_filename", nullable = false, length = 255)
     private String originalFilename;

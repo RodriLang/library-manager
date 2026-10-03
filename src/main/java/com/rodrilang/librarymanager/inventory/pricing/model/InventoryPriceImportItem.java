@@ -68,6 +68,17 @@ public class InventoryPriceImportItem {
     @Column(name = "selected_default", nullable = false)
     private boolean selectedDefault;
 
+    @Column(name = "duplicate_group", nullable = false)
+    @Builder.Default
+    private boolean duplicateGroup = false;
+
+    @Column(name = "discarded", nullable = false)
+    @Builder.Default
+    private boolean discarded = false;
+
+    @Column(name = "applied", nullable = false)
+    private boolean applied = false;
+
     @Column(name = "created_at", nullable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

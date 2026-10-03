@@ -53,7 +53,7 @@ public abstract class InventoryMapper {
         if (inventory == null || inventory.getBook() == null) {
             return null;
         }
-        return bookMapper.toDetailResponse(inventory.getBook(), null, providers);
+        return bookMapper.toDetailResponse(inventory.getBook(), providers);
     }
 
     @Mapping(target = "id", source = "inventory.id")
@@ -88,8 +88,6 @@ public abstract class InventoryMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "book", ignore = true)
     @Mapping(target = "stock", ignore = true)
-    @Mapping(target = "salePrice", ignore = true)
-    @Mapping(target = "editorialPriceSyncEnabled", ignore = true)
     @Mapping(target = "lastPriceCheckedAt", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)

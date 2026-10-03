@@ -41,14 +41,12 @@ public class InventoryCountProvisioningService {
                 .book(item.getBook())
                 .bookstore(session.getBookstore())
                 .condition(session.getCondition())
-                .salePrice(salePrice)
                 .stock(0)
                 .minimumStock(effectiveMinimumStock(item, null))
                 .tiendanubeStatus(publish
                         ? TiendanubeInventoryStatus.PENDING_PUBLICATION
                         : TiendanubeInventoryStatus.NOT_PUBLISHED)
                 .tiendanubePriceSyncEnabled(effectiveTiendanubePriceSync(item, null))
-                .editorialPriceSyncEnabled(false)
                 .active(true)
                 .build());
 
@@ -69,7 +67,6 @@ public class InventoryCountProvisioningService {
     }
 
     private void applyExplicitOverrides(Inventory inventory, InventoryCountItem item) {
-        inventory.setEditorialPriceSyncEnabled(false);
         if (item.getSalePriceOverride() != null) {
             inventoryPriceService.upsertSystem(
                     inventory,

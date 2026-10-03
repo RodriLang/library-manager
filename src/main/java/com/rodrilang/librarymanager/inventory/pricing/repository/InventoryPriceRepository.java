@@ -77,6 +77,16 @@ public interface InventoryPriceRepository extends JpaRepository<InventoryPrice, 
             select p
             from InventoryPrice p
             join fetch p.inventory i
+            where p.effectiveFrom = :date
+              and i.active = true
+            order by i.id asc
+            """)
+    List<InventoryPrice> findAllByEffectiveFromWithInventory(@Param("date") LocalDate date);
+
+    @Query("""
+            select p
+            from InventoryPrice p
+            join fetch p.inventory i
             where p.effectiveFrom <= :date
               and i.active = true
             order by i.id asc, p.effectiveFrom desc, p.id desc

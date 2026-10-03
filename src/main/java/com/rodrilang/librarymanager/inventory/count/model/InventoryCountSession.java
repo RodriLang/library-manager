@@ -75,10 +75,6 @@ public class InventoryCountSession extends AuditableEntity {
     private Instant revertedAt;
 
     @Builder.Default
-    @Column(name = "default_editorial_price_sync_enabled", nullable = false)
-    private Boolean defaultEditorialPriceSyncEnabled = false;
-
-    @Builder.Default
     @Column(name = "default_publish_on_tiendanube", nullable = false)
     private Boolean defaultPublishOnTiendanube = false;
 

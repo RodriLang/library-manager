@@ -5,6 +5,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProdu
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +15,10 @@ import java.util.Map;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class TiendanubeProductRequestFactory {
+
+    private final InventoryPriceService inventoryPriceService;
 
     public TiendanubeCreateProductRequest createProduct(
             Inventory inventory
@@ -26,7 +31,7 @@ public class TiendanubeProductRequestFactory {
 
         TiendanubeCreateVariantRequest variant =
                 new TiendanubeCreateVariantRequest(
-                        inventory.getSalePrice(),
+                        inventoryPriceService.currentAmount(inventory.getId()),
                         inventory.getStock(),
                         sku,
                         isbn,

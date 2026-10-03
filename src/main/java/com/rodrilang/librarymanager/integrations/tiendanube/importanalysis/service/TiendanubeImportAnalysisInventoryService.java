@@ -64,12 +64,10 @@ public class TiendanubeImportAnalysisInventoryService {
                 .book(book)
                 .bookstore(bookstore)
                 .condition(BookCondition.NEW)
-                .salePrice(request.salePrice())
                 .stock(0)
                 .minimumStock(request.minimumStock())
                 .tiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED)
                 .tiendanubePriceSyncEnabled(false)
-                .editorialPriceSyncEnabled(false)
                 .active(true)
                 .build();
 
@@ -121,11 +119,9 @@ public class TiendanubeImportAnalysisInventoryService {
 
         inventory.setActive(true);
         inventory.setCondition(BookCondition.NEW);
-        inventory.setSalePrice(request.salePrice());
         inventory.setMinimumStock(request.minimumStock());
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED);
         inventory.setTiendanubePriceSyncEnabled(false);
-        inventory.setEditorialPriceSyncEnabled(false);
         inventoryPriceService.upsertSystem(
                 inventory,
                 request.salePrice(),

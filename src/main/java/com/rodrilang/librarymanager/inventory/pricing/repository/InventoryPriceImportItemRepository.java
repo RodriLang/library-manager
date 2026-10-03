@@ -15,6 +15,9 @@ public interface InventoryPriceImportItemRepository extends JpaRepository<Invent
     @EntityGraph(attributePaths = {"inventory", "inventory.book", "inventory.book.authors", "inventory.book.publisher"})
     List<InventoryPriceImportItem> findAllByPriceImportIdAndIdIn(Long importId, Collection<Long> ids);
 
+    @EntityGraph(attributePaths = {"inventory", "inventory.book", "inventory.book.authors", "inventory.book.publisher"})
+    List<InventoryPriceImportItem> findAllByPriceImportIdAndInventoryIdOrderByRowNumberAsc(Long importId, Long inventoryId);
+
     long countByPriceImportIdAndClassification(Long importId, InventoryPriceImportClassification classification);
 
     void deleteAllByPriceImportId(Long importId);

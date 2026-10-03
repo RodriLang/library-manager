@@ -126,8 +126,6 @@ public class InventoryServiceImpl implements InventoryService {
                 .condition(condition)
                 .stock(0)
                 .minimumStock(request.minimumStock() != null ? request.minimumStock() : 0)
-                .salePrice(request.salePrice())
-                .editorialPriceSyncEnabled(false)
                 .tiendanubePriceSyncEnabled(Boolean.TRUE.equals(request.tiendanubePriceSyncEnabled()))
                 .tiendanubeStatus(tiendanubeStatus)
                 .active(true)
@@ -271,7 +269,6 @@ public class InventoryServiceImpl implements InventoryService {
         inventory.setActive(true);
         inventory.setMinimumStock(request.minimumStock() != null ? request.minimumStock() : 0);
         inventory.setCondition(request.condition() != null ? request.condition() : BookCondition.NEW);
-        inventory.setEditorialPriceSyncEnabled(false);
         inventory.setTiendanubePriceSyncEnabled(Boolean.TRUE.equals(request.tiendanubePriceSyncEnabled()));
 
         if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.NOT_PUBLISHED
@@ -327,11 +324,12 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryDetailResponse update(Long inventoryId, UpdateInventoryRequest request) {
         Inventory inventory = getActiveEntityById(inventoryId);
 
-        BigDecimal previousSalePrice = inventory.getSalePrice();
+        BigDecimal previousSalePrice = inventoryPriceService.current(inventory.getId())
+                .map(com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice::getAmount)
+                .orElse(null);
         Boolean previousPriceSyncEnabled = inventory.getTiendanubePriceSyncEnabled();
 
         inventoryMapper.updateEntity(request, inventory);
-        inventory.setEditorialPriceSyncEnabled(false);
 
         if (request.salePrice() != null) {
             inventoryPriceService.upsertSystem(
@@ -343,7 +341,10 @@ public class InventoryServiceImpl implements InventoryService {
             );
         }
 
-        boolean priceChanged = !Objects.equals(previousSalePrice, inventory.getSalePrice());
+        BigDecimal currentSalePrice = inventoryPriceService.current(inventory.getId())
+                .map(com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice::getAmount)
+                .orElse(null);
+        boolean priceChanged = !Objects.equals(previousSalePrice, currentSalePrice);
 
         boolean priceSyncEnabled = Boolean.TRUE.equals(inventory.getTiendanubePriceSyncEnabled());
 

@@ -34,7 +34,7 @@ public class TiendanubeManagementInventoryRepository {
             "title", "b.title_sort",
             "publisher", "p.name",
             "stock", "i.stock",
-            "salePrice", "i.sale_price",
+            "salePrice", "(SELECT ip.amount FROM inventory_prices ip WHERE ip.inventory_id = i.id AND ip.effective_from <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date ORDER BY ip.effective_from DESC, ip.id DESC LIMIT 1)",
             "status", "i.tiendanube_status",
             "lastSyncedAt", "link.last_synced_at"
     );
@@ -62,7 +62,7 @@ public class TiendanubeManagementInventoryRepository {
                     b.cover_url,
                     i.stock,
                     i.minimum_stock,
-                    i.sale_price,
+                    (SELECT ip.amount FROM inventory_prices ip WHERE ip.inventory_id = i.id AND ip.effective_from <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date ORDER BY ip.effective_from DESC, ip.id DESC LIMIT 1) AS sale_price,
                     i.condition,
                     i.tiendanube_status,
                     COALESCE(i.tiendanube_price_sync_enabled, FALSE) AS price_sync_enabled,

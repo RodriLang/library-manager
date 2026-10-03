@@ -14,9 +14,7 @@ import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceR
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +22,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.*;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -67,7 +70,7 @@ public class InventoryPriceService {
             InventoryPriceImport priceImport,
             Long userId
     ) {
-        return upsert(
+        InventoryPrice price = upsert(
                 inventory,
                 amount,
                 effectiveFrom,
@@ -76,6 +79,17 @@ public class InventoryPriceService {
                 userId,
                 true
         );
+
+        if (price.getLastConfirmedAt() == null || !effectiveFrom.isBefore(price.getLastConfirmedAt())) {
+            price.setLastConfirmedAt(effectiveFrom);
+            price.setLastConfirmedSource(normalizeConfirmationSource(priceImport != null
+                            ? priceImport.getSourceName()
+                            : null
+                    )
+            );
+        }
+
+        return price;
     }
 
     @Transactional
@@ -90,13 +104,41 @@ public class InventoryPriceService {
     }
 
     @Transactional
-    public void confirmPrice(Inventory inventory) {
+    public void confirmPrice(
+            Inventory inventory,
+            BigDecimal confirmedAmount,
+            LocalDate confirmedAt,
+            String confirmedSource
+    ) {
+        Objects.requireNonNull(confirmedAt, "confirmedAt");
+        validateAmount(confirmedAmount);
+
+        InventoryPrice price = priceRepository
+                .findCurrentCandidates(inventory.getId(), confirmedAt)
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("No existe un precio vigente para confirmar en la fecha indicada."));
+
+        if (price.getAmount().compareTo(confirmedAmount) != 0) {
+            throw new BusinessException("El precio vigente no coincide con el precio que se intenta confirmar.");
+        }
+
+        if (price.getLastConfirmedAt() == null || !confirmedAt.isBefore(price.getLastConfirmedAt())) {
+            price.setLastConfirmedAt(confirmedAt);
+            price.setLastConfirmedSource(normalizeConfirmationSource(confirmedSource));
+        }
+
         inventory.setLastPriceCheckedAt(today());
     }
 
     @Transactional(readOnly = true)
     public Optional<InventoryPrice> current(Long inventoryId) {
         return priceRepository.findCurrentCandidates(inventoryId, today()).stream().findFirst();
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal currentAmount(Long inventoryId) {
+        return current(inventoryId).map(InventoryPrice::getAmount).orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -154,25 +196,41 @@ public class InventoryPriceService {
         return priceRepository.findCurrentCandidates(inventoryId, date).stream().findFirst();
     }
 
-    @Transactional
-    public void initializeFromLegacyIfNecessary(Inventory inventory, InventoryPriceSource source, Long userId) {
-        BigDecimal legacy = inventory.getSalePrice();
-        if (legacy == null || legacy.signum() <= 0 || current(inventory.getId()).isPresent()) {
-            return;
+    @Transactional(readOnly = true)
+    public Map<Long, InventoryPrice> pricesAt(Collection<Long> inventoryIds, LocalDate date) {
+        if (inventoryIds == null || inventoryIds.isEmpty()) {
+            return Map.of();
         }
-        upsert(inventory, legacy, today(), source, null, userId, true);
+
+        Objects.requireNonNull(date, "date");
+
+        Map<Long, InventoryPrice> result = new LinkedHashMap<>();
+
+        for (InventoryPrice price : priceRepository.findCurrentCandidatesForInventoryIds(inventoryIds, date)) {
+
+            result.putIfAbsent(price.getInventory().getId(), price);
+        }
+
+        return result;
     }
 
+    /**
+     * Prices are now resolved directly from inventory_prices.  This scheduler only
+     * notifies external integrations when a scheduled price becomes effective;
+     * it never copies the value back into inventory.
+     */
     @Scheduled(cron = "0 2 0 * * *", zone = "America/Argentina/Buenos_Aires")
-    @Transactional
-    public void refreshEffectivePriceCache() {
-        refreshAllCaches();
-    }
-
-    @EventListener(ApplicationReadyEvent.class)
-    @Transactional
-    public void refreshOnStartup() {
-        refreshAllCaches();
+    @Transactional(readOnly = true)
+    public void publishScheduledPricesThatBecameEffective() {
+        for (InventoryPrice price : priceRepository.findAllByEffectiveFromWithInventory(today())) {
+            Inventory inventory = price.getInventory();
+            if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED
+                    && Boolean.TRUE.equals(inventory.getTiendanubePriceSyncEnabled())) {
+                eventPublisher.publishEvent(
+                        new TiendanubeSyncRequestedEvent(inventory.getId(), TiendanubeSyncType.PRICE)
+                );
+            }
+        }
     }
 
     private InventoryPrice upsert(
@@ -186,6 +244,8 @@ public class InventoryPriceService {
     ) {
         validateAmount(amount);
         Objects.requireNonNull(effectiveFrom, "effectiveFrom");
+
+        BigDecimal previousCurrent = currentAmount(inventory.getId());
 
         InventoryPrice price = priceRepository.findByInventoryIdAndEffectiveFrom(inventory.getId(), effectiveFrom)
                 .orElseGet(() -> InventoryPrice.builder()
@@ -204,42 +264,16 @@ public class InventoryPriceService {
         }
 
         if (!effectiveFrom.isAfter(today())) {
-            refreshCache(inventory);
+            BigDecimal newCurrent = currentAmount(inventory.getId());
+            if (!Objects.equals(previousCurrent, newCurrent)
+                    && inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED
+                    && Boolean.TRUE.equals(inventory.getTiendanubePriceSyncEnabled())) {
+                eventPublisher.publishEvent(
+                        new TiendanubeSyncRequestedEvent(inventory.getId(), TiendanubeSyncType.PRICE)
+                );
+            }
         }
         return saved;
-    }
-
-    private void refreshAllCaches() {
-        LocalDate today = today();
-        Map<Long, InventoryPrice> currentByInventory = new LinkedHashMap<>();
-        for (InventoryPrice price : priceRepository.findAllCurrentCandidates(today)) {
-            currentByInventory.putIfAbsent(price.getInventory().getId(), price);
-        }
-        for (InventoryPrice price : currentByInventory.values()) {
-            Inventory inventory = price.getInventory();
-            updateCacheIfChanged(inventory, price.getAmount());
-        }
-    }
-
-    private void refreshCache(Inventory inventory) {
-        BigDecimal amount = priceRepository.findCurrentCandidates(inventory.getId(), today())
-                .stream()
-                .findFirst()
-                .map(InventoryPrice::getAmount)
-                .orElse(null);
-        updateCacheIfChanged(inventory, amount);
-    }
-
-    private void updateCacheIfChanged(Inventory inventory, BigDecimal amount) {
-        if (Objects.equals(inventory.getSalePrice(), amount)) {
-            return;
-        }
-        inventory.setSalePrice(amount);
-        if (inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED
-                && Boolean.TRUE.equals(inventory.getTiendanubePriceSyncEnabled())
-                && amount != null) {
-            eventPublisher.publishEvent(new TiendanubeSyncRequestedEvent(inventory.getId(), TiendanubeSyncType.PRICE));
-        }
     }
 
     private Inventory getCurrentBookstoreInventory(Long inventoryId) {
@@ -261,7 +295,21 @@ public class InventoryPriceService {
                 price.getEffectiveFrom(),
                 price.getSource(),
                 price.getPriceImport() != null ? price.getPriceImport().getId() : null,
+                price.getLastConfirmedAt(),
+                price.getLastConfirmedSource(),
                 price.getCreatedAt()
         );
+    }
+
+    private String normalizeConfirmationSource(String source) {
+        if (source == null) {
+            return null;
+        }
+
+        String normalized = source.trim();
+
+        return normalized.isEmpty()
+                ? null
+                : normalized;
     }
 }

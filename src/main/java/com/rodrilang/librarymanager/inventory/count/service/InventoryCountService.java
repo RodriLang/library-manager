@@ -23,7 +23,6 @@ import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountSes
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 
-import java.math.BigDecimal;
 
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
@@ -157,14 +156,12 @@ public class InventoryCountService {
                 .distinct()
                 .toList();
         Map<Long, Inventory> inventories = priceResolver.existingInventories(session, bookIds);
-        Map<Long, BigDecimal> editorialPrices = priceResolver.currentEditorialPrices(bookIds);
-
         return page.map(item -> {
             if (item.getBook() == null) {
-                return responseMapper.toItemResponse(item, null, null);
+                return responseMapper.toItemResponse(item, null);
             }
             Long bookId = item.getBook().getId();
-            return responseMapper.toItemResponse(item, inventories.get(bookId), editorialPrices.get(bookId));
+            return responseMapper.toItemResponse(item, inventories.get(bookId));
         });
     }
 

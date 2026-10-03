@@ -5,8 +5,6 @@ import com.rodrilang.librarymanager.cover.job.entity.BookCoverJob;
 import com.rodrilang.librarymanager.cover.job.repository.BookCoverJobRepository;
 import com.rodrilang.librarymanager.cover.job.request.CreateBookCoverJobRequest;
 import com.rodrilang.librarymanager.cover.job.response.CreateBookCoverJobResult;
-import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
-import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.media.download.RemoteImageUrlNormalizer;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.repository.BookRepository;
@@ -21,8 +19,6 @@ public class BookCoverJobService {
 
     private final BookRepository bookRepository;
     private final BookCoverJobRepository jobRepository;
-    private final PriceListImportJobRepository priceListImportJobRepository;
-
     private final RemoteImageUrlNormalizer urlNormalizer;
     private final BookCoverJobKeyService jobKeyService;
     private final BookCoverJobProperties properties;
@@ -72,14 +68,8 @@ public class BookCoverJobService {
                         )
                 );
 
-        PriceListImportJob priceListImportJob =
-                findPriceListImportJob(
-                        request.priceListImportJobId()
-                );
-
         BookCoverJob job = BookCoverJob.create(
                 book,
-                priceListImportJob,
                 request.sourceUrl(),
                 normalizedUrl,
                 request.source(),
@@ -137,20 +127,4 @@ public class BookCoverJobService {
         }
     }
 
-    private PriceListImportJob findPriceListImportJob(
-            Long priceListImportJobId
-    ) {
-        if (priceListImportJobId == null) {
-            return null;
-        }
-
-        return priceListImportJobRepository
-                .findById(priceListImportJobId)
-                .orElseThrow(
-                        () -> new IllegalArgumentException(
-                                "No se encontró la importación de precios con id "
-                                        + priceListImportJobId
-                        )
-                );
-    }
 }

@@ -71,9 +71,6 @@ public class InventoryCountItem extends AuditableEntity {
     @Column(name = "sale_price_override", precision = 12, scale = 2)
     private BigDecimal salePriceOverride;
 
-    @Column(name = "editorial_price_sync_override")
-    private Boolean editorialPriceSyncOverride;
-
     @Column(name = "publish_on_tiendanube_override")
     private Boolean publishOnTiendanubeOverride;
 

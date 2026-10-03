@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.inventory.pricing.dto;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportClassification;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record InventoryPriceImportItemResponse(
         Long id,
@@ -18,6 +19,9 @@ public record InventoryPriceImportItemResponse(
         BigDecimal changePercent,
         InventoryPriceImportClassification classification,
         String conflictReason,
-        boolean selectedDefault
+        boolean selectedDefault,
+        boolean applied,
+        Long selectedDuplicateItemId,
+        List<InventoryPriceImportDuplicateRowResponse> duplicateRows
 ) {
 }

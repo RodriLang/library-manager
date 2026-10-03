@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.inventory.count.service;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItem;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountSession;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
@@ -21,21 +22,10 @@ import java.util.stream.Collectors;
 public class InventoryCountPriceResolver {
 
     private final InventoryRepository inventoryRepository;
+    private final InventoryPriceService inventoryPriceService;
 
     public boolean requiresPrice(Book book, Long bookstoreId, BookCondition condition) {
         return false;
-    }
-
-    /** @deprecated el flujo de carga ya no depende de precios editoriales */
-    @Deprecated
-    public Optional<BigDecimal> currentEditorialPrice(Book book) {
-        return Optional.empty();
-    }
-
-    /** @deprecated el flujo de carga ya no depende de precios editoriales */
-    @Deprecated
-    public Map<Long, BigDecimal> currentEditorialPrices(Collection<Long> bookIds) {
-        return Map.of();
     }
 
     public Optional<Inventory> existingInventory(InventoryCountItem item) {
@@ -53,6 +43,9 @@ public class InventoryCountPriceResolver {
 
     public Optional<BigDecimal> resolve(InventoryCountItem item) {
         if (item.getSalePriceOverride() != null) return Optional.of(item.getSalePriceOverride());
-        return existingInventory(item).map(Inventory::getSalePrice).filter(java.util.Objects::nonNull);
+        return existingInventory(item)
+                .map(Inventory::getId)
+                .map(inventoryPriceService::currentAmount)
+                .filter(java.util.Objects::nonNull);
     }
 }
