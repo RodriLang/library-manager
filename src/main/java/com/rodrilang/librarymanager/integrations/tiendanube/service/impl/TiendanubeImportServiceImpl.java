@@ -38,7 +38,8 @@ import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.BookRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.repository.projection.InventoryTiendanubePreviewProjection;
-import com.rodrilang.librarymanager.service.EditorialPriceService;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Hibernate;
@@ -69,7 +70,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     private final TiendanubeProductMatchingService matchingService;
     private final TiendanubeProductSyncService productSyncService;
     private final IsbnService isbnService;
-    private final EditorialPriceService editorialPriceService;
+    private final InventoryPriceService inventoryPriceService;
     private final BookstoreContext bookstoreContext;
 
     @Override
@@ -142,13 +143,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         bookIds
                 );
 
-        Map<Long, BigDecimal> editorialPrices = editorialPriceService.findCurrentPricesByBookIds(bookIds);
-
-        PreviewContext context =
-                new PreviewContext(
-                        inventoryInfo,
-                        editorialPrices
-                );
+        PreviewContext context = new PreviewContext(inventoryInfo);
 
         List<TiendanubeImportPreviewItemResponse> items =
                 previewData.stream()
@@ -208,8 +203,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 BookCondition.NEW,
                 stock,
                 variant.price(),
-                true,
-                false
+                true
         );
 
         TiendanubeImportResultResponse result = importPersistenceService.importExistingBook(
@@ -317,8 +311,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                     item.condition(),
                     item.stock(),
                     item.salePrice(),
-                    item.syncPrice(),
-                    item.editorialPriceSyncEnabled()
+                    item.syncPrice()
             );
 
             TiendanubeImportResultResponse result = importPersistenceService.importExistingBook(
@@ -578,7 +571,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                         context
                 );
 
-        BigDecimal editorialPrice = context.editorialPrices().get(book.getId());
+        BigDecimal salePrice = inventory != null ? inventory.salePrice() : null;
 
         return new TiendanubeImportBookCandidateResponse(
                 book.getId(),
@@ -586,7 +579,7 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
                 book.getTitle(),
                 authors,
                 publisher,
-                editorialPrice,
+                salePrice,
                 inventory != null
                         ? inventory.inventoryId()
                         : null,
@@ -964,25 +957,26 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
             return Map.of();
         }
 
-        return inventoryRepository
-                .findTiendanubePreviewByBookIds(
-                        bookstoreId,
-                        bookIds
+        List<InventoryTiendanubePreviewProjection> projections = inventoryRepository
+                .findTiendanubePreviewByBookIds(bookstoreId, bookIds);
+
+        Map<Long, InventoryPrice> prices = inventoryPriceService.currentFor(
+                projections.stream().map(InventoryTiendanubePreviewProjection::getInventoryId).toList()
+        );
+
+        return projections.stream().collect(
+                Collectors.toMap(
+                        InventoryTiendanubePreviewProjection::getBookId,
+                        projection -> new InventoryPreviewInfo(
+                                projection.getInventoryId(),
+                                Boolean.TRUE.equals(projection.getLinked()),
+                                Optional.ofNullable(prices.get(projection.getInventoryId()))
+                                        .map(InventoryPrice::getAmount)
+                                        .orElse(null)
+                        ),
+                        (first, second) -> first
                 )
-                .stream()
-                .collect(
-                        Collectors.toMap(
-                                InventoryTiendanubePreviewProjection::getBookId,
-                                projection ->
-                                        new InventoryPreviewInfo(
-                                                projection.getInventoryId(),
-                                                Boolean.TRUE.equals(
-                                                        projection.getLinked()
-                                                )
-                                        ),
-                                (first, second) -> first
-                        )
-                );
+        );
     }
 
     private ProductPreviewData prepareProductPreview(
@@ -1058,14 +1052,14 @@ public class TiendanubeImportServiceImpl implements TiendanubeImportService {
     }
 
     private record PreviewContext(
-            Map<Long, InventoryPreviewInfo> inventoryInfo,
-            Map<Long, BigDecimal> editorialPrices
+            Map<Long, InventoryPreviewInfo> inventoryInfo
     ) {
     }
 
     private record InventoryPreviewInfo(
             Long inventoryId,
-            boolean linked
+            boolean linked,
+            BigDecimal salePrice
     ) {
     }
 

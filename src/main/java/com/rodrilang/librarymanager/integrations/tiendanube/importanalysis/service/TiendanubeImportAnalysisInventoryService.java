@@ -9,6 +9,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.T
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -26,6 +28,7 @@ public class TiendanubeImportAnalysisInventoryService {
     private final InventoryRepository inventoryRepository;
     private final BookstoreService bookstoreService;
     private final InventoryStockService inventoryStockService;
+    private final InventoryPriceService inventoryPriceService;
 
     public Inventory createOrReactivate(
             Long bookstoreId,
@@ -61,16 +64,21 @@ public class TiendanubeImportAnalysisInventoryService {
                 .book(book)
                 .bookstore(bookstore)
                 .condition(BookCondition.NEW)
-                .salePrice(request.salePrice())
                 .stock(0)
                 .minimumStock(request.minimumStock())
                 .tiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED)
                 .tiendanubePriceSyncEnabled(false)
-                .editorialPriceSyncEnabled(false)
                 .active(true)
                 .build();
 
         Inventory saved = inventoryRepository.save(inventory);
+        inventoryPriceService.upsertSystem(
+                saved,
+                request.salePrice(),
+                inventoryPriceService.today(),
+                InventoryPriceSource.TIENDANUBE_IMPORT,
+                null
+        );
 
         if (request.initialStock() == 0) {
             return saved;
@@ -111,11 +119,16 @@ public class TiendanubeImportAnalysisInventoryService {
 
         inventory.setActive(true);
         inventory.setCondition(BookCondition.NEW);
-        inventory.setSalePrice(request.salePrice());
         inventory.setMinimumStock(request.minimumStock());
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED);
         inventory.setTiendanubePriceSyncEnabled(false);
-        inventory.setEditorialPriceSyncEnabled(false);
+        inventoryPriceService.upsertSystem(
+                inventory,
+                request.salePrice(),
+                inventoryPriceService.today(),
+                InventoryPriceSource.TIENDANUBE_IMPORT,
+                null
+        );
 
         return inventoryStockService.adjustStockTo(
                 inventory.getId(),

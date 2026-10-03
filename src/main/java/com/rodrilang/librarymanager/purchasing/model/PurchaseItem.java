@@ -36,8 +36,8 @@ public class PurchaseItem extends AuditableEntity {
     @Column(nullable = false)
     private Integer quantity;
 
-    @Column(name = "editorial_price_snapshot", precision = 14, scale = 2)
-    private BigDecimal editorialPriceSnapshot;
+    @Column(name = "sale_price_snapshot", precision = 14, scale = 2)
+    private BigDecimal salePriceSnapshot;
 
     @Column(name = "discount_percentage", precision = 5, scale = 2)
     private BigDecimal discountPercentage;

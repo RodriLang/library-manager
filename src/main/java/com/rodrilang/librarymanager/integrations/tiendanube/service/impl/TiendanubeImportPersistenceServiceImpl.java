@@ -15,6 +15,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeIm
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -36,6 +38,7 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
     private final InventoryRepository inventoryRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final InventoryStockService inventoryStockService;
+    private final InventoryPriceService inventoryPriceService;
 
     @Override
     @Transactional
@@ -58,14 +61,19 @@ public class TiendanubeImportPersistenceServiceImpl implements TiendanubeImportP
                 .condition(command.condition())
                 .stock(0)
                 .minimumStock(0)
-                .salePrice(command.salePrice())
                 .tiendanubeStatus(TiendanubeInventoryStatus.LINKED)
                 .tiendanubePriceSyncEnabled(Boolean.TRUE.equals(command.syncPrice()))
-                .editorialPriceSyncEnabled(Boolean.TRUE.equals(command.editorialPriceSyncEnabled()))
                 .active(true)
                 .build();
 
         inventory = inventoryRepository.save(inventory);
+        inventoryPriceService.upsertSystem(
+                inventory,
+                command.salePrice(),
+                inventoryPriceService.today(),
+                InventoryPriceSource.TIENDANUBE_IMPORT,
+                null
+        );
 
         if (command.stock() > 0) {
             inventoryStockService.changeStock(

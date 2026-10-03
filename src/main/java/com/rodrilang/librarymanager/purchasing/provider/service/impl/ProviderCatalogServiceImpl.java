@@ -8,7 +8,6 @@ import com.rodrilang.librarymanager.provider.model.ProviderType;
 import com.rodrilang.librarymanager.provider.catalog.model.ProviderBook;
 import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
-import com.rodrilang.librarymanager.model.EditorialPrice;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.provider.dto.ProviderCatalogFilter;
 import com.rodrilang.librarymanager.purchasing.provider.dto.response.ProviderCatalogAlternativeResponse;
@@ -20,8 +19,8 @@ import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequire
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
 import com.rodrilang.librarymanager.repository.BookRepository;
-import com.rodrilang.librarymanager.repository.EditorialPriceRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.repository.projection.BookAuthorNameProjection;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,8 +30,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,7 +46,7 @@ public class ProviderCatalogServiceImpl
     private final ProviderRepository providerRepository;
     private final BookRepository bookRepository;
 
-    private final EditorialPriceRepository editorialPriceRepository;
+    private final InventoryPriceService inventoryPriceService;
     private final InventoryRepository inventoryRepository;
     private final PurchaseRequirementRepository requirementRepository;
 
@@ -93,12 +90,6 @@ public class ProviderCatalogServiceImpl
                         )
                         .toList();
 
-        Map<Long, EditorialPrice> priceByBookId =
-                loadProviderPrices(
-                        providerId,
-                        bookIds
-                );
-
         Map<Long, Inventory> inventoryByBookId =
                 loadInventory(
                         bookstoreId,
@@ -135,33 +126,12 @@ public class ProviderCatalogServiceImpl
         return page.map(providerBook ->
                 toResponse(
                         providerBook,
-                        priceByBookId,
                         inventoryByBookId,
                         requirementByBookId,
                         alternativesByBookId,
                         authorsByBookId
                 )
         );
-    }
-
-    private Map<Long, EditorialPrice> loadProviderPrices(
-            Long providerId,
-            List<Long> bookIds
-    ) {
-
-        return editorialPriceRepository
-                .findCurrentByProviderAndBookIds(
-                        providerId,
-                        bookIds,
-                        LocalDate.now(ZoneId.systemDefault())
-                )
-                .stream()
-                .collect(
-                        Collectors.toMap(
-                                price -> price.getBook().getId(),
-                                Function.identity()
-                        )
-                );
     }
 
     private Map<Long, Inventory> loadInventory(
@@ -223,32 +193,6 @@ public class ProviderCatalogServiceImpl
         if (providers.isEmpty()) {
             return Map.of();
         }
-
-        Set<Long> providerIds =
-                providers.stream()
-                        .map(
-                                BookAlternativeProviderProjection::getProviderId
-                        )
-                        .collect(Collectors.toSet());
-
-        Map<String, BigDecimal> prices =
-                editorialPriceRepository
-                        .findCurrentByBooksAndProviders(
-                                bookIds,
-                                providerIds,
-                                LocalDate.now(ZoneId.systemDefault())
-                        )
-                        .stream()
-                        .collect(
-                                Collectors.toMap(
-                                        price ->
-                                                price.getBook().getId()
-                                                        + ":"
-                                                        + price.getProvider().getId(),
-                                        EditorialPrice::getPrice
-                                )
-                        );
-
         return providers.stream()
                 .collect(
                         Collectors.groupingBy(
@@ -258,11 +202,7 @@ public class ProviderCatalogServiceImpl
                                                 new ProviderCatalogAlternativeResponse(
                                                         provider.getProviderId(),
                                                         provider.getProviderName(),
-                                                        prices.get(
-                                                                provider.getBookId()
-                                                                        + ":"
-                                                                        + provider.getProviderId()
-                                                        )
+                                                        null
                                                 ),
                                         Collectors.toList()
                                 )
@@ -272,7 +212,6 @@ public class ProviderCatalogServiceImpl
 
     private ProviderCatalogBookResponse toResponse(
             ProviderBook providerBook,
-            Map<Long, EditorialPrice> priceByBookId,
             Map<Long, Inventory> inventoryByBookId,
             Map<Long, PurchaseRequirement> requirementByBookId,
             Map<Long, List<ProviderCatalogAlternativeResponse>> alternativesByBookId,
@@ -283,9 +222,10 @@ public class ProviderCatalogServiceImpl
 
         Long bookId = book.getId();
 
-        EditorialPrice price = priceByBookId.get(bookId);
-
         Inventory inventory = inventoryByBookId.get(bookId);
+        BigDecimal salePrice = inventory != null
+                ? inventoryPriceService.currentAmount(inventory.getId())
+                : null;
 
         PurchaseRequirement requirement = requirementByBookId.get(bookId);
 
@@ -309,9 +249,7 @@ public class ProviderCatalogServiceImpl
 
                 providerBook.getExternalCode(),
 
-                price != null
-                        ? price.getPrice()
-                        : null,
+                salePrice,
 
                 inventory != null
                         ? inventory.getId()

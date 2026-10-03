@@ -4,8 +4,6 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
 import com.rodrilang.librarymanager.dto.response.PublisherConfigurationDetailResponse;
 import com.rodrilang.librarymanager.dto.response.PublisherConfigurationResponse;
-import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
-import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.PublisherCatalogSort;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
@@ -28,8 +26,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -41,7 +37,6 @@ public class BookstoreCatalogSettingsServiceImpl implements BookstoreCatalogSett
     private final BookstoreExcludedPublisherRepository excludedPublisherRepository;
     private final BookRepository bookRepository;
     private final BookMapper bookMapper;
-    private final EffectiveEditorialPriceService effectiveEditorialPriceService;
 
     @Override
     @Transactional(readOnly = true)
@@ -158,10 +153,6 @@ public class BookstoreCatalogSettingsServiceImpl implements BookstoreCatalogSett
     }
 
     private Page<BookSummaryResponse> toBookSummaryResponsePage(Page<Book> books) {
-        List<Long> bookIds = books.getContent().stream().map(Book::getId).toList();
-
-        Map<Long, EffectiveEditorialPrice> pricesByBookId = effectiveEditorialPriceService.findCurrentByBookIds(bookIds);
-
-        return books.map(book -> bookMapper.toSummaryResponse(book, pricesByBookId.get(book.getId())));
+        return books.map(bookMapper::toSummaryResponse);
     }
 }

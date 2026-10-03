@@ -5,7 +5,6 @@ import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
-import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
 import com.rodrilang.librarymanager.model.Book;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
@@ -15,7 +14,7 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 
 import java.util.List;
 
-@Mapper(componentModel = "spring", uses = {AuthorMapper.class, PublisherMapper.class, EditorialPriceMapper.class})
+@Mapper(componentModel = "spring", uses = {AuthorMapper.class, PublisherMapper.class})
 public interface BookMapper {
 
     @Mapping(target = "isbn", expression = "java(book.getPreferredIsbn())")
@@ -24,19 +23,16 @@ public interface BookMapper {
     @Mapping(target = "active", source = "book.active")
     @Mapping(target = "createdAt", source = "book.createdAt")
     @Mapping(target = "updatedAt", source = "book.updatedAt")
-    @Mapping(target = "editorialPrice", source = "editorialPrice")
     @Mapping(target = "providers", source = "providers")
     BookDetailResponse toDetailResponse(
             Book book,
-            EffectiveEditorialPrice editorialPrice,
             List<BookProviderResponse> providers
     );
 
     @Mapping(target = "isbn", expression = "java(book.getPreferredIsbn())")
     @Mapping(target = "id", source = "book.id")
     @Mapping(target = "publisherName", source = "book.publisher.name")
-    @Mapping(target = "editorialPrice", source = "editorialPrice")
-    BookSummaryResponse toSummaryResponse(Book book, EffectiveEditorialPrice editorialPrice);
+    BookSummaryResponse toSummaryResponse(Book book);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "isbn10", ignore = true)

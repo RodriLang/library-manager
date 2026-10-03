@@ -1,6 +1,5 @@
 package com.rodrilang.librarymanager.repository.impl;
 
-import com.rodrilang.librarymanager.enums.EditorialPricePresence;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.repository.criteria.BookCatalogCriteria;
 import com.rodrilang.librarymanager.repository.BookCatalogQueryRepository;
@@ -22,21 +21,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepository {
 
-    private static final String CURRENT_PRICE_CTE_BODY = """
-            current_prices AS (
-                SELECT DISTINCT ON (eep.book_id)
-                    eep.book_id,
-                    eep.price
-                FROM effective_editorial_prices eep
-                WHERE eep.active = TRUE
-                  AND eep.valid_from <= CURRENT_DATE
-                ORDER BY
-                    eep.book_id,
-                    eep.valid_from DESC,
-                    eep.id DESC
-            )
-            """;
-
     private final EntityManager entityManager;
 
     @Override
@@ -45,17 +29,8 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
             long bookstoreId,
             Pageable pageable
     ) {
-        boolean currentPriceRequired =
-                criteria.hasPriceFilter()
-                        || hasSort(pageable, "editorialPrice");
-
-        String priceCte = currentPriceRequired
-                ? currentPriceCte()
-                : "";
-
-        String priceJoin = currentPriceRequired
-                ? "LEFT JOIN current_prices cp ON cp.book_id = b.id"
-                : "";
+        String priceCte = "";
+        String priceJoin = "";
 
         String filters = buildFilters(criteria);
 
@@ -104,13 +79,8 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
             long bookstoreId,
             Pageable pageable
     ) {
-        String priceCte = criteria.hasPriceFilter()
-                ? currentPriceCte()
-                : "";
-
-        String priceJoin = criteria.hasPriceFilter()
-                ? "LEFT JOIN current_prices cp ON cp.book_id = b.id"
-                : "";
+        String priceCte = "";
+        String priceJoin = "";
 
         String filters = buildFilters(criteria);
 
@@ -173,15 +143,8 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
             long bookstoreId,
             Pageable pageable
     ) {
-        boolean currentPriceRequired = criteria.hasPriceFilter();
-
-        String currentPrices = currentPriceRequired
-                ? CURRENT_PRICE_CTE_BODY + ","
-                : "";
-
-        String priceJoin = currentPriceRequired
-                ? "LEFT JOIN current_prices cp ON cp.book_id = b.id"
-                : "";
+        String currentPrices = "";
+        String priceJoin = "";
 
         String filters = buildFilters(criteria);
 
@@ -365,41 +328,7 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
                     """);
         }
 
-        if (criteria.minPrice() != null) {
-            sql.append("""
-                    
-                    AND cp.price >= :minPrice
-                    """);
-        }
-
-        if (criteria.maxPrice() != null) {
-            sql.append("""
-                    
-                    AND cp.price <= :maxPrice
-                    """);
-        }
-
-        if (criteria.priceStatus() == EditorialPricePresence.WITH_PRICE) {
-            sql.append("""
-                    
-                    AND cp.price IS NOT NULL
-                    """);
-        }
-
-        if (criteria.priceStatus() == EditorialPricePresence.WITHOUT_PRICE) {
-            sql.append("""
-                    
-                    AND cp.price IS NULL
-                    """);
-        }
-
         return sql.toString();
-    }
-
-    private String currentPriceCte() {
-        return """
-                WITH %s
-                """.formatted(CURRENT_PRICE_CTE_BODY);
     }
 
     private String buildOrderBy(Pageable pageable) {
@@ -415,8 +344,6 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
 
                 case "publisher", "publisherName" -> clauses.add("p.name " + direction + " NULLS LAST");
 
-                case "editorialPrice" -> clauses.add("cp.price " + direction + " NULLS LAST");
-
                 default -> {
                 }
             }
@@ -429,14 +356,6 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
         clauses.add("b.id ASC");
 
         return "ORDER BY " + String.join(", ", clauses);
-    }
-
-    private boolean hasSort(
-            Pageable pageable,
-            String property
-    ) {
-        return pageable.getSort().stream()
-                .anyMatch(order -> property.equals(order.getProperty()));
     }
 
     private Page<Book> executePage(
@@ -503,13 +422,6 @@ public class BookCatalogQueryRepositoryImpl implements BookCatalogQueryRepositor
             );
         }
 
-        if (criteria.minPrice() != null) {
-            query.setParameter("minPrice", criteria.minPrice());
-        }
-
-        if (criteria.maxPrice() != null) {
-            query.setParameter("maxPrice", criteria.maxPrice());
-        }
     }
 
     private void bindIdList(

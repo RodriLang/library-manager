@@ -74,20 +74,8 @@ public interface ProviderBookRepository
                 pb.book.id AS bookId,
                 pb.provider.id AS providerId,
                 pb.provider.name AS providerName,
-                ep.price AS price
+                null AS price
             FROM ProviderBook pb
-            LEFT JOIN EditorialPrice ep
-                ON ep.book.id = pb.book.id
-               AND ep.provider.id = pb.provider.id
-               AND ep.active = true
-               AND ep.validFrom = (
-                    SELECT MAX(ep2.validFrom)
-                    FROM EditorialPrice ep2
-                    WHERE ep2.book.id = pb.book.id
-                      AND ep2.provider.id = pb.provider.id
-                      AND ep2.active = true
-                      AND ep2.validFrom <= CURRENT_DATE
-               )
             WHERE pb.book.id IN :bookIds
               AND pb.active = true
               AND pb.provider.active = true

@@ -158,11 +158,9 @@ public class InventoryCountItemService {
 
         if (request.quantity() == null
                 && request.salePrice() == null
-                && request.editorialPriceSyncEnabled() == null
                 && request.publishOnTiendanube() == null
                 && request.tiendanubePriceSyncEnabled() == null
-                && request.minimumStock() == null
-                && request.useCustomConfiguration() == null) {
+                && request.minimumStock() == null) {
             throw new BusinessException("Debe indicar al menos un dato para modificar");
         }
 
@@ -170,47 +168,11 @@ public class InventoryCountItemService {
             reviewResetService.resetToOpen(session);
         }
 
-        if (Boolean.FALSE.equals(request.useCustomConfiguration())) {
-            clearCustomConfiguration(item);
-
-            refreshKnownItemStatus(item);
-
-            InventoryCountItem saved = itemRepository.save(item);
-
-            if (session.getStatus() == InventoryCountStatus.APPLIED_WITH_PENDING) {
-                pendingApplyService.applyIfReady(saved);
-            }
-
-            return responseMapper.toItemResponse(saved);
-        }
-
         if (request.quantity() != null) {
             item.setQuantity(request.quantity());
         }
         if (request.salePrice() != null) {
             item.setSalePriceOverride(request.salePrice());
-            if (request.editorialPriceSyncEnabled() == null) {
-                item.setEditorialPriceSyncOverride(false);
-            }
-        }
-        if (request.editorialPriceSyncEnabled() != null) {
-            if (Boolean.TRUE.equals(request.editorialPriceSyncEnabled())
-                    && session.getCondition() != BookCondition.NEW) {
-                throw new BusinessException(
-                        "La sincronización con precio editorial solo está disponible para libros nuevos"
-                );
-            }
-
-            boolean wasEditorialSync = isEditorialSyncEnabled(item);
-            BigDecimal editorialPrice = item.getBook() != null
-                    ? priceResolver.currentEditorialPrice(item.getBook()).orElse(null)
-                    : null;
-
-            if (editorialPrice != null
-                    && (Boolean.TRUE.equals(request.editorialPriceSyncEnabled()) || wasEditorialSync)) {
-                item.setSalePriceOverride(editorialPrice);
-            }
-            item.setEditorialPriceSyncOverride(request.editorialPriceSyncEnabled());
         }
         if (request.publishOnTiendanube() != null) {
             item.setPublishOnTiendanubeOverride(request.publishOnTiendanube());
@@ -250,19 +212,6 @@ public class InventoryCountItemService {
         pendingApplyService.refreshSessionStatus(session);
     }
 
-    private boolean isEditorialSyncEnabled(InventoryCountItem item) {
-        if (item.getBook() == null || item.getSession().getCondition() != BookCondition.NEW) {
-            return false;
-        }
-        if (item.getEditorialPriceSyncOverride() != null) {
-            return Boolean.TRUE.equals(item.getEditorialPriceSyncOverride());
-        }
-
-        return priceResolver.existingInventory(item)
-                .map(inventory -> Boolean.TRUE.equals(inventory.getEditorialPriceSyncEnabled()))
-                .orElse(Boolean.TRUE.equals(item.getSession().getDefaultEditorialPriceSyncEnabled()));
-    }
-
     private void refreshKnownItemStatus(InventoryCountItem item) {
         if (item.getBook() == null) {
             return;
@@ -274,7 +223,7 @@ public class InventoryCountItemService {
                 item.getSession().getCondition()
         );
 
-        item.setStatus(hasPrice ? InventoryCountItemStatus.RESOLVED : InventoryCountItemStatus.PENDING_PRICE);
+        item.setStatus(InventoryCountItemStatus.RESOLVED);
     }
 
     private InventoryCountItem requireItem(Long itemId, Long sessionId) {
@@ -297,13 +246,5 @@ public class InventoryCountItemService {
         }
 
         throw new BusinessException("El ítem ya no puede modificarse en el estado actual del conteo");
-    }
-
-    private void clearCustomConfiguration(InventoryCountItem item) {
-        item.setSalePriceOverride(null);
-        item.setEditorialPriceSyncOverride(null);
-        item.setPublishOnTiendanubeOverride(null);
-        item.setTiendanubePriceSyncOverride(null);
-        item.setMinimumStockOverride(null);
     }
 }

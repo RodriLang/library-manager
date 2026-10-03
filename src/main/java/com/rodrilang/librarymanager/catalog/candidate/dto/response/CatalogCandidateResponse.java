@@ -31,8 +31,6 @@ public record CatalogCandidateResponse(
 
         Instant firstDetectedAt,
 
-        Instant automaticLookupAttemptedAt,
-
         Instant resolvedAt
 
 ) {

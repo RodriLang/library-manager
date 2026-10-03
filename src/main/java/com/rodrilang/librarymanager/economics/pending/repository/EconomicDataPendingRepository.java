@@ -29,12 +29,12 @@ public class EconomicDataPendingRepository {
                     COALESCE(SUM(unknown_cost_units), 0) AS unknown_cost_units,
                     COALESCE(SUM(estimated_cost_units), 0) AS estimated_cost_units,
                     COALESCE(SUM(missing_discount_units), 0) AS missing_discount_units,
-                    COALESCE(SUM(stock_units) FILTER (WHERE current_editorial_price IS NULL), 0)
+                    COALESCE(SUM(stock_units) FILTER (WHERE current_sale_price IS NULL), 0)
                         AS missing_current_price_units,
                     COUNT(*) FILTER (
                         WHERE unknown_cost_units > 0
                            OR missing_discount_units > 0
-                           OR current_editorial_price IS NULL
+                           OR current_sale_price IS NULL
                            OR has_commercial_term = FALSE
                     ) AS pending_book_count,
                     COUNT(*) FILTER (WHERE has_commercial_term = FALSE)
@@ -74,7 +74,7 @@ public class EconomicDataPendingRepository {
                     unknown_cost_units,
                     estimated_cost_units,
                     missing_discount_units,
-                    current_editorial_price,
+                    current_sale_price,
                     has_commercial_term
                 FROM book_data
                 WHERE
@@ -100,7 +100,7 @@ public class EconomicDataPendingRepository {
                         rs.getLong("unknown_cost_units"),
                         rs.getLong("estimated_cost_units"),
                         rs.getLong("missing_discount_units"),
-                        rs.getBigDecimal("current_editorial_price"),
+                        rs.getBigDecimal("current_sale_price"),
                         rs.getBoolean("has_commercial_term")
                 )
         );
@@ -120,7 +120,7 @@ public class EconomicDataPendingRepository {
                     (
                         unknown_cost_units > 0
                         OR missing_discount_units > 0
-                        OR current_editorial_price IS NULL
+                        OR current_sale_price IS NULL
                         OR has_commercial_term = FALSE
                     )
                     """;
@@ -128,7 +128,7 @@ public class EconomicDataPendingRepository {
             reasonFilter = switch (reason) {
                 case UNKNOWN_COST -> "unknown_cost_units > 0";
                 case MISSING_DISCOUNT -> "missing_discount_units > 0";
-                case MISSING_CURRENT_PRICE -> "current_editorial_price IS NULL";
+                case MISSING_CURRENT_PRICE -> "current_sale_price IS NULL";
                 case NO_COMMERCIAL_TERM -> "has_commercial_term = FALSE";
             };
         }
@@ -153,16 +153,7 @@ public class EconomicDataPendingRepository {
     }
 
     private static final String BASE_CTE = """
-            WITH current_prices AS (
-                SELECT DISTINCT ON (eep.book_id)
-                    eep.book_id,
-                    eep.price
-                FROM effective_editorial_prices eep
-                WHERE eep.active = TRUE
-                  AND eep.valid_from <= :asOf
-                ORDER BY eep.book_id, eep.valid_from DESC, eep.id DESC
-            ),
-            term_books AS (
+            WITH term_books AS (
                 SELECT DISTINCT term.book_id
                 FROM bookstore_provider_book_terms term
                 JOIN providers provider ON provider.id = term.provider_id
@@ -184,12 +175,15 @@ public class EconomicDataPendingRepository {
                         FILTER (WHERE layer.cost_type = 'ESTIMATED'), 0) AS estimated_cost_units,
                     COALESCE(SUM(layer.quantity_remaining)
                         FILTER (WHERE layer.discount_percentage IS NULL), 0) AS missing_discount_units,
-                    MAX(price.price) AS current_editorial_price,
+                    MAX((SELECT ip.amount FROM inventory_prices ip
+                         WHERE ip.inventory_id = inventory.id
+                           AND ip.effective_from <= :asOf
+                         ORDER BY ip.effective_from DESC, ip.id DESC
+                         LIMIT 1)) AS current_sale_price,
                     BOOL_OR(term_book.book_id IS NOT NULL) AS has_commercial_term
                 FROM inventory_cost_layers layer
                 JOIN inventory inventory ON inventory.id = layer.inventory_id
                 JOIN books book ON book.id = inventory.book_id
-                LEFT JOIN current_prices price ON price.book_id = inventory.book_id
                 LEFT JOIN term_books term_book ON term_book.book_id = inventory.book_id
                 WHERE inventory.bookstore_id = :bookstoreId
                   AND layer.reversed_at IS NULL

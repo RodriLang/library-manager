@@ -43,7 +43,7 @@ public class PurchasingMapper {
                 item.getBook().getTitle(),
                 item.getCondition(),
                 item.getQuantity(),
-                item.getEditorialPriceSnapshot(),
+                item.getSalePriceSnapshot(),
                 item.getDiscountPercentage(),
                 item.getUnitCost(),
                 item.getTotalCost()

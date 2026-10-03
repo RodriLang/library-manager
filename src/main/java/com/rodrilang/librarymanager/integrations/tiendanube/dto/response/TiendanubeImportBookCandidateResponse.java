@@ -8,7 +8,7 @@ public record TiendanubeImportBookCandidateResponse(
         String title,
         String authors,
         String publisher,
-        BigDecimal editorialPrice,
+        BigDecimal salePrice,
         Long inventoryId,
         boolean inventoryLinked
 ) {

@@ -29,8 +29,6 @@ public record InventoryBulkItemResponse(
 
         Boolean active,
 
-        Boolean editorialPriceSyncEnabled,
-
         Boolean tiendanubePriceSyncEnabled,
 
         TiendanubeInventoryStatus tiendanubeStatus

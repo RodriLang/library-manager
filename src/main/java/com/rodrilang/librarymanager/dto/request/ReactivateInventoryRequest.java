@@ -11,7 +11,6 @@ public record ReactivateInventoryRequest(
         @Positive BigDecimal salePrice,
         @Min(0) Integer minimumStock,
         BookCondition condition,
-        Boolean editorialPriceSyncEnabled,
         Boolean publishOnTiendanube,
         Boolean tiendanubePriceSyncEnabled
 ) {

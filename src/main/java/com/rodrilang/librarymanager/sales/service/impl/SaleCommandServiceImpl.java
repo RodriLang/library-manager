@@ -16,6 +16,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSync
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.profitability.service.SaleProfitabilityService;
@@ -66,6 +68,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
     private final SalePaymentRepository paymentRepository;
     private final FiscalDocumentRepository fiscalDocumentRepository;
     private final InventoryRepository inventoryRepository;
+    private final InventoryPriceService inventoryPriceService;
     private final UserRepository userRepository;
 
     private final InventoryStockService inventoryStockService;
@@ -111,16 +114,21 @@ public class SaleCommandServiceImpl implements SaleCommandService {
                         LinkedHashMap::new
                 ));
 
+        Map<Long, InventoryPrice> currentPrices = inventoryPriceService.currentFor(inventoryIds);
+
         Map<Long, BigDecimal> lineSubtotalByInventoryId = new LinkedHashMap<>();
 
         for (CreateSaleItemRequest item : requestedItems) {
             Inventory inventory = inventoryById.get(item.inventoryId());
-            validateInventoryForSale(inventory, item.quantity());
+            BigDecimal currentPrice = java.util.Optional.ofNullable(currentPrices.get(inventory.getId()))
+                    .map(InventoryPrice::getAmount)
+                    .orElse(null);
+            validateInventoryForSale(inventory, currentPrice, item.quantity());
 
             lineSubtotalByInventoryId.put(
                     inventory.getId(),
                     calculator.calculateLineSubtotal(
-                            inventory.getSalePrice(),
+                            currentPrice,
                             item.quantity()
                     )
             );
@@ -158,7 +166,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
                             .sale(sale)
                             .inventory(inventory)
                             .quantity(item.quantity())
-                            .unitPrice(calculator.money(inventory.getSalePrice()))
+                            .unitPrice(calculator.money(currentPrices.get(inventory.getId()).getAmount()))
                             .subtotal(lineSubtotalByInventoryId.get(inventory.getId()))
                             .description(inventory.getBook().getTitle())
                             .isbn(inventory.getBook().getPreferredIsbn())
@@ -359,7 +367,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
         }
     }
 
-    private void validateInventoryForSale(Inventory inventory, Integer quantity) {
+    private void validateInventoryForSale(Inventory inventory, BigDecimal currentPrice, Integer quantity) {
         if (!Boolean.TRUE.equals(inventory.getActive())) {
             throw new BusinessException(
                     "El libro \"" + inventory.getBook().getTitle() + "\" se encuentra inactivo."
@@ -368,6 +376,11 @@ public class SaleCommandServiceImpl implements SaleCommandService {
         if (!Boolean.TRUE.equals(inventory.getBook().getActive())) {
             throw new BusinessException(
                     "El libro \"" + inventory.getBook().getTitle() + "\" se encuentra inactivo en el catálogo."
+            );
+        }
+        if (currentPrice == null || currentPrice.signum() <= 0) {
+            throw new BusinessException(
+                    "El libro \"" + inventory.getBook().getTitle() + "\" no tiene un precio de venta definido."
             );
         }
         if (quantity == null || quantity <= 0) {

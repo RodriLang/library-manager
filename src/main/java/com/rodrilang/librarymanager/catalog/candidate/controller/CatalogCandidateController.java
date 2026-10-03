@@ -1,7 +1,6 @@
 package com.rodrilang.librarymanager.catalog.candidate.controller;
 
 import com.rodrilang.librarymanager.catalog.candidate.dto.request.CreateCatalogCandidateBookRequest;
-import com.rodrilang.librarymanager.catalog.candidate.dto.response.CatalogCandidateLookupResponse;
 import com.rodrilang.librarymanager.catalog.candidate.dto.response.CatalogCandidateResponse;
 import com.rodrilang.librarymanager.catalog.candidate.model.CatalogCandidateStatus;
 import com.rodrilang.librarymanager.catalog.candidate.service.CatalogCandidateService;
@@ -58,12 +57,5 @@ public class CatalogCandidateController {
             @Valid @RequestBody CreateCatalogCandidateBookRequest request
     ) {
         return ResponseEntity.ok(service.createBookAndResolve(candidateId, request));
-    }
-
-    @PostMapping("/{candidateId}/automatic-lookup")
-    public ResponseEntity<CatalogCandidateLookupResponse> automaticLookup(
-            @PathVariable Long candidateId
-    ) {
-        return ResponseEntity.ok(service.automaticLookup(candidateId));
     }
 }
