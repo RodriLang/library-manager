@@ -20,6 +20,7 @@ import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceI
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceListStorage;
+import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
@@ -63,6 +64,7 @@ public class InventoryPriceImportService {
     private final PriceListImportFileStorage fileStorage;
     private final StreamingConfigurablePriceListParser parser;
     private final NormalizedPriceListStorage normalizedStorage;
+    private final CanonicalIsbnResolver canonicalIsbnResolver;
 
     @Transactional
     public InventoryPriceImportPreviewResponse preview(
@@ -96,7 +98,7 @@ public class InventoryPriceImportService {
         MatchIndex matchIndex = buildMatchIndex(inventories);
         Map<Long, InventoryPrice> currentPrices = priceService.pricesAt(inventories.stream()
                 .map(Inventory::getId).toList(), effectiveFrom);
-        Map<Long, List<InventoryPriceImportItem>> itemsByInventory = new HashMap<>();
+        Map<String, List<InventoryPriceImportItem>> itemsByDuplicateKey = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
 
         AtomicInteger total = new AtomicInteger();
@@ -140,8 +142,9 @@ public class InventoryPriceImportService {
                             currentPrices.get(inventory.getId())
                     );
 
+                    String duplicateKey = duplicateKey(row, inventory);
                     List<InventoryPriceImportItem> existingItems =
-                            itemsByInventory.computeIfAbsent(inventory.getId(), ignored -> new ArrayList<>());
+                            itemsByDuplicateKey.computeIfAbsent(duplicateKey, ignored -> new ArrayList<>());
 
                     boolean samePriceAlreadyPresent = existingItems.stream()
                             .anyMatch(existing -> samePrice(
@@ -155,11 +158,12 @@ public class InventoryPriceImportService {
                     }
 
                     if (!existingItems.isEmpty()) {
+                        boolean duplicateByIsbn = hasIsbn(row.isbn());
                         for (InventoryPriceImportItem existing : existingItems) {
-                            markDuplicateConflict(existing);
+                            markDuplicateConflict(existing, duplicateByIsbn);
                         }
 
-                        markDuplicateConflict(item);
+                        markDuplicateConflict(item, duplicateByIsbn);
                     }
 
                     existingItems.add(item);
@@ -383,12 +387,9 @@ public class InventoryPriceImportService {
         Map<String, List<Inventory>> byIsbn = new HashMap<>();
         Map<String, List<Inventory>> byTitleAuthor = new HashMap<>();
         for (Inventory inventory : inventories) {
-            if (inventory.getBook().getIsbn13() != null) {
-                byIsbn.computeIfAbsent(normalizeIsbn(inventory.getBook().getIsbn13()), ignored -> new ArrayList<>()).add(inventory);
-            }
-            if (inventory.getBook().getIsbn10() != null) {
-                byIsbn.computeIfAbsent(normalizeIsbn(inventory.getBook().getIsbn10()), ignored -> new ArrayList<>()).add(inventory);
-            }
+            addIsbnToIndex(byIsbn, inventory.getBook().getIsbn13(), inventory);
+            addIsbnToIndex(byIsbn, inventory.getBook().getIsbn10(), inventory);
+
             String authors = inventory.getBook().getAuthors().stream().map(Author::getName).sorted().collect(Collectors.joining(" "));
             String key = titleAuthorKey(inventory.getBook().getTitle(), authors);
             if (!key.isBlank()) {
@@ -398,9 +399,16 @@ public class InventoryPriceImportService {
         return new MatchIndex(byIsbn, byTitleAuthor);
     }
 
+    private void addIsbnToIndex(Map<String, List<Inventory>> byIsbn, String value, Inventory inventory) {
+        String key = isbnKey(value);
+        if (!key.isBlank()) {
+            byIsbn.computeIfAbsent(key, ignored -> new ArrayList<>()).add(inventory);
+        }
+    }
+
     private MatchResult match(PriceListRow row, MatchIndex index) {
-        String isbn = normalizeIsbn(row.isbn());
-        if (!isbn.isBlank()) {
+        if (hasIsbn(row.isbn())) {
+            String isbn = isbnKey(row.isbn());
             List<Inventory> candidates = distinct(index.byIsbn().getOrDefault(isbn, List.of()));
             if (candidates.size() == 1) {
                 return new MatchResult(candidates.getFirst(), false, null);
@@ -408,6 +416,10 @@ public class InventoryPriceImportService {
             if (candidates.size() > 1) {
                 return new MatchResult(null, true, "El ISBN coincide con más de un registro de inventario (por ejemplo, distintas condiciones).");
             }
+
+            // Si la fila informa ISBN, ese identificador es autoritativo. No debe
+            // caer a título + autor, porque podría asociar el precio de otra edición.
+            return new MatchResult(null, false, null);
         }
 
         String key = titleAuthorKey(row.title(), row.authorName());
@@ -618,10 +630,12 @@ public class InventoryPriceImportService {
             conflictReason =
                     representative.getConflictReason();
         } else {
+            boolean hasIsbn = representative.getIsbn() != null && !representative.getIsbn().isBlank();
+            String subject = hasIsbn ? "El mismo ISBN" : "El libro";
             conflictReason =
                     duplicateRows.size() == 2
-                            ? "El libro aparece 2 veces en la lista con precios diferentes."
-                            : "El libro aparece "
+                            ? subject + " aparece 2 veces en la lista con precios diferentes."
+                            : subject + " aparece "
                               + duplicateRows.size()
                               + " veces en la lista con precios diferentes.";
         }
@@ -674,13 +688,16 @@ public class InventoryPriceImportService {
     }
 
     private void markDuplicateConflict(
-            InventoryPriceImportItem item
+            InventoryPriceImportItem item,
+            boolean duplicateByIsbn
     ) {
         item.setClassification(
                 InventoryPriceImportClassification.DUPLICATE_CONFLICT
         );
         item.setConflictReason(
-                "El mismo libro aparece más de una vez en la lista con precios diferentes."
+                duplicateByIsbn
+                        ? "El mismo ISBN aparece más de una vez en la lista con precios diferentes."
+                        : "El mismo libro aparece más de una vez en la lista con precios diferentes."
         );
         item.setSelectedDefault(false);
         item.setDuplicateGroup(true);
@@ -793,6 +810,22 @@ public class InventoryPriceImportService {
             throw new BusinessException("Debe seleccionar una lista de precios.");
         }
         return file.getOriginalFilename() == null ? "lista-precios.xlsx" : file.getOriginalFilename();
+    }
+
+    private String duplicateKey(PriceListRow row, Inventory inventory) {
+        if (hasIsbn(row.isbn())) {
+            return "ISBN:" + isbnKey(row.isbn());
+        }
+        return "INVENTORY:" + inventory.getId();
+    }
+
+    private boolean hasIsbn(String value) {
+        return !normalizeIsbn(value).isBlank();
+    }
+
+    private String isbnKey(String value) {
+        String canonical = canonicalIsbnResolver.resolve(value);
+        return canonical != null ? canonical : normalizeIsbn(value);
     }
 
     private String normalizeIsbn(String value) {
