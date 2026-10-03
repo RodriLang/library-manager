@@ -295,7 +295,6 @@ class ConfigurablePriceListParserTest {
             boolean required
     ) {
         return PriceListColumnMapping.builder()
-                .importConfig(config)
                 .targetField(targetField)
                 .columnIndex(columnIndex)
                 .expectedHeader(expectedHeader)
