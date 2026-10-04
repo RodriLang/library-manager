@@ -18,7 +18,7 @@ public record EconomicDataPendingRow(
 
         long missingDiscountUnits,
 
-        BigDecimal currentEditorialPrice,
+        BigDecimal currentSalePrice,
 
         boolean hasCommercialTerm
 

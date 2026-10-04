@@ -18,7 +18,6 @@ public record UpdateInventoryRequest(
 
         BookCondition condition,
 
-        Boolean editorialPriceSyncEnabled,
 
         Boolean tiendanubePriceSyncEnabled,
 

@@ -12,6 +12,8 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.order.repository.PurchaseOrderItemRepository;
+import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
+import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.purchasing.order.repository.projection.PurchaseRequirementOrderedQuantityProjection;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.PurchaseRequirementFilter;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
@@ -61,6 +63,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
     private final InventoryRepository inventoryRepository;
 
     private final PurchaseRequirementMapper purchaseRequirementMapper;
+    private final ProviderPreferenceService providerPreferenceService;
 
     private final BookService bookService;
     private final BookstoreService bookstoreService;
@@ -471,7 +474,13 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 .orElse(null);
 
         if (requirement == null) {
-            return BookPurchaseRequirementStatusResponse.notPending();
+            PreferredProviderResponse preference = providerPreferenceService.findForCurrentBookstore(bookId);
+            return preference.currentlyAvailable()
+                    ? BookPurchaseRequirementStatusResponse.notPending(
+                    preference.providerId(),
+                    preference.providerName()
+            )
+                    : BookPurchaseRequirementStatusResponse.notPending();
         }
 
         int orderedQuantity = Math.toIntExact(
@@ -671,7 +680,9 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         Book book = bookService.getEntityById(command.bookId());
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
-        Provider provider = resolveProvider(command.providerId(), command.bookId());
+        Provider provider = command.providerId() != null
+                ? resolveProvider(command.providerId(), command.bookId())
+                : providerPreferenceService.findPreferredProviderEntity(bookstoreId, command.bookId());
 
         PurchaseRequirement requirement = requirementRepository
                 .findByBookstoreAndBookAndStatusForUpdate(
@@ -743,7 +754,9 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         Bookstore bookstore = bookstoreService.getEntityById(bookstoreId);
 
-        Provider provider = resolveProvider(command.providerId(), command.bookId());
+        Provider provider = command.providerId() != null
+                ? resolveProvider(command.providerId(), command.bookId())
+                : providerPreferenceService.findPreferredProviderEntity(bookstoreId, command.bookId());
 
         PurchaseRequirement requirement =
                 requirementRepository

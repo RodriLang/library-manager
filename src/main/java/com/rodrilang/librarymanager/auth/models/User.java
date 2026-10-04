@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.auth.models;
 
 import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.auth.access.model.BookstoreMembership;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -51,8 +53,8 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "bookstore_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bookstore_id")
     private Bookstore bookstore;
 
     @ManyToMany(fetch = FetchType.EAGER)
@@ -63,6 +65,10 @@ public class User {
     )
     @Builder.Default
     private Set<Role> roles = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
+    @Builder.Default
+    private Set<BookstoreMembership> memberships = new HashSet<>();
 
     @Column(nullable = false)
     @Builder.Default

@@ -68,7 +68,7 @@ public class EconomicDataPendingService {
         if (row.missingDiscountUnits() > 0) {
             reasons.add(EconomicDataPendingReason.MISSING_DISCOUNT);
         }
-        if (row.currentEditorialPrice() == null) {
+        if (row.currentSalePrice() == null) {
             reasons.add(EconomicDataPendingReason.MISSING_CURRENT_PRICE);
         }
         if (!row.hasCommercialTerm()) {
@@ -83,7 +83,7 @@ public class EconomicDataPendingService {
                 row.unknownCostUnits(),
                 row.estimatedCostUnits(),
                 row.missingDiscountUnits(),
-                row.currentEditorialPrice(),
+                row.currentSalePrice(),
                 row.hasCommercialTerm(),
                 List.copyOf(reasons)
         );

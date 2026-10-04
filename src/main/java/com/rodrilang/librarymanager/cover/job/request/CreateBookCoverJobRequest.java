@@ -4,7 +4,6 @@ import com.rodrilang.librarymanager.cover.enums.BookCoverSource;
 
 public record CreateBookCoverJobRequest(
         Long bookId,
-        Long priceListImportJobId,
         String sourceUrl,
         BookCoverSource source,
         Integer sourceRowNumber

@@ -21,7 +21,7 @@ public record EconomicDataPendingItemResponse(
 
         Long missingDiscountUnits,
 
-        BigDecimal currentEditorialPrice,
+        BigDecimal currentSalePrice,
 
         Boolean hasCommercialTerm,
 

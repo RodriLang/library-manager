@@ -14,6 +14,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.repository.Tiendanub
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductLinkService;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class TiendanubeProductLinkServiceImpl implements TiendanubeProductLinkSe
     private final TiendanubeStoreRepository storeRepository;
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeClient client;
+    private final InventoryPriceService inventoryPriceService;
 
     @Override
     @Transactional
@@ -106,7 +108,7 @@ public class TiendanubeProductLinkServiceImpl implements TiendanubeProductLinkSe
         TiendanubeUpdateVariantRequest request = new TiendanubeUpdateVariantRequest(
                 sku,
                 barcode,
-                inventory.getSalePrice(),
+                inventoryPriceService.currentAmount(inventory.getId()),
                 inventory.getStock(),
                 true,
                 inventory.getBook().getWeightGrams(),

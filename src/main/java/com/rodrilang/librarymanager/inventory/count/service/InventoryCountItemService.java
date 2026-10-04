@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.inventory.count.service;
 
+import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.inventory.count.dto.internal.InventoryCountItemUpsertCommand;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Service
@@ -87,7 +89,7 @@ public class InventoryCountItemService {
                 return responseMapper.toItemResponse(itemRepository.save(existing));
             }
         }
-        
+
         Instant now = Instant.now();
         Long itemId = scanRepository.upsertScan(new InventoryCountItemUpsertCommand(
                 session.getId(),
@@ -154,8 +156,12 @@ public class InventoryCountItemService {
         InventoryCountItem item = requireItem(itemId, sessionId);
         requireEditable(session, item);
 
-        if (request.quantity() == null && request.salePrice() == null) {
-            throw new BusinessException("Debe indicar una cantidad o un precio para modificar");
+        if (request.quantity() == null
+                && request.salePrice() == null
+                && request.publishOnTiendanube() == null
+                && request.tiendanubePriceSyncEnabled() == null
+                && request.minimumStock() == null) {
+            throw new BusinessException("Debe indicar al menos un dato para modificar");
         }
 
         if (session.getStatus() == InventoryCountStatus.REVIEW) {
@@ -167,6 +173,15 @@ public class InventoryCountItemService {
         }
         if (request.salePrice() != null) {
             item.setSalePriceOverride(request.salePrice());
+        }
+        if (request.publishOnTiendanube() != null) {
+            item.setPublishOnTiendanubeOverride(request.publishOnTiendanube());
+        }
+        if (request.tiendanubePriceSyncEnabled() != null) {
+            item.setTiendanubePriceSyncOverride(request.tiendanubePriceSyncEnabled());
+        }
+        if (request.minimumStock() != null) {
+            item.setMinimumStockOverride(request.minimumStock());
         }
 
         refreshKnownItemStatus(item);
@@ -208,7 +223,7 @@ public class InventoryCountItemService {
                 item.getSession().getCondition()
         );
 
-        item.setStatus(hasPrice ? InventoryCountItemStatus.RESOLVED : InventoryCountItemStatus.PENDING_PRICE);
+        item.setStatus(InventoryCountItemStatus.RESOLVED);
     }
 
     private InventoryCountItem requireItem(Long itemId, Long sessionId) {

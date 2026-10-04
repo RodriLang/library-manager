@@ -7,6 +7,8 @@ import com.rodrilang.librarymanager.auth.enums.RoleType;
 import com.rodrilang.librarymanager.auth.mappers.UserMapper;
 import com.rodrilang.librarymanager.auth.models.Role;
 import com.rodrilang.librarymanager.auth.models.User;
+import com.rodrilang.librarymanager.auth.access.model.BookstoreMembership;
+import com.rodrilang.librarymanager.auth.access.repository.BookstoreMembershipRepository;
 import com.rodrilang.librarymanager.auth.repositories.UserRepository;
 import com.rodrilang.librarymanager.auth.services.RoleService;
 import com.rodrilang.librarymanager.auth.services.UserService;
@@ -32,6 +34,7 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final BookstoreService bookstoreService;
+    private final BookstoreMembershipRepository membershipRepository;
 
     private static final String USER_NOT_FOUND_MESSAGE = "No se encontró el usuario autenticado.";
 
@@ -55,9 +58,15 @@ public class UserServiceImpl implements UserService {
         user.setBookstore(bookstore);
 
         Role role = roleService.findByName(RoleType.BOOKSTORE_ADMIN);
-        user.setRoles(Set.of(role));
+        user.setRoles(Set.of());
 
         User savedUser = userRepository.save(user);
+        membershipRepository.save(BookstoreMembership.builder()
+                .user(savedUser)
+                .bookstore(bookstore)
+                .roles(Set.of(role))
+                .enabled(true)
+                .build());
 
         return userMapper.toDto(savedUser);
     }
@@ -85,9 +94,15 @@ public class UserServiceImpl implements UserService {
         user.setBookstore(bookstore);
 
         Role role = roleService.findByName(roleType);
-        user.setRoles(Set.of(role));
+        user.setRoles(Set.of());
 
         User savedUser = userRepository.save(user);
+        membershipRepository.save(BookstoreMembership.builder()
+                .user(savedUser)
+                .bookstore(bookstore)
+                .roles(Set.of(role))
+                .enabled(true)
+                .build());
 
         return userMapper.toDto(savedUser);
     }

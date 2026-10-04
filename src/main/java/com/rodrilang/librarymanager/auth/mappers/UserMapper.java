@@ -1,12 +1,13 @@
 package com.rodrilang.librarymanager.auth.mappers;
 
 import com.rodrilang.librarymanager.auth.dtos.request.UserRequestDto;
+import com.rodrilang.librarymanager.auth.access.mapper.BookstoreMembershipMapper;
 import com.rodrilang.librarymanager.auth.dtos.response.UserResponse;
 import com.rodrilang.librarymanager.auth.models.User;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-@Mapper(componentModel = "spring", uses = {RoleMapper.class, BookstoreAuthMapper.class})
+@Mapper(componentModel = "spring", uses = {RoleMapper.class, BookstoreAuthMapper.class, BookstoreMembershipMapper.class})
 public interface UserMapper {
 
     @Mapping(target = "id", ignore = true)

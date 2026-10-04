@@ -19,13 +19,12 @@ public class InventoryValuationRepository {
     ) {
         String sql = """
                 WITH current_prices AS (
-                    SELECT DISTINCT ON (eep.book_id)
-                        eep.book_id,
-                        eep.price
-                    FROM effective_editorial_prices eep
-                    WHERE eep.active = TRUE
-                      AND eep.valid_from <= :asOf
-                    ORDER BY eep.book_id, eep.valid_from DESC, eep.id DESC
+                    SELECT DISTINCT ON (ip.inventory_id)
+                        ip.inventory_id,
+                        ip.amount AS price
+                    FROM inventory_prices ip
+                    WHERE ip.effective_from <= :asOf
+                    ORDER BY ip.inventory_id, ip.effective_from DESC, ip.id DESC
                 ),
                 active_layers AS (
                     SELECT
@@ -36,7 +35,7 @@ public class InventoryValuationRepository {
                         price.price AS current_price
                     FROM inventory_cost_layers layer
                     JOIN inventory inventory ON inventory.id = layer.inventory_id
-                    LEFT JOIN current_prices price ON price.book_id = inventory.book_id
+                    LEFT JOIN current_prices price ON price.inventory_id = inventory.id
                     WHERE inventory.bookstore_id = :bookstoreId
                       AND layer.reversed_at IS NULL
                       AND layer.quantity_remaining > 0

@@ -178,7 +178,11 @@ public class TiendanubeReconciliationRepository {
                     link.tiendanube_product_id AS product_id,
                     link.tiendanube_variant_id AS variant_id,
                     i.stock AS local_stock,
-                    i.sale_price AS local_price,
+                    (SELECT ip.amount FROM inventory_prices ip
+                     WHERE ip.inventory_id = i.id
+                       AND ip.effective_from <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+                     ORDER BY ip.effective_from DESC, ip.id DESC
+                     LIMIT 1) AS local_price,
                     COALESCE(i.tiendanube_price_sync_enabled, FALSE) AS price_sync_enabled
                 FROM tiendanube_product_links link
                 JOIN inventory i ON i.id = link.inventory_id

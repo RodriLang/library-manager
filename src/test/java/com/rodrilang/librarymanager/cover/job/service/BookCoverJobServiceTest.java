@@ -6,7 +6,6 @@ import com.rodrilang.librarymanager.cover.job.entity.BookCoverJob;
 import com.rodrilang.librarymanager.cover.job.repository.BookCoverJobRepository;
 import com.rodrilang.librarymanager.cover.job.request.CreateBookCoverJobRequest;
 import com.rodrilang.librarymanager.cover.job.response.CreateBookCoverJobResult;
-import com.rodrilang.librarymanager.importer.price.repository.PriceListImportJobRepository;
 import com.rodrilang.librarymanager.media.download.RemoteImageUrlNormalizer;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.repository.BookRepository;
@@ -34,9 +33,6 @@ class BookCoverJobServiceTest {
 
     @Mock
     private BookCoverJobRepository jobRepository;
-
-    @Mock
-    private PriceListImportJobRepository priceListImportJobRepository;
 
     @Mock
     private RemoteImageUrlNormalizer urlNormalizer;
@@ -67,7 +63,6 @@ class BookCoverJobServiceTest {
         CreateBookCoverJobRequest request =
                 new CreateBookCoverJobRequest(
                         bookId,
-                        null,
                         sourceUrl,
                         BookCoverSource.PRICE_LIST,
                         15
@@ -115,7 +110,6 @@ class BookCoverJobServiceTest {
         CreateBookCoverJobRequest request =
                 new CreateBookCoverJobRequest(
                         bookId,
-                        null,
                         sourceUrl,
                         BookCoverSource.PRICE_LIST,
                         15

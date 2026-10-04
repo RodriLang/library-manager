@@ -6,8 +6,6 @@ import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
 import com.rodrilang.librarymanager.dto.response.BookSummaryResponse;
-import com.rodrilang.librarymanager.editorialprice.model.EffectiveEditorialPrice;
-import com.rodrilang.librarymanager.editorialprice.service.EffectiveEditorialPriceService;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.exception.BusinessException;
@@ -41,7 +39,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -55,7 +52,6 @@ public class BookServiceImpl implements BookService {
     private final BookCatalogQueryRepository bookCatalogQueryRepository;
     private final AuthorService authorService;
     private final BookCatalogService bookCatalogService;
-    private final EffectiveEditorialPriceService effectiveEditorialPriceService;
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
     private final IsbnService isbnService;
@@ -257,8 +253,6 @@ public class BookServiceImpl implements BookService {
     }
 
     private Page<BookSummaryResponse> doFindCatalog(BookCatalogCriteria criteria, Pageable pageable) {
-        validateCatalogCriteria(criteria);
-
         long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
         long repositoryStart = System.currentTimeMillis();
@@ -276,13 +270,10 @@ public class BookServiceImpl implements BookService {
         long mappingTime = System.currentTimeMillis() - mappingStart;
 
         log.info(
-                "Book catalog timing. query={} publisherIds={} authorIds={} minPrice={} maxPrice={} priceStatus={} repositoryTime={}ms mappingTime={}ms results={} totalElements={}",
+                "Book catalog timing. query={} publisherIds={} authorIds={} repositoryTime={}ms mappingTime={}ms results={} totalElements={}",
                 criteria.query(),
                 criteria.publisherIds(),
                 criteria.authorIds(),
-                criteria.minPrice(),
-                criteria.maxPrice(),
-                criteria.priceStatus(),
                 repositoryTime,
                 mappingTime,
                 books.getNumberOfElements(),
@@ -339,33 +330,6 @@ public class BookServiceImpl implements BookService {
         );
     }
 
-    private void validateCatalogCriteria(
-            BookCatalogCriteria criteria
-    ) {
-        if (criteria.minPrice() != null
-                && criteria.minPrice().signum() < 0) {
-            throw new BusinessException(
-                    "El precio mínimo no puede ser negativo."
-            );
-        }
-
-        if (criteria.maxPrice() != null
-                && criteria.maxPrice().signum() < 0) {
-            throw new BusinessException(
-                    "El precio máximo no puede ser negativo."
-            );
-        }
-
-        if (criteria.minPrice() != null
-                && criteria.maxPrice() != null
-                && criteria.minPrice()
-                .compareTo(criteria.maxPrice()) > 0) {
-            throw new BusinessException(
-                    "El precio mínimo no puede ser mayor que el precio máximo."
-            );
-        }
-    }
-
     private String normalizeSearchIdentifier(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -405,21 +369,11 @@ public class BookServiceImpl implements BookService {
     }
 
     private Page<BookSummaryResponse> toSummaryResponsePage(Page<Book> books) {
-        List<Long> bookIds = books.getContent().stream()
-                .map(Book::getId)
-                .toList();
-
-        Map<Long, EffectiveEditorialPrice> pricesByBookId = effectiveEditorialPriceService.findCurrentByBookIds(bookIds);
-
-        return books.map(book -> bookMapper.toSummaryResponse(book, pricesByBookId.get(book.getId())));
+        return books.map(bookMapper::toSummaryResponse);
     }
 
     private BookDetailResponse toDetailResponse(Book book) {
-        EffectiveEditorialPrice editorialPrice = effectiveEditorialPriceService.findCurrentByBookId(book.getId())
-                .orElse(null);
-
         List<BookProviderResponse> providers = providerBookService.findActiveProvidersByBookId(book.getId());
-
-        return bookMapper.toDetailResponse(book, editorialPrice, providers);
+        return bookMapper.toDetailResponse(book, providers);
     }
 }

@@ -173,7 +173,11 @@ public class TiendanubeImportAnalysisQueryRepository {
                     book.cover_url,
                     inventory.condition,
                     inventory.stock,
-                    inventory.sale_price,
+                    (SELECT ip.amount FROM inventory_prices ip
+                     WHERE ip.inventory_id = inventory.id
+                       AND ip.effective_from <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+                     ORDER BY ip.effective_from DESC, ip.id DESC
+                     LIMIT 1) AS sale_price,
                     authors.names AS authors
                 FROM tiendanube_import_analysis_candidates candidate
                 JOIN books book ON book.id = candidate.book_id

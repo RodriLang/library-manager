@@ -1,0 +1,2 @@
+ALTER TABLE inventory_price_import_items
+    ADD COLUMN IF NOT EXISTS applied BOOLEAN NOT NULL DEFAULT FALSE;

@@ -11,7 +11,6 @@ public record TiendanubeImportCommand(
         BookCondition condition,
         Integer stock,
         BigDecimal salePrice,
-        Boolean syncPrice,
-        Boolean editorialPriceSyncEnabled
+        Boolean syncPrice
 ) {
 }

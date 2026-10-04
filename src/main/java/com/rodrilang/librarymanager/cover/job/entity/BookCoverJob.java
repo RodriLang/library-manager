@@ -3,7 +3,6 @@ package com.rodrilang.librarymanager.cover.job.entity;
 import com.rodrilang.librarymanager.cover.enums.BookCoverSource;
 import com.rodrilang.librarymanager.cover.job.enums.BookCoverJobErrorCode;
 import com.rodrilang.librarymanager.cover.job.enums.BookCoverJobStatus;
-import com.rodrilang.librarymanager.importer.price.model.PriceListImportJob;
 import com.rodrilang.librarymanager.model.Book;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -50,15 +49,6 @@ public class BookCoverJob {
             )
     )
     private Book book;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "price_list_import_job_id",
-            foreignKey = @ForeignKey(
-                    name = "fk_book_cover_jobs_price_list_import_job"
-            )
-    )
-    private PriceListImportJob priceListImportJob;
 
     @Column(
             name = "source_url",
@@ -155,7 +145,6 @@ public class BookCoverJob {
 
     private BookCoverJob(
             Book book,
-            PriceListImportJob priceListImportJob,
             String sourceUrl,
             String normalizedSourceUrl,
             BookCoverSource source,
@@ -168,7 +157,6 @@ public class BookCoverJob {
                 "El libro es obligatorio"
         );
 
-        this.priceListImportJob = priceListImportJob;
         this.sourceUrl = requireText(
                 sourceUrl,
                 "La URL original es obligatoria"
@@ -190,7 +178,6 @@ public class BookCoverJob {
 
     public static BookCoverJob create(
             Book book,
-            PriceListImportJob priceListImportJob,
             String sourceUrl,
             String normalizedSourceUrl,
             BookCoverSource source,
@@ -200,7 +187,6 @@ public class BookCoverJob {
     ) {
         return new BookCoverJob(
                 book,
-                priceListImportJob,
                 sourceUrl,
                 normalizedSourceUrl,
                 source,

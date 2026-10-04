@@ -58,7 +58,13 @@ public final class UserSpecifications {
             return Specification.unrestricted();
         }
 
-        return (root, query, cb) ->
-                cb.equal(root.get("bookstore").get("id"), bookstoreId);
+        return (root, query, cb) -> {
+            query.distinct(true);
+            var memberships = root.join("memberships");
+            return cb.and(
+                    cb.equal(memberships.get("bookstore").get("id"), bookstoreId),
+                    cb.isTrue(memberships.get("enabled"))
+            );
+        };
     }
 }

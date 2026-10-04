@@ -14,8 +14,6 @@ public record BookSummaryResponse(
 
         String publisherName,
 
-        EditorialPriceResponse editorialPrice,
-
         Set<AuthorResponse> authors
 ) {
 }

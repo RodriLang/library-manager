@@ -252,42 +252,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             """)
     List<Book> findBooksPendingMetadataEnrichment(Pageable pageable);
 
-    @Query(
-            value = """
-                    SELECT b.*
-                    FROM books b
-                    LEFT JOIN (
-                        SELECT DISTINCT ON (eep.book_id)
-                               eep.book_id,
-                               eep.price
-                        FROM effective_editorial_prices eep
-                        WHERE eep.active = TRUE
-                          AND eep.valid_from <= CURRENT_DATE
-                        ORDER BY eep.book_id, eep.valid_from DESC, eep.id DESC
-                    ) current_price ON current_price.book_id = b.id
-                    WHERE b.active = TRUE
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM bookstore_excluded_publishers bep
-                          WHERE bep.bookstore_id = :bookstoreId
-                            AND bep.publisher_id = b.publisher_id
-                      )
-                    ORDER BY current_price.price ASC NULLS LAST, b.title_sort ASC, b.id ASC
-                    """,
-            countQuery = """
-                    SELECT COUNT(*)
-                    FROM books b
-                    WHERE b.active = TRUE
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM bookstore_excluded_publishers bep
-                          WHERE bep.bookstore_id = :bookstoreId
-                            AND bep.publisher_id = b.publisher_id
-                      )
-                    """,
-            nativeQuery = true
-    )
-    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceAsc(@Param("bookstoreId") Long bookstoreId, Pageable pageable);
+
 
     @Query("""
             SELECT b
@@ -334,42 +299,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             Pageable pageable
     );
 
-    @Query(
-            value = """
-                    SELECT b.*
-                    FROM books b
-                    LEFT JOIN (
-                        SELECT DISTINCT ON (eep.book_id)
-                               eep.book_id,
-                               eep.price
-                        FROM effective_editorial_prices eep
-                        WHERE eep.active = TRUE
-                          AND eep.valid_from <= CURRENT_DATE
-                        ORDER BY eep.book_id, eep.valid_from DESC, eep.id DESC
-                    ) current_price ON current_price.book_id = b.id
-                    WHERE b.active = TRUE
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM bookstore_excluded_publishers bep
-                          WHERE bep.bookstore_id = :bookstoreId
-                            AND bep.publisher_id = b.publisher_id
-                      )
-                    ORDER BY current_price.price DESC NULLS LAST, b.title_sort ASC, b.id ASC
-                    """,
-            countQuery = """
-                    SELECT COUNT(*)
-                    FROM books b
-                    WHERE b.active = TRUE
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM bookstore_excluded_publishers bep
-                          WHERE bep.bookstore_id = :bookstoreId
-                            AND bep.publisher_id = b.publisher_id
-                      )
-                    """,
-            nativeQuery = true
-    )
-    Page<Book> findAllForCatalogOrderByCurrentEditorialPriceDesc(@Param("bookstoreId") Long bookstoreId, Pageable pageable);
+
 
     @Query("""
             SELECT b
