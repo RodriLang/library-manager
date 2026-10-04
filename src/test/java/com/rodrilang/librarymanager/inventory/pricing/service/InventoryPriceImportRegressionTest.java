@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.importer.price.storage.PriceListImportFileSt
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
+import com.rodrilang.librarymanager.inventory.pricing.dto.ApplyInventoryPriceImportRequest;
 import com.rodrilang.librarymanager.inventory.pricing.dto.InventoryPriceImportPreviewResponse;
 import com.rodrilang.librarymanager.inventory.pricing.model.*;
 import com.rodrilang.librarymanager.inventory.pricing.repository.*;
@@ -66,6 +67,9 @@ class InventoryPriceImportRegressionTest {
         priceImport = InventoryPriceImport.builder().id(30L).bookstore(bookstore)
                 .effectiveFrom(MONTH).sourceName("Editorial").status(InventoryPriceImportStatus.PROCESSING).build();
 
+        when(context.getCurrentBookstoreId()).thenReturn(7L);
+        when(context.getCurrentUserId()).thenReturn(5L);
+        when(inventoryRepository.findByIdAndBookstoreId(10L, 7L)).thenReturn(Optional.of(inventory));
         when(priceRepository.findCurrentCandidates(eq(10L), any())).thenAnswer(call -> at(call.getArgument(1)));
         when(priceRepository.findCurrentCandidatesForInventoryIds(anyCollection(), any()))
                 .thenAnswer(call -> at(call.getArgument(1)));
@@ -137,6 +141,7 @@ class InventoryPriceImportRegressionTest {
         assertEquals(future, imported.getEffectiveFrom());
         assertEquals(new BigDecimal("42800.00"), service.currentAmount(10L));
         assertEquals(new BigDecimal("43800.00"), service.priceAt(10L, future).orElseThrow().getAmount());
+        assertEquals(TODAY, imported.getLastConfirmedAt());
         verifyNoInteractions(events);
     }
 
@@ -195,6 +200,58 @@ class InventoryPriceImportRegressionTest {
         assertEquals(1, priceImport.getAppliedRows());
         assertEquals(InventoryPriceImportStatus.APPLIED, priceImport.getStatus());
         verify(events).publishEvent(new TiendanubeSyncRequestedEvent(10L, TiendanubeSyncType.PRICE));
+    }
+
+    @Test
+    void manualConfirmationUpdatesFreshnessWithoutChangingPriceHistory() {
+        InventoryPrice current = addPrice("49900", LocalDate.of(2026, 8, 1), InventoryPriceSource.LEGACY_MIGRATION);
+        current.setLastConfirmedAt(LocalDate.of(2026, 8, 1));
+        current.setLastConfirmedSource("Migración");
+
+        var response = service.confirmCurrentPrice(
+                10L,
+                LocalDate.of(2026, 10, 1),
+                "Web de la distribuidora"
+        );
+
+        assertEquals(1, prices.size());
+        assertEquals(new BigDecimal("49900.00"), current.getAmount());
+        assertEquals(LocalDate.of(2026, 8, 1), current.getEffectiveFrom());
+        assertEquals(LocalDate.of(2026, 10, 1), current.getLastConfirmedAt());
+        assertEquals("Web de la distribuidora", current.getLastConfirmedSource());
+        assertEquals(LocalDate.of(2026, 10, 1), response.lastConfirmedAt());
+        assertEquals(TODAY, inventory.getLastPriceCheckedAt());
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void explicitApplySelectionCannotDropUnchangedRowsFromConfirmation() {
+        InventoryPriceImportRepository imports = mock(InventoryPriceImportRepository.class);
+        InventoryPriceImportItemRepository items = mock(InventoryPriceImportItemRepository.class);
+        InventoryPriceImport importReady = InventoryPriceImport.builder()
+                .id(30L)
+                .bookstore(inventory.getBookstore())
+                .effectiveFrom(MONTH)
+                .sourceName("Editorial")
+                .status(InventoryPriceImportStatus.PREVIEW_READY)
+                .build();
+        InventoryPriceImportItem unchanged = InventoryPriceImportItem.builder()
+                .id(40L)
+                .priceImport(importReady)
+                .inventory(inventory)
+                .incomingPrice(new BigDecimal("49900"))
+                .classification(InventoryPriceImportClassification.UNCHANGED)
+                .selectedDefault(true)
+                .build();
+
+        when(imports.findByIdAndBookstoreIdForUpdate(30L, 7L)).thenReturn(Optional.of(importReady));
+        when(items.findAllByPriceImportIdOrderByRowNumberAsc(30L)).thenReturn(List.of(unchanged));
+
+        new InventoryPriceImportApplyService(context, imports, items, events)
+                .start(30L, new ApplyInventoryPriceImportRequest(List.of()));
+
+        assertTrue(unchanged.isSelectedForApply());
+        verify(items).saveAll(List.of(unchanged));
     }
 
     @Test

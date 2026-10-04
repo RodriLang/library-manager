@@ -9,6 +9,7 @@ import com.rodrilang.librarymanager.inventory.pricing.dto.InventoryPriceImportPr
 import com.rodrilang.librarymanager.inventory.pricing.event.InventoryPriceImportApplyRequestedEvent;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportItem;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportClassification;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportStatus;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
@@ -51,6 +52,18 @@ public class InventoryPriceImportApplyService {
                 itemRepository.findAllByPriceImportIdOrderByRowNumberAsc(importId);
 
         Set<Long> requestedIds = requestedIds(items, request);
+
+        // A correctly matched UNCHANGED row is still valuable: its presence in
+        // the list confirms that the current amount remains valid. This must not
+        // depend on whether the frontend includes unchanged rows among the
+        // explicitly selected price changes.
+        items.stream()
+                .filter(item -> !item.isDiscarded())
+                .filter(item -> item.getInventory() != null)
+                .filter(item -> item.getIncomingPrice() != null && item.getIncomingPrice().signum() > 0)
+                .filter(item -> item.getClassification() == InventoryPriceImportClassification.UNCHANGED)
+                .map(InventoryPriceImportItem::getId)
+                .forEach(requestedIds::add);
 
         for (InventoryPriceImportItem item : items) {
             item.setSelectedForApply(requestedIds.contains(item.getId()));

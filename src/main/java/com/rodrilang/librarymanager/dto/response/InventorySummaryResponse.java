@@ -19,6 +19,8 @@ public record InventorySummaryResponse(
         BookCondition condition,
         BigDecimal salePrice,
         LocalDate currentPriceEffectiveFrom,
+        LocalDate currentPriceLastConfirmedAt,
+        String currentPriceLastConfirmedSource,
         BigDecimal nextSalePrice,
         LocalDate nextPriceEffectiveFrom,
         LocalDate lastPriceCheckedAt,

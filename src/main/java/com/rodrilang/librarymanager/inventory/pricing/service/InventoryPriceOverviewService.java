@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +20,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.Normalizer;
 import java.time.LocalDate;
-import java.util.*;
+import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -48,6 +54,7 @@ public class InventoryPriceOverviewService {
         List<InventoryPriceOverviewResponse> filtered = rows.stream()
                 .filter(queryPredicate)
                 .filter(statusPredicate)
+                .sorted(sortComparator(pageable.getSort()))
                 .toList();
 
         int from = Math.min((int) pageable.getOffset(), filtered.size());
@@ -63,6 +70,8 @@ public class InventoryPriceOverviewService {
                 rows.stream().filter(row -> !row.missingPrice()).count(),
                 rows.stream().filter(InventoryPriceOverviewResponse::missingPrice).count(),
                 rows.stream().filter(InventoryPriceOverviewResponse::stale).count(),
+                rows.stream().filter(InventoryPriceOverviewResponse::confirmedThisMonth).count(),
+                rows.stream().filter(row -> !row.missingPrice() && !row.confirmedThisMonth()).count(),
                 rows.stream().filter(InventoryPriceOverviewResponse::scheduled).count(),
                 rows.stream().filter(InventoryPriceOverviewResponse::increased).count(),
                 rows.stream().filter(InventoryPriceOverviewResponse::decreased).count(),
@@ -102,13 +111,18 @@ public class InventoryPriceOverviewService {
                 .sorted(Comparator.comparing(InventoryPrice::getEffectiveFrom).thenComparing(InventoryPrice::getId))
                 .toList();
 
-        InventoryPrice current = currentAndPast.isEmpty() ? null : currentAndPast.get(0);
+        InventoryPrice current = currentAndPast.isEmpty() ? null : currentAndPast.getFirst();
         InventoryPrice previous = currentAndPast.size() > 1 ? currentAndPast.get(1) : null;
-        InventoryPrice next = future.isEmpty() ? null : future.get(0);
+        InventoryPrice next = future.isEmpty() ? null : future.getFirst();
 
         BigDecimal currentChange = percent(previous != null ? previous.getAmount() : null, current != null ? current.getAmount() : null);
         BigDecimal nextChange = percent(current != null ? current.getAmount() : null, next != null ? next.getAmount() : null);
-        boolean stale = inventory.getLastPriceCheckedAt() == null || inventory.getLastPriceCheckedAt().isBefore(staleBefore);
+        LocalDate lastConfirmedAt = current != null ? current.getLastConfirmedAt() : null;
+        Long daysSinceConfirmation = lastConfirmedAt != null
+                ? Math.max(0L, ChronoUnit.DAYS.between(lastConfirmedAt, today))
+                : null;
+        boolean confirmedThisMonth = current != null && isSameMonth(lastConfirmedAt, today);
+        boolean stale = current != null && (lastConfirmedAt == null || lastConfirmedAt.isBefore(staleBefore));
         boolean review = isLarge(currentChange) || isLarge(nextChange);
 
         return new InventoryPriceOverviewResponse(
@@ -120,11 +134,16 @@ public class InventoryPriceOverviewService {
                 inventory.getBook().getPublisher() != null ? inventory.getBook().getPublisher().getName() : null,
                 current != null ? current.getAmount() : null,
                 current != null ? current.getEffectiveFrom() : null,
+                current != null ? current.getSource() : null,
+                lastConfirmedAt,
+                current != null ? current.getLastConfirmedSource() : null,
+                daysSinceConfirmation,
+                confirmedThisMonth,
                 previous != null ? previous.getAmount() : null,
+                previous != null ? previous.getEffectiveFrom() : null,
                 currentChange,
                 next != null ? next.getAmount() : null,
                 next != null ? next.getEffectiveFrom() : null,
-                inventory.getLastPriceCheckedAt(),
                 current == null,
                 stale,
                 currentChange != null && currentChange.signum() > 0,
@@ -134,6 +153,39 @@ public class InventoryPriceOverviewService {
         );
     }
 
+    private Comparator<InventoryPriceOverviewResponse> sortComparator(Sort sort) {
+        Sort.Order order = sort.stream().findFirst().orElse(Sort.Order.asc("title"));
+        String property = order.getProperty();
+        boolean ascending = order.isAscending();
+
+        Comparator<InventoryPriceOverviewResponse> comparator = switch (property) {
+            case "currentPriceLastConfirmedAt" -> Comparator.comparing(
+                    InventoryPriceOverviewResponse::currentPriceLastConfirmedAt,
+                    ascending
+                            ? Comparator.nullsFirst(Comparator.naturalOrder())
+                            : Comparator.nullsLast(Comparator.reverseOrder())
+            );
+            case "currentPrice" -> Comparator.comparing(
+                    InventoryPriceOverviewResponse::currentPrice,
+                    ascending
+                            ? Comparator.nullsLast(Comparator.naturalOrder())
+                            : Comparator.nullsLast(Comparator.reverseOrder())
+            );
+            case "currentChangePercent" -> Comparator.comparing(
+                    (InventoryPriceOverviewResponse row) -> row.currentChangePercent() != null ? row.currentChangePercent().abs() : null,
+                    ascending
+                            ? Comparator.nullsLast(Comparator.naturalOrder())
+                            : Comparator.nullsLast(Comparator.reverseOrder())
+            );
+            case "title" -> ascending
+                    ? Comparator.comparing(InventoryPriceOverviewResponse::title, String.CASE_INSENSITIVE_ORDER)
+                    : Comparator.comparing(InventoryPriceOverviewResponse::title, String.CASE_INSENSITIVE_ORDER).reversed();
+            default -> Comparator.comparing(InventoryPriceOverviewResponse::title, String.CASE_INSENSITIVE_ORDER);
+        };
+
+        return comparator.thenComparing(InventoryPriceOverviewResponse::title, String.CASE_INSENSITIVE_ORDER);
+    }
+
     private Predicate<InventoryPriceOverviewResponse> statusPredicate(String status) {
         if (status == null || status.isBlank() || status.equalsIgnoreCase("ALL")) {
             return row -> true;
@@ -141,12 +193,23 @@ public class InventoryPriceOverviewService {
         return switch (status.toUpperCase(Locale.ROOT)) {
             case "MISSING" -> InventoryPriceOverviewResponse::missingPrice;
             case "STALE" -> InventoryPriceOverviewResponse::stale;
+            case "FRESH", "CURRENT" -> row -> !row.missingPrice() && !row.stale();
+            case "CONFIRMED_THIS_MONTH", "UPDATED_THIS_MONTH" -> InventoryPriceOverviewResponse::confirmedThisMonth;
+            case "NOT_CONFIRMED_THIS_MONTH", "NOT_UPDATED_THIS_MONTH" ->
+                    row -> !row.missingPrice() && !row.confirmedThisMonth();
+            case "UNCONFIRMED" -> row -> !row.missingPrice() && row.currentPriceLastConfirmedAt() == null;
             case "SCHEDULED" -> InventoryPriceOverviewResponse::scheduled;
             case "INCREASED" -> InventoryPriceOverviewResponse::increased;
             case "DECREASED" -> InventoryPriceOverviewResponse::decreased;
             case "REVIEW" -> InventoryPriceOverviewResponse::reviewRequired;
             default -> row -> true;
         };
+    }
+
+    private boolean isSameMonth(LocalDate date, LocalDate reference) {
+        return date != null
+                && date.getYear() == reference.getYear()
+                && date.getMonth() == reference.getMonth();
     }
 
     private BigDecimal percent(BigDecimal previous, BigDecimal next) {

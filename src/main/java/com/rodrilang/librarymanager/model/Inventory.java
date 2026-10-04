@@ -20,8 +20,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDate;
-
 @Getter
 @Setter
 @Builder
@@ -55,9 +53,6 @@ public class Inventory extends AuditableEntity {
     @Column(nullable = false)
     @Builder.Default
     private BookCondition condition = BookCondition.NEW;
-
-    @Column(name = "last_price_checked_at")
-    private LocalDate lastPriceCheckedAt;
 
     @Builder.Default
     @Column(nullable = false)
