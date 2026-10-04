@@ -44,6 +44,17 @@ public class InventoryPriceService {
         return LocalDate.now(BUSINESS_ZONE);
     }
 
+    /**
+     * The list retains its declared month in InventoryPriceImport. Prices from
+     * lists already in force take effect when applied, without backdating the
+     * change or being hidden behind a later manual or migrated price.
+     */
+    public LocalDate importApplicationDate(LocalDate effectiveFrom) {
+        Objects.requireNonNull(effectiveFrom, "effectiveFrom");
+        LocalDate currentDate = today();
+        return effectiveFrom.isAfter(currentDate) ? effectiveFrom : currentDate;
+    }
+
     @Transactional
     public InventoryPricePointResponse upsertManual(Long inventoryId, BigDecimal amount, LocalDate effectiveFrom) {
         if (effectiveFrom.isBefore(today())) {
@@ -70,23 +81,31 @@ public class InventoryPriceService {
             InventoryPriceImport priceImport,
             Long userId
     ) {
+        validateAmount(amount);
+        LocalDate applicationDate = importApplicationDate(effectiveFrom);
+        String confirmationSource = priceImport != null ? priceImport.getSourceName() : null;
+        InventoryPrice applicablePrice = priceAt(inventory.getId(), applicationDate).orElse(null);
+
+        // Re-read at application time: the inventory price or the business day
+        // may have changed since the preview was created.
+        if (applicablePrice != null && applicablePrice.getAmount().compareTo(amount) == 0) {
+            confirmPrice(inventory, amount, applicationDate, confirmationSource);
+            return applicablePrice;
+        }
+
         InventoryPrice price = upsert(
                 inventory,
                 amount,
-                effectiveFrom,
+                applicationDate,
                 InventoryPriceSource.PRICE_LIST,
                 priceImport,
                 userId,
                 true
         );
 
-        if (price.getLastConfirmedAt() == null || !effectiveFrom.isBefore(price.getLastConfirmedAt())) {
-            price.setLastConfirmedAt(effectiveFrom);
-            price.setLastConfirmedSource(normalizeConfirmationSource(priceImport != null
-                            ? priceImport.getSourceName()
-                            : null
-                    )
-            );
+        if (price.getLastConfirmedAt() == null || !applicationDate.isBefore(price.getLastConfirmedAt())) {
+            price.setLastConfirmedAt(applicationDate);
+            price.setLastConfirmedSource(normalizeConfirmationSource(confirmationSource));
         }
 
         return price;

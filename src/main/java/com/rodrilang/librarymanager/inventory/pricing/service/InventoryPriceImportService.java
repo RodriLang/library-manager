@@ -96,8 +96,9 @@ public class InventoryPriceImportService {
 
         List<Inventory> inventories = inventoryRepository.findAllByBookstoreIdAndActiveTrue(bookstoreId);
         MatchIndex matchIndex = buildMatchIndex(inventories);
+        LocalDate applicationDate = priceService.importApplicationDate(effectiveFrom);
         Map<Long, InventoryPrice> currentPrices = priceService.pricesAt(inventories.stream()
-                .map(Inventory::getId).toList(), effectiveFrom);
+                .map(Inventory::getId).toList(), applicationDate);
         Map<String, List<InventoryPriceImportItem>> itemsByDuplicateKey = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
 
@@ -138,7 +139,7 @@ public class InventoryPriceImportService {
                             priceImport,
                             inventory,
                             row,
-                            effectiveFrom,
+                            applicationDate,
                             currentPrices.get(inventory.getId())
                     );
 
@@ -306,8 +307,11 @@ public class InventoryPriceImportService {
                 ? current.getAmount()
                 : null;
 
-        InventoryPrice existingAtDate = priceRepository.findByInventoryIdAndEffectiveFrom(inventory.getId(), effectiveFrom)
-                .orElse(null);
+        // Only future prices are scheduled conflicts. A list already in force
+        // updates the selling price on the day it is applied.
+        InventoryPrice existingAtDate = effectiveFrom.isAfter(priceService.today())
+                ? priceRepository.findByInventoryIdAndEffectiveFrom(inventory.getId(), effectiveFrom).orElse(null)
+                : null;
 
         BigDecimal scheduledAmount = existingAtDate != null
                 ? existingAtDate.getAmount()

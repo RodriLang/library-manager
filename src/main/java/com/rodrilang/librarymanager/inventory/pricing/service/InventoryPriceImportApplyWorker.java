@@ -61,22 +61,13 @@ public class InventoryPriceImportApplyWorker {
                 continue;
             }
 
-            if (item.getClassification() == InventoryPriceImportClassification.UNCHANGED) {
-                priceService.confirmPrice(
-                        item.getInventory(),
-                        item.getIncomingPrice(),
-                        priceImport.getEffectiveFrom(),
-                        priceImport.getSourceName()
-                );
-            } else {
-                priceService.upsertImported(
-                        item.getInventory(),
-                        item.getIncomingPrice(),
-                        priceImport.getEffectiveFrom(),
-                        priceImport,
-                        userId
-                );
-            }
+            priceService.upsertImported(
+                    item.getInventory(),
+                    item.getIncomingPrice(),
+                    priceImport.getEffectiveFrom(),
+                    priceImport,
+                    userId
+            );
 
             item.setApplied(true);
             applied++;
