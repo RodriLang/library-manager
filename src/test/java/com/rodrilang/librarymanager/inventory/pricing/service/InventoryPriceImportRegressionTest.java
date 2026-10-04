@@ -9,8 +9,16 @@ import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSync
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
 import com.rodrilang.librarymanager.inventory.pricing.dto.ApplyInventoryPriceImportRequest;
 import com.rodrilang.librarymanager.inventory.pricing.dto.InventoryPriceImportPreviewResponse;
-import com.rodrilang.librarymanager.inventory.pricing.model.*;
-import com.rodrilang.librarymanager.inventory.pricing.repository.*;
+import com.rodrilang.librarymanager.inventory.pricing.model.BookstorePriceListFormat;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportClassification;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportItem;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportStatus;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceListStorage;
 import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
 import com.rodrilang.librarymanager.model.Book;
@@ -32,9 +40,21 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class InventoryPriceImportRegressionTest {
 
@@ -220,7 +240,6 @@ class InventoryPriceImportRegressionTest {
         assertEquals(LocalDate.of(2026, 10, 1), current.getLastConfirmedAt());
         assertEquals("Web de la distribuidora", current.getLastConfirmedSource());
         assertEquals(LocalDate.of(2026, 10, 1), response.lastConfirmedAt());
-        assertEquals(TODAY, inventory.getLastPriceCheckedAt());
         verifyNoInteractions(events);
     }
 
@@ -285,7 +304,11 @@ class InventoryPriceImportRegressionTest {
         when(inventoryRepository.findAllByBookstoreIdAndActiveTrue(7L)).thenReturn(List.of(inventory));
         when(formats.getForCurrentBookstore(1L)).thenReturn(BookstorePriceListFormat.builder()
                 .name("ISBN y precio").sheetIndex(0).firstDataRowIndex(1).isbnColumn(0).priceColumn(1).build());
-        when(imports.save(any())).thenAnswer(call -> { InventoryPriceImport value = call.getArgument(0); value.setId(30L); return value; });
+        when(imports.save(any())).thenAnswer(call -> {
+            InventoryPriceImport value = call.getArgument(0);
+            value.setId(30L);
+            return value;
+        });
         when(files.store(any())).thenReturn(Path.of("unused-mocked-source.xlsx"));
         when(normalized.upload(eq(7L), any())).thenReturn(new NormalizedPriceListStorage.StoredRawFile("list", "https://example.com/list.csv"));
         when(isbns.resolve(ISBN)).thenReturn(ISBN);

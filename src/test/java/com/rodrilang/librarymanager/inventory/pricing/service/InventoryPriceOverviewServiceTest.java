@@ -15,8 +15,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class InventoryPriceOverviewServiceTest {
 
@@ -39,7 +42,6 @@ class InventoryPriceOverviewServiceTest {
                 .bookstore(bookstore)
                 .book(book)
                 .active(true)
-                .lastPriceCheckedAt(today)
                 .build();
         InventoryPrice price = InventoryPrice.builder()
                 .id(100L)
@@ -71,7 +73,6 @@ class InventoryPriceOverviewServiceTest {
         assertFalse(row.confirmedThisMonth());
         assertEquals(LocalDate.of(2026, 6, 1), row.currentPriceLastConfirmedAt());
         assertEquals(125L, row.daysSinceConfirmation());
-        assertEquals(today, row.lastPriceCheckedAt());
     }
 
     @Test
