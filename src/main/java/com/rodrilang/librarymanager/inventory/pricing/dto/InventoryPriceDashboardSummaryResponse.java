@@ -5,6 +5,8 @@ public record InventoryPriceDashboardSummaryResponse(
         long withPrice,
         long withoutPrice,
         long stale,
+        long confirmedThisMonth,
+        long notConfirmedThisMonth,
         long scheduled,
         long increased,
         long decreased,

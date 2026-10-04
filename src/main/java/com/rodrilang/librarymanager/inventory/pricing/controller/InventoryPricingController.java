@@ -51,6 +51,15 @@ public class InventoryPricingController {
                 .body(priceService.upsertManual(inventoryId, request.amount(), request.effectiveFrom()));
     }
 
+
+    @PostMapping("/api/inventory/{inventoryId}/prices/confirm")
+    public InventoryPricePointResponse confirmCurrent(
+            @PathVariable Long inventoryId,
+            @Valid @RequestBody ConfirmInventoryPriceRequest request
+    ) {
+        return priceService.confirmCurrentPrice(inventoryId, request.confirmedAt(), request.source());
+    }
+
     @DeleteMapping("/api/inventory/{inventoryId}/prices/{priceId}")
     public ResponseEntity<Void> deleteFuture(
             @PathVariable Long inventoryId,

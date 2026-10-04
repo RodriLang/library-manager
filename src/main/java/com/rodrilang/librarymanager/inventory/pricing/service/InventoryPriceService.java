@@ -34,6 +34,9 @@ import java.util.Optional;
 public class InventoryPriceService {
 
     public static final ZoneId BUSINESS_ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
+    private static final String MANUAL_PRICE_SOURCE = "Carga manual";
+    private static final String MANUAL_CONFIRMATION_SOURCE = "Confirmación manual";
+    private static final String PRICE_LIST_CONFIRMATION_SOURCE = "Lista de precios";
 
     private final InventoryPriceRepository priceRepository;
     private final InventoryRepository inventoryRepository;
@@ -70,6 +73,7 @@ public class InventoryPriceService {
                 bookstoreContext.getCurrentUserId(),
                 true
         );
+        markConfirmed(price, today(), MANUAL_PRICE_SOURCE, true);
         return toResponse(price);
     }
 
@@ -83,13 +87,19 @@ public class InventoryPriceService {
     ) {
         validateAmount(amount);
         LocalDate applicationDate = importApplicationDate(effectiveFrom);
-        String confirmationSource = priceImport != null ? priceImport.getSourceName() : null;
+        LocalDate confirmationDate = today();
+        String confirmationSource = priceImport != null
+                ? normalizeConfirmationSource(priceImport.getSourceName())
+                : null;
+        if (confirmationSource == null) {
+            confirmationSource = PRICE_LIST_CONFIRMATION_SOURCE;
+        }
         InventoryPrice applicablePrice = priceAt(inventory.getId(), applicationDate).orElse(null);
 
         // Re-read at application time: the inventory price or the business day
         // may have changed since the preview was created.
         if (applicablePrice != null && applicablePrice.getAmount().compareTo(amount) == 0) {
-            confirmPrice(inventory, amount, applicationDate, confirmationSource);
+            markConfirmed(applicablePrice, confirmationDate, confirmationSource, true);
             return applicablePrice;
         }
 
@@ -103,11 +113,9 @@ public class InventoryPriceService {
                 true
         );
 
-        if (price.getLastConfirmedAt() == null || !applicationDate.isBefore(price.getLastConfirmedAt())) {
-            price.setLastConfirmedAt(applicationDate);
-            price.setLastConfirmedSource(normalizeConfirmationSource(confirmationSource));
-        }
-
+        // Confirmation date answers "when did we verify this amount?" and is
+        // intentionally independent from effectiveFrom, including future lists.
+        markConfirmed(price, confirmationDate, confirmationSource, true);
         return price;
     }
 
@@ -119,9 +127,15 @@ public class InventoryPriceService {
             InventoryPriceSource source,
             Long userId
     ) {
-        return upsert(inventory, amount, effectiveFrom, source, null, userId, true);
+        InventoryPrice price = upsert(inventory, amount, effectiveFrom, source, null, userId, true);
+        markConfirmed(price, today(), confirmationSourceFor(source), true);
+        return price;
     }
 
+    /**
+     * Confirms the price that was in force on the supplied date. Kept for
+     * internal use; manual UI confirmation should use confirmCurrentPrice.
+     */
     @Transactional
     public void confirmPrice(
             Inventory inventory,
@@ -142,12 +156,44 @@ public class InventoryPriceService {
             throw new BusinessException("El precio vigente no coincide con el precio que se intenta confirmar.");
         }
 
-        if (price.getLastConfirmedAt() == null || !confirmedAt.isBefore(price.getLastConfirmedAt())) {
-            price.setLastConfirmedAt(confirmedAt);
-            price.setLastConfirmedSource(normalizeConfirmationSource(confirmedSource));
+        markConfirmed(price, confirmedAt, confirmedSource, true);
+    }
+
+    /**
+     * Manually confirms the current price without changing its amount or
+     * effectiveFrom and without creating a new history row.
+     */
+    @Transactional
+    public InventoryPricePointResponse confirmCurrentPrice(
+            Long inventoryId,
+            LocalDate confirmedAt,
+            String confirmedSource
+    ) {
+        Objects.requireNonNull(confirmedAt, "confirmedAt");
+        LocalDate currentDate = today();
+        if (confirmedAt.isAfter(currentDate)) {
+            throw new BusinessException("La fecha de confirmación no puede ser futura.");
         }
 
-        inventory.setLastPriceCheckedAt(today());
+        Inventory inventory = getCurrentBookstoreInventory(inventoryId);
+        InventoryPrice currentPrice = priceRepository.findCurrentCandidates(inventory.getId(), currentDate)
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("El libro no tiene un precio vigente para confirmar."));
+
+        if (confirmedAt.isBefore(currentPrice.getEffectiveFrom())) {
+            throw new BusinessException("La fecha de confirmación no puede ser anterior al inicio de vigencia del precio actual.");
+        }
+
+        String source = normalizeConfirmationSource(confirmedSource);
+        markConfirmed(
+                currentPrice,
+                confirmedAt,
+                source != null ? source : MANUAL_CONFIRMATION_SOURCE,
+                false
+        );
+
+        return toResponse(currentPrice);
     }
 
     @Transactional(readOnly = true)
@@ -226,7 +272,6 @@ public class InventoryPriceService {
         Map<Long, InventoryPrice> result = new LinkedHashMap<>();
 
         for (InventoryPrice price : priceRepository.findCurrentCandidatesForInventoryIds(inventoryIds, date)) {
-
             result.putIfAbsent(price.getInventory().getId(), price);
         }
 
@@ -234,7 +279,7 @@ public class InventoryPriceService {
     }
 
     /**
-     * Prices are now resolved directly from inventory_prices.  This scheduler only
+     * Prices are now resolved directly from inventory_prices. This scheduler only
      * notifies external integrations when a scheduled price becomes effective;
      * it never copies the value back into inventory.
      */
@@ -278,10 +323,6 @@ public class InventoryPriceService {
         price.setCreatedByUserId(userId);
         InventoryPrice saved = priceRepository.save(price);
 
-        if (markChecked) {
-            inventory.setLastPriceCheckedAt(today());
-        }
-
         if (!effectiveFrom.isAfter(today())) {
             BigDecimal newCurrent = currentAmount(inventory.getId());
             if (!Objects.equals(previousCurrent, newCurrent)
@@ -307,6 +348,25 @@ public class InventoryPriceService {
         }
     }
 
+    private void markConfirmed(
+            InventoryPrice price,
+            LocalDate confirmedAt,
+            String confirmedSource,
+            boolean preserveLatestConfirmation
+    ) {
+        Objects.requireNonNull(price, "price");
+        Objects.requireNonNull(confirmedAt, "confirmedAt");
+
+        if (preserveLatestConfirmation
+                && price.getLastConfirmedAt() != null
+                && confirmedAt.isBefore(price.getLastConfirmedAt())) {
+            return;
+        }
+
+        price.setLastConfirmedAt(confirmedAt);
+        price.setLastConfirmedSource(normalizeConfirmationSource(confirmedSource));
+    }
+
     public InventoryPricePointResponse toResponse(InventoryPrice price) {
         return new InventoryPricePointResponse(
                 price.getId(),
@@ -318,6 +378,21 @@ public class InventoryPriceService {
                 price.getLastConfirmedSource(),
                 price.getCreatedAt()
         );
+    }
+
+    private String confirmationSourceFor(InventoryPriceSource source) {
+        if (source == null) {
+            return null;
+        }
+        return switch (source) {
+            case MANUAL -> MANUAL_PRICE_SOURCE;
+            case PRICE_LIST -> PRICE_LIST_CONFIRMATION_SOURCE;
+            case STOCK_LOAD -> "Carga de stock";
+            case TIENDANUBE_IMPORT -> "Importación de Tiendanube";
+            case PURCHASE -> "Compra";
+            case SALE_RESOLUTION -> "Resolución de venta";
+            case LEGACY_MIGRATION -> "Migración anterior";
+        };
     }
 
     private String normalizeConfirmationSource(String source) {
