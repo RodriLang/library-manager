@@ -24,6 +24,7 @@ public interface BookMapper {
     @Mapping(target = "createdAt", source = "book.createdAt")
     @Mapping(target = "updatedAt", source = "book.updatedAt")
     @Mapping(target = "providers", source = "providers")
+    @Mapping(target = "fieldSources", expression = "java(book.getEffectiveFieldSources())")
     BookDetailResponse toDetailResponse(
             Book book,
             List<BookProviderResponse> providers
@@ -44,6 +45,7 @@ public interface BookMapper {
     @Mapping(target = "titleSort", ignore = true)
     @Mapping(target = "createdByBookstore", ignore = true)
     @Mapping(target = "catalogStatus", ignore = true)
+    @Mapping(target = "fieldMetadata", ignore = true)
     Book toEntity(BookRequest request);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
@@ -59,6 +61,7 @@ public interface BookMapper {
     @Mapping(target = "titleSort", ignore = true)
     @Mapping(target = "createdByBookstore", ignore = true)
     @Mapping(target = "catalogStatus", ignore = true)
+    @Mapping(target = "fieldMetadata", ignore = true)
     @Mapping(
             target = "publicationYear",
             source = "publicationYear",
