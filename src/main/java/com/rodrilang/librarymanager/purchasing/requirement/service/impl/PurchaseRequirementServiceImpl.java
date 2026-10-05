@@ -12,6 +12,8 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.order.repository.PurchaseOrderItemRepository;
+import com.rodrilang.librarymanager.purchasing.model.BookstoreProviderBookTerm;
+import com.rodrilang.librarymanager.purchasing.repository.BookstoreProviderBookTermRepository;
 import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
 import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.purchasing.order.repository.projection.PurchaseRequirementOrderedQuantityProjection;
@@ -59,6 +61,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     private final ProviderBookRepository providerBookRepository;
     private final ProviderRepository providerRepository;
+    private final BookstoreProviderBookTermRepository providerBookTermRepository;
 
     private final InventoryRepository inventoryRepository;
 
@@ -587,6 +590,19 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                                 )
                         );
 
+        Map<ProviderBookKey, BookstoreProviderBookTerm> providerTerms =
+                providerBookTermRepository
+                        .findAllByBookstoreIdAndBookIdIn(bookstoreId, bookIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                term -> new ProviderBookKey(
+                                        term.getProvider().getId(),
+                                        term.getBook().getId()
+                                ),
+                                Function.identity(),
+                                (left, right) -> right
+                        ));
+
         Map<Long, List<PurchaseRequirementProviderResponse>>
                 availableProvidersByBookId =
                 providerBookRepository
@@ -596,12 +612,19 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                                 Collectors.groupingBy(
                                         PurchaseRequirementProviderProjection::getBookId,
                                         Collectors.mapping(
-                                                provider ->
-                                                        new PurchaseRequirementProviderResponse(
-                                                                provider.getProviderId(),
-                                                                provider.getProviderName(),
-                                                                provider.getPrice()
-                                                        ),
+                                                provider -> {
+                                                    BookstoreProviderBookTerm term = providerTerms.get(
+                                                            new ProviderBookKey(
+                                                                    provider.getProviderId(),
+                                                                    provider.getBookId()
+                                                            )
+                                                    );
+                                                    return new PurchaseRequirementProviderResponse(
+                                                            provider.getProviderId(),
+                                                            provider.getProviderName(),
+                                                            term != null ? term.getLatestListPrice() : null
+                                                    );
+                                                },
                                                 Collectors.toList()
                                         )
                                 )
@@ -922,6 +945,9 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         if (sourceRepository.existsByReversedSourceId(source.getId())) {
             throw new BusinessException("La acción ya fue deshecha.");
         }
+    }
+
+    private record ProviderBookKey(Long providerId, Long bookId) {
     }
 
     private record RequirementAddResult(

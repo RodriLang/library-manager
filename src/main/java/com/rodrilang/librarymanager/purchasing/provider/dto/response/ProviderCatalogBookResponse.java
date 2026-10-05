@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookVerificat
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 public record ProviderCatalogBookResponse(
@@ -25,7 +26,15 @@ public record ProviderCatalogBookResponse(
         ProviderBookSource providerCatalogSource,
         ProviderBookVerificationStatus providerCatalogStatus,
 
+        // Último precio que esta librería recibió de este proveedor para el
+        // libro. No es un precio global de Anaquel ni tiene historial propio.
         BigDecimal providerPrice,
+        LocalDate providerPriceEffectiveFrom,
+        LocalDate providerLastSeenInPriceListAt,
+        Long providerPriceImportId,
+
+        // Precio de venta de la librería, sólo cuando el libro está en inventario.
+        BigDecimal salePrice,
 
         Long inventoryId,
         Integer stock,

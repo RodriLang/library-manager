@@ -14,10 +14,10 @@ import jakarta.persistence.LockModeType;
 import java.util.Optional;
 
 public interface InventoryPriceImportRepository extends JpaRepository<InventoryPriceImport, Long> {
-    @EntityGraph(attributePaths = {"format"})
+    @EntityGraph(attributePaths = {"format", "provider"})
     Page<InventoryPriceImport> findAllByBookstoreIdOrderByCreatedAtDesc(Long bookstoreId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"format"})
+    @EntityGraph(attributePaths = {"format", "provider"})
     Optional<InventoryPriceImport> findByIdAndBookstoreId(Long id, Long bookstoreId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -25,6 +25,7 @@ public interface InventoryPriceImportRepository extends JpaRepository<InventoryP
             select priceImport
             from InventoryPriceImport priceImport
             left join fetch priceImport.format
+            left join fetch priceImport.provider
             where priceImport.id = :id
               and priceImport.bookstore.id = :bookstoreId
             """)

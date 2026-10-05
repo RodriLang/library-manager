@@ -38,7 +38,7 @@ public class ProviderBookTermService {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
 
         return repository
-                .findAllByBookstoreIdAndProviderIdOrderByBookTitleAsc(bookstoreId, providerId)
+                .findCommercialTermsByBookstoreIdAndProviderId(bookstoreId, providerId)
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -71,8 +71,6 @@ public class ProviderBookTermService {
             BigDecimal discount,
             LocalDate purchaseDate
     ) {
-        if (discount == null) return;
-
         BookstoreProviderBookTerm term = repository
                 .findByBookstoreIdAndProviderIdAndBookId(bookstore.getId(), provider.getId(), book.getId())
                 .orElseGet(() -> BookstoreProviderBookTerm.builder()
@@ -81,7 +79,9 @@ public class ProviderBookTermService {
                         .book(book)
                         .build());
 
-        term.setDiscountPercentage(calculator.percentage(discount));
+        if (discount != null) {
+            term.setDiscountPercentage(calculator.percentage(discount));
+        }
         term.setLastPurchaseDate(purchaseDate);
         repository.save(term);
     }

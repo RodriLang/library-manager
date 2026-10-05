@@ -10,6 +10,10 @@ public record ProviderBookTermResponse(
         String isbn,
         String title,
         BigDecimal discountPercentage,
-        LocalDate lastPurchaseDate
+        LocalDate lastPurchaseDate,
+        BigDecimal latestListPrice,
+        LocalDate latestListEffectiveFrom,
+        LocalDate lastSeenInPriceListAt,
+        Long lastPriceImportId
 ) {
 }
