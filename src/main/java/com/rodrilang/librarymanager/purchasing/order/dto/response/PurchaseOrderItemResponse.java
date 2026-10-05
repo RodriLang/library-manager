@@ -19,7 +19,9 @@ public record PurchaseOrderItemResponse(
         Integer additionalQuantity,
 
         BigDecimal unitPrice,
-        BigDecimal subtotal
+        BigDecimal subtotal,
+
+        String notes
 
 ) {
 }

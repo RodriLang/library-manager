@@ -12,7 +12,9 @@ import com.rodrilang.librarymanager.purchasing.order.dto.PurchaseOrderFilter;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.AddPurchaseOrderItemRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrdersFromRequirementsRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemNotesRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.CreatePurchaseOrdersFromRequirementsResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PreparedPurchaseOrderResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderDetailResponse;
@@ -312,6 +314,18 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Transactional
     @Override
+    public PurchaseOrderDetailResponse update(Long orderId, UpdatePurchaseOrderRequest request) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        PurchaseOrder order = getDraftOrderForUpdate(orderId, bookstoreId);
+        order.setNotes(normalizeNullableText(request != null ? request.notes() : null));
+
+        return getDetailResponse(order);
+    }
+
+    @Transactional
+    @Override
     public PurchaseOrderDetailResponse addItem(Long orderId, AddPurchaseOrderItemRequest request) {
 
         validateAddItemRequest(request);
@@ -375,6 +389,24 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         if (requirementQuantity == 0) {
             item.setRequirement(null);
         }
+
+        return getDetailResponse(order);
+    }
+
+    @Transactional
+    @Override
+    public PurchaseOrderDetailResponse updateItemNotes(
+            Long orderId,
+            Long itemId,
+            UpdatePurchaseOrderItemNotesRequest request
+    ) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        PurchaseOrder order = getDraftOrderForUpdate(orderId, bookstoreId);
+        PurchaseOrderItem item = getOrderItem(order.getId(), itemId);
+
+        item.setNotes(normalizeNullableText(request != null ? request.notes() : null));
 
         return getDetailResponse(order);
     }

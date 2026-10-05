@@ -37,7 +37,9 @@ public interface PurchaseOrderMapper {
                 additionalQuantity,
 
                 item.getUnitPrice(),
-                subtotal
+                subtotal,
+
+                item.getNotes()
         );
     }
 }

@@ -4,7 +4,9 @@ import com.rodrilang.librarymanager.purchasing.order.dto.PurchaseOrderFilter;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.AddPurchaseOrderItemRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrdersFromRequirementsRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemNotesRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.CreatePurchaseOrdersFromRequirementsResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderDetailResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderResponse;
@@ -23,9 +25,13 @@ public interface PurchaseOrderService {
 
     PurchaseOrderDetailResponse findById(Long orderId);
 
+    PurchaseOrderDetailResponse update(Long orderId, UpdatePurchaseOrderRequest request);
+
     PurchaseOrderDetailResponse addItem(Long orderId, AddPurchaseOrderItemRequest request);
 
     PurchaseOrderDetailResponse updateItem(Long orderId, Long itemId, UpdatePurchaseOrderItemRequest request);
+
+    PurchaseOrderDetailResponse updateItemNotes(Long orderId, Long itemId, UpdatePurchaseOrderItemNotesRequest request);
 
     PurchaseOrderDetailResponse removeItem(Long orderId, Long itemId);
 

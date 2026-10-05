@@ -104,7 +104,7 @@ public class PurchaseOrderExportService {
             );
 
             if (order.getNotes() != null && !order.getNotes().isBlank()) {
-                rowIndex = addMetadataRow(sheet, rowIndex, "Notas", order.getNotes(), boldStyle);
+                rowIndex = addMetadataRow(sheet, rowIndex, "Observaciones del pedido", order.getNotes(), boldStyle);
             }
 
             rowIndex++;
@@ -127,7 +127,7 @@ public class PurchaseOrderExportService {
             sheet.setColumnWidth(0, 20 * 256);
             sheet.setColumnWidth(1, 55 * 256);
             sheet.setColumnWidth(2, 12 * 256);
-            sheet.setColumnWidth(3, 45 * 256);
+            sheet.setColumnWidth(3, 42 * 256);
 
             workbook.write(output);
             return output.toByteArray();
@@ -163,7 +163,7 @@ public class PurchaseOrderExportService {
         )).append('\n');
 
         if (order.getNotes() != null && !order.getNotes().isBlank()) {
-            csv.append("Notas,").append(csvValue(order.getNotes())).append('\n');
+            csv.append("Observaciones del pedido,").append(csvValue(order.getNotes())).append('\n');
         }
 
         csv.append('\n');
@@ -213,7 +213,7 @@ public class PurchaseOrderExportService {
             ));
 
             if (order.getNotes() != null && !order.getNotes().isBlank()) {
-                Paragraph notes = new Paragraph("Notas: " + order.getNotes(), normalFont);
+                Paragraph notes = new Paragraph("Observaciones del pedido: " + order.getNotes(), normalFont);
                 notes.setSpacingAfter(12);
                 document.add(notes);
             } else {
@@ -222,7 +222,7 @@ public class PurchaseOrderExportService {
                 document.add(gap);
             }
 
-            PdfPTable table = new PdfPTable(new float[]{22, 58, 12, 28});
+            PdfPTable table = new PdfPTable(new float[]{20, 46, 12, 22});
             table.setWidthPercentage(100);
             table.setHeaderRows(1);
 

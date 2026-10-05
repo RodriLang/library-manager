@@ -7,7 +7,9 @@ import com.rodrilang.librarymanager.purchasing.order.dto.PurchaseOrderFilter;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.AddPurchaseOrderItemRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrdersFromRequirementsRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemNotesRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.CreatePurchaseOrdersFromRequirementsResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderDetailResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderResponse;
@@ -94,6 +96,15 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(service.findById(orderId));
     }
 
+    @PatchMapping("/{orderId}")
+    public ResponseEntity<PurchaseOrderDetailResponse> update(
+            @PathVariable Long orderId,
+            @Valid
+            @RequestBody UpdatePurchaseOrderRequest request
+    ) {
+        return ResponseEntity.ok(service.update(orderId, request));
+    }
+
     @GetMapping("/{orderId}/export/{format}")
     public ResponseEntity<byte[]> export(
             @PathVariable Long orderId,
@@ -136,6 +147,17 @@ public class PurchaseOrderController {
     ) {
 
         return ResponseEntity.ok(service.updateItem(orderId, itemId, request));
+    }
+
+    @PatchMapping("/{orderId}/items/{itemId}/notes")
+    public ResponseEntity<PurchaseOrderDetailResponse> updateItemNotes(
+            @PathVariable Long orderId,
+            @PathVariable Long itemId,
+            @Valid
+            @RequestBody UpdatePurchaseOrderItemNotesRequest request
+    ) {
+
+        return ResponseEntity.ok(service.updateItemNotes(orderId, itemId, request));
     }
 
     @DeleteMapping("/{orderId}/items/{itemId}")
