@@ -115,6 +115,26 @@ class UserDetailsServiceImplTest {
         assertThat(authenticated.getAuthorities()).isEmpty();
     }
 
+    @Test
+    void doesNotEnterRequestedBookstoreWithoutEnabledMembershipEvenForPlatformAdmin() {
+        Role admin = role(
+                RoleType.ADMIN,
+                AccessScope.PLATFORM,
+                permission("platform.dashboard.read", AccessScope.PLATFORM)
+        );
+        User user = user(Set.of(admin));
+
+        when(userRepository.findByUsernameOrEmail("admin")).thenReturn(Optional.of(user));
+        when(membershipRepository.findByUser_IdAndBookstore_Id(1L, 7L))
+                .thenReturn(Optional.empty());
+
+        AuthenticatedUser authenticated = service.loadUserByUsername("admin", 7L);
+
+        assertThat(authenticated.bookstoreId()).isNull();
+        assertThat(authorityNames(authenticated))
+                .containsExactlyInAnyOrder("ROLE_ADMIN", "platform.dashboard.read");
+    }
+
     private User user(Set<Role> roles) {
         return User.builder()
                 .id(1L)

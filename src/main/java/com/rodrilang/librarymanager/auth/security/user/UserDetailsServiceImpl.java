@@ -68,7 +68,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
      * Resuelve el contexto de librería sin obligar a los usuarios de plataforma a pertenecer a una.
      *
      * Orden de resolución:
-     * 1. Librería solicitada explícitamente (X-Bookstore-Id).
+     * 1. Librería solicitada explícitamente (X-Bookstore-Id), solo con membresía habilitada.
      * 2. Librería legacy del usuario, siempre que siga teniendo una membresía habilitada.
      * 3. Si existe una única membresía habilitada, se selecciona automáticamente.
      * 4. Con cero o varias membresías y sin selección explícita, no hay librería activa.
@@ -79,8 +79,11 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                     .findByUser_IdAndBookstore_Id(user.getId(), requestedBookstoreId)
                     .filter(BookstoreMembership::isEnabled);
 
-            // Un ADMIN global puede seleccionar una librería aunque no tenga membresía propia.
-            return new ResolvedBookstoreAccess(requestedBookstoreId, requestedMembership);
+            if (requestedMembership.isPresent()) {
+                return new ResolvedBookstoreAccess(requestedBookstoreId, requestedMembership);
+            }
+
+            return new ResolvedBookstoreAccess(null, Optional.empty());
         }
 
         Long legacyBookstoreId = user.getBookstore() != null ? user.getBookstore().getId() : null;
