@@ -98,6 +98,9 @@ public class Book extends AuditableEntity {
     @Column(name = "genre_name")
     private String genreName;
 
+    @Column(name = "collection_name", length = 255)
+    private String collectionName;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "source", nullable = false)
     private BookSource source;

@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.dto.response;
 
 import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookIdentifierStatus;
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookSource;
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookVerificationStatus;
 
 import java.time.Instant;
 
@@ -20,7 +22,13 @@ public record BookProviderResponse(
 
         Boolean active,
 
-        Instant lastSeenAt
+        Instant firstSeenAt,
+
+        Instant lastSeenAt,
+
+        ProviderBookSource source,
+
+        ProviderBookVerificationStatus verificationStatus
 
 ) {
 }

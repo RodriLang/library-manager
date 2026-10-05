@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.inventory.pricing.model;
 
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,6 +31,10 @@ public class BookstorePriceListFormat extends AuditableEntity {
 
     @Column(nullable = false, length = 120)
     private String name;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "provider_id")
+    private Provider provider;
 
     @Column(nullable = false)
     private boolean standard;

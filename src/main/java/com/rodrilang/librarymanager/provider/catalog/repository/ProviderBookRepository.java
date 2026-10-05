@@ -100,7 +100,10 @@ public interface ProviderBookRepository
                 pb.reportedIsbn,
                 pb.identifierStatus,
                 pb.active,
-                pb.lastSeenAt
+                pb.firstSeenAt,
+                pb.lastSeenAt,
+                pb.source,
+                pb.verificationStatus
             )
             FROM ProviderBook pb
             WHERE pb.book.id = :bookId

@@ -249,6 +249,11 @@ public class ProviderCatalogServiceImpl
 
                 providerBook.getExternalCode(),
 
+                providerBook.getFirstSeenAt(),
+                providerBook.getLastSeenAt(),
+                providerBook.getSource(),
+                providerBook.getVerificationStatus(),
+
                 salePrice,
 
                 inventory != null

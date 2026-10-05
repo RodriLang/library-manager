@@ -24,6 +24,7 @@ import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.provider.catalog.service.BookstoreCatalogObservationService;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -65,6 +66,7 @@ public class InventoryPriceImportService {
     private final StreamingConfigurablePriceListParser parser;
     private final NormalizedPriceListStorage normalizedStorage;
     private final CanonicalIsbnResolver canonicalIsbnResolver;
+    private final BookstoreCatalogObservationService catalogObservationService;
 
     @Transactional
     public InventoryPriceImportPreviewResponse preview(
@@ -115,12 +117,21 @@ public class InventoryPriceImportService {
                 writer.newLine();
 
                 PriceListImportConfig parserConfig = toParserConfig(format);
+                List<PriceListRow> catalogObservationBatch = new ArrayList<>(100);
                 parser.parse(source, parserConfig, row -> {
                     if (isCompletelyEmpty(row)) {
                         return;
                     }
                     total.incrementAndGet();
                     writeNormalized(writer, row);
+
+                    if (format.getProvider() != null) {
+                        catalogObservationBatch.add(row);
+                        if (catalogObservationBatch.size() >= 100) {
+                            catalogObservationService.observe(format.getProvider().getId(), List.copyOf(catalogObservationBatch));
+                            catalogObservationBatch.clear();
+                        }
+                    }
 
                     MatchResult match = match(row, matchIndex);
                     if (match.inventory() == null) {
@@ -170,6 +181,11 @@ public class InventoryPriceImportService {
                     existingItems.add(item);
                     items.add(item);
                 });
+
+                if (format.getProvider() != null && !catalogObservationBatch.isEmpty()) {
+                    catalogObservationService.observe(format.getProvider().getId(), List.copyOf(catalogObservationBatch));
+                    catalogObservationBatch.clear();
+                }
             }
 
             itemRepository.saveAll(items);

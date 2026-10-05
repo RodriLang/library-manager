@@ -1,6 +1,10 @@
 package com.rodrilang.librarymanager.purchasing.provider.dto.response;
 
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookSource;
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookVerificationStatus;
+
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 public record ProviderCatalogBookResponse(
@@ -15,6 +19,11 @@ public record ProviderCatalogBookResponse(
         String coverUrl,
 
         String externalCode,
+
+        Instant providerFirstSeenAt,
+        Instant providerLastSeenAt,
+        ProviderBookSource providerCatalogSource,
+        ProviderBookVerificationStatus providerCatalogStatus,
 
         BigDecimal providerPrice,
 
