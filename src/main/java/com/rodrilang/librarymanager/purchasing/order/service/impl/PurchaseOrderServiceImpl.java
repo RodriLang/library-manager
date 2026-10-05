@@ -613,18 +613,22 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     private PurchaseOrder getDraftOrderForUpdate(Long orderId, Long bookstoreId) {
 
-        return orderRepository
-                .findByIdAndBookstoreIdAndStatusForUpdate(
-                        orderId,
-                        bookstoreId,
-                        PurchaseOrderStatus.DRAFT
-                )
+        PurchaseOrder order = orderRepository
+                .findByIdAndBookstoreIdForUpdate(orderId, bookstoreId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "No se encontró un pedido en borrador con ID: "
-                                        + orderId
+                                "No se encontró el pedido con ID: " + orderId
                         )
                 );
+
+        if (order.getStatus() != PurchaseOrderStatus.DRAFT) {
+            throw new BusinessException(
+                    "El pedido ya fue enviado o cancelado y no puede modificarse. "
+                            + "Las nuevas unidades deben incorporarse a Reponer para generar otro pedido."
+            );
+        }
+
+        return order;
     }
 
     private PurchaseOrderItem getOrderItem(Long orderId, Long itemId) {

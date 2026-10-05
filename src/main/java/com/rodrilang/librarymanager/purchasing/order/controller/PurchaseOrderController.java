@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.purchasing.order.controller;
 
+import java.nio.charset.StandardCharsets;
+
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.PurchaseOrderFilter;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.AddPurchaseOrderItemRequest;
@@ -9,6 +11,9 @@ import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseO
 import com.rodrilang.librarymanager.purchasing.order.dto.response.CreatePurchaseOrdersFromRequirementsResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderDetailResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderResponse;
+import com.rodrilang.librarymanager.purchasing.order.export.PurchaseOrderExportFile;
+import com.rodrilang.librarymanager.purchasing.order.export.PurchaseOrderExportFormat;
+import com.rodrilang.librarymanager.purchasing.order.export.PurchaseOrderExportService;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus;
 import com.rodrilang.librarymanager.purchasing.order.service.PurchaseOrderService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +23,10 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,6 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PurchaseOrderController {
 
     private final PurchaseOrderService service;
+    private final PurchaseOrderExportService exportService;
 
     @PostMapping
     public ResponseEntity<PurchaseOrderDetailResponse> create(
@@ -83,6 +92,27 @@ public class PurchaseOrderController {
     ) {
 
         return ResponseEntity.ok(service.findById(orderId));
+    }
+
+    @GetMapping("/{orderId}/export/{format}")
+    public ResponseEntity<byte[]> export(
+            @PathVariable Long orderId,
+            @PathVariable String format
+    ) {
+        PurchaseOrderExportFile file = exportService.export(
+                orderId,
+                PurchaseOrderExportFormat.from(format)
+        );
+
+        ContentDisposition disposition = ContentDisposition
+                .attachment()
+                .filename(file.fileName(), StandardCharsets.UTF_8)
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .contentType(MediaType.parseMediaType(file.contentType()))
+                .body(file.content());
     }
 
     @PostMapping("/{orderId}/items")

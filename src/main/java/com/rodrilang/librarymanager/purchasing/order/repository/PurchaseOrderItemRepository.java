@@ -55,6 +55,38 @@ public interface PurchaseOrderItemRepository
             @Param("requirementId") Long requirementId
     );
 
+    @EntityGraph(attributePaths = {
+            "purchaseOrder",
+            "purchaseOrder.provider",
+            "requirement"
+    })
+    @Query("""
+            SELECT item
+            FROM PurchaseOrderItem item
+            WHERE item.purchaseOrder.bookstore.id = :bookstoreId
+              AND item.book.id = :bookId
+              AND item.purchaseOrder.status <>
+                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.CANCELLED
+            ORDER BY item.purchaseOrder.createdAt DESC, item.id DESC
+            """)
+    List<PurchaseOrderItem> findActiveItemsByBook(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("bookId") Long bookId
+    );
+
+    @Query("""
+            SELECT COALESCE(SUM(item.requirementQuantity), 0)
+            FROM PurchaseOrderItem item
+            WHERE item.requirement.id = :requirementId
+              AND item.purchaseOrder.status <>
+                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.CANCELLED
+              AND item.purchaseOrder.status <>
+                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.DRAFT
+            """)
+    Long sumLockedOrderedQuantityByRequirementId(
+            @Param("requirementId") Long requirementId
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = {
             "purchaseOrder",
