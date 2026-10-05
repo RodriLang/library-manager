@@ -71,6 +71,10 @@ public class PurchaseOrderItem extends AuditableEntity {
     @Column(name = "requirement_quantity", nullable = false)
     private Integer requirementQuantity = 0;
 
+    @Builder.Default
+    @Column(name = "received_quantity", nullable = false)
+    private Integer receivedQuantity = 0;
+
     @Column(name = "unit_price", precision = 12, scale = 2)
     private BigDecimal unitPrice;
 

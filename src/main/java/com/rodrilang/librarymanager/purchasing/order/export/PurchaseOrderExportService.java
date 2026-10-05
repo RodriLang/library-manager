@@ -264,6 +264,9 @@ public class PurchaseOrderExportService {
         return switch (status) {
             case DRAFT -> "Borrador";
             case SENT -> "Enviado";
+            case PARTIALLY_RECEIVED -> "Recibido parcialmente";
+            case RECEIVED -> "Recibido";
+            case CLOSED_INCOMPLETE -> "Cerrado incompleto";
             case CANCELLED -> "Cancelado";
         };
     }

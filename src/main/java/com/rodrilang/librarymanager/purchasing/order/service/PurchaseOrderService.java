@@ -37,5 +37,7 @@ public interface PurchaseOrderService {
 
     PurchaseOrderDetailResponse send(Long orderId);
 
+    PurchaseOrderDetailResponse closeIncomplete(Long orderId);
+
     void cancel(Long orderId);
 }

@@ -65,8 +65,11 @@ public interface PurchaseOrderItemRepository
             FROM PurchaseOrderItem item
             WHERE item.purchaseOrder.bookstore.id = :bookstoreId
               AND item.book.id = :bookId
-              AND item.purchaseOrder.status <>
-                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.CANCELLED
+              AND item.purchaseOrder.status IN (
+                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.DRAFT,
+                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.SENT,
+                  com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus.PARTIALLY_RECEIVED
+              )
             ORDER BY item.purchaseOrder.createdAt DESC, item.id DESC
             """)
     List<PurchaseOrderItem> findActiveItemsByBook(

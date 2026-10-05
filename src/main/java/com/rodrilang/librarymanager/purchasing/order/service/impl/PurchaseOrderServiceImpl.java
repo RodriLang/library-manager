@@ -32,6 +32,8 @@ import com.rodrilang.librarymanager.purchasing.order.repository.projection.Purch
 import com.rodrilang.librarymanager.purchasing.order.service.PurchaseOrderService;
 import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirement;
+import com.rodrilang.librarymanager.purchasing.receipt.model.GoodsReceiptStatus;
+import com.rodrilang.librarymanager.purchasing.receipt.repository.GoodsReceiptRepository;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
 import com.rodrilang.librarymanager.service.BookService;
@@ -67,6 +69,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final PurchaseOrderItemRepository itemRepository;
 
     private final PurchaseRequirementRepository requirementRepository;
+
+    private final GoodsReceiptRepository goodsReceiptRepository;
 
     private final ProviderRepository providerRepository;
     private final ProviderBookRepository providerBookRepository;
@@ -461,6 +465,38 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Transactional
     @Override
+    public PurchaseOrderDetailResponse closeIncomplete(Long orderId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        PurchaseOrder order = orderRepository.findByIdAndBookstoreIdForUpdate(orderId, bookstoreId)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el pedido con ID: " + orderId));
+
+        if (order.getStatus() != PurchaseOrderStatus.SENT
+                && order.getStatus() != PurchaseOrderStatus.PARTIALLY_RECEIVED) {
+            throw new BusinessException("Solo se puede cerrar como incompleto un pedido enviado o parcialmente recibido.");
+        }
+        if (goodsReceiptRepository.existsByPurchaseOrderIdAndStatus(order.getId(), GoodsReceiptStatus.DRAFT)) {
+            throw new BusinessException("Hay una recepción en borrador para este pedido. Confirmala o cancelala antes de cerrar el pedido.");
+        }
+
+        List<PurchaseOrderItem> items = itemRepository.findAllByPurchaseOrderIdOrderByIdAsc(order.getId());
+        for (PurchaseOrderItem item : items) {
+            if (item.getRequirement() == null || item.getRequirementQuantity() == null) {
+                continue;
+            }
+            int received = item.getReceivedQuantity() != null ? item.getReceivedQuantity() : 0;
+            int fulfilledRequirement = Math.min(item.getRequirementQuantity(), received);
+            item.setRequirementQuantity(fulfilledRequirement);
+            if (fulfilledRequirement == 0) {
+                item.setRequirement(null);
+            }
+        }
+
+        order.setStatus(PurchaseOrderStatus.CLOSED_INCOMPLETE);
+        return buildDetailResponse(order, items);
+    }
+
+    @Transactional
+    @Override
     public void cancel(Long orderId) {
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
@@ -470,6 +506,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         if (order.getStatus() == PurchaseOrderStatus.CANCELLED) {
             throw new BusinessException("El pedido ya se encuentra cancelado.");
+        }
+        if (order.getStatus() != PurchaseOrderStatus.DRAFT) {
+            throw new BusinessException("Solo se puede cancelar un pedido en borrador. Un pedido enviado debe cerrarse como incompleto si no llegará el resto.");
         }
 
         order.setStatus(PurchaseOrderStatus.CANCELLED);
@@ -693,6 +732,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 .mapToInt(PurchaseOrderItem::getQuantity)
                 .sum();
 
+        int receivedUnits = items.stream()
+                .mapToInt(item -> Math.min(item.getReceivedQuantity() != null ? item.getReceivedQuantity() : 0, item.getQuantity()))
+                .sum();
+        int pendingUnits = Math.max(totalUnits - receivedUnits, 0);
         BigDecimal estimatedTotal = calculateEstimatedTotal(items);
 
         return new PurchaseOrderDetailResponse(
@@ -704,6 +747,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 order.getNotes(),
                 items.size(),
                 totalUnits,
+                receivedUnits,
+                pendingUnits,
                 estimatedTotal,
                 order.getCreatedAt(),
                 order.getSentAt(),

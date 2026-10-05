@@ -582,6 +582,13 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 requirement,
                 PurchaseOrderStatus.SENT
         );
+        if (sentItem == null) {
+            sentItem = findOrderItemForRequirement(
+                    activeOrderItems,
+                    requirement,
+                    PurchaseOrderStatus.PARTIALLY_RECEIVED
+            );
+        }
 
         if (requirement == null) {
             PurchaseOrderItem activeItem = draftItem != null

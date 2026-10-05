@@ -177,6 +177,13 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(service.send(orderId));
     }
 
+    @PostMapping("/{orderId}/close-incomplete")
+    public ResponseEntity<PurchaseOrderDetailResponse> closeIncomplete(
+            @PathVariable Long orderId
+    ) {
+        return ResponseEntity.ok(service.closeIncomplete(orderId));
+    }
+
     @DeleteMapping("/{orderId}")
     public ResponseEntity<Void> cancel(
             @PathVariable Long orderId
