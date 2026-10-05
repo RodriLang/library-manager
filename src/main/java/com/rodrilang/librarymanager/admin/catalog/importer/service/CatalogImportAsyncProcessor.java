@@ -34,7 +34,7 @@ public class CatalogImportAsyncProcessor {
             CatalogImportJob job=jobRepository.findDetailedById(jobId).orElseThrow();
             filePath=Path.of(job.getTemporaryFilePath());
             progressService.markProcessing(jobId);
-            var parserConfig=formatService.toParserConfig(job.getFormat());
+            var parserConfig=formatService.toParserConfig(job.getFormat().getId());
             AtomicInteger totalRows = new AtomicInteger();
             parser.parse(filePath, parserConfig, row -> { if (!isEmpty(row)) totalRows.incrementAndGet(); });
             progressService.setTotalRows(jobId, totalRows.get());

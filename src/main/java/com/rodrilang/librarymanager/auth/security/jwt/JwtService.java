@@ -19,6 +19,8 @@ import java.util.List;
 @Service
 public class JwtService {
 
+    private static final String ROLE_PREFIX = "ROLE_";
+
     private final SecretKey signingKey;
     private final Duration jwtExpiration;
 
@@ -42,9 +44,21 @@ public class JwtService {
         Instant issuedAt = Instant.now();
         Instant expiresAt = issuedAt.plus(jwtExpiration);
 
-        List<String> roles = authenticatedUser.getAuthorities()
+        List<String> authorities = authenticatedUser.getAuthorities()
                 .stream()
                 .map(GrantedAuthority::getAuthority)
+                .distinct()
+                .sorted()
+                .toList();
+
+        // Mantiene el formato ROLE_* que ya utiliza Spring Security y separa
+        // los permisos para que el claim roles no mezcle conceptos distintos.
+        List<String> roles = authorities.stream()
+                .filter(authority -> authority.startsWith(ROLE_PREFIX))
+                .toList();
+
+        List<String> permissions = authorities.stream()
+                .filter(authority -> !authority.startsWith(ROLE_PREFIX))
                 .toList();
 
         return Jwts.builder()
@@ -52,6 +66,9 @@ public class JwtService {
                 .claim("userId", authenticatedUser.userId())
                 .claim("bookstoreId", authenticatedUser.bookstoreId())
                 .claim("roles", roles)
+                .claim("permissions", permissions)
+                // Claim de compatibilidad/diagnóstico con el conjunto efectivo completo.
+                .claim("authorities", authorities)
                 .issuedAt(Date.from(issuedAt))
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey, Jwts.SIG.HS256)

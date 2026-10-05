@@ -49,7 +49,9 @@ public class CatalogImportFormatService {
         return toResponse(format);
     }
 
-    public PriceListImportConfig toParserConfig(CatalogImportFormat format) {
+    @Transactional(readOnly = true)
+    public PriceListImportConfig toParserConfig(Long formatId) {
+        CatalogImportFormat format = requireDetailed(formatId);
         return PriceListImportConfig.builder()
                 .name(format.getName())
                 .sheetStrategy(format.getSheetStrategy())
@@ -73,6 +75,12 @@ public class CatalogImportFormatService {
     @Transactional(readOnly = true)
     public CatalogImportFormat require(Long id) {
         return repository.findById(id).orElseThrow(() -> new BusinessException("No se encontró el formato de importación solicitado."));
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogImportFormat requireDetailed(Long id) {
+        return repository.findDetailedById(id)
+                .orElseThrow(() -> new BusinessException("No se encontró el formato de importación solicitado."));
     }
 
     private Provider requireProvider(Long id) {
