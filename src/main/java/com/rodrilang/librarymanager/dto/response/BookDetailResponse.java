@@ -2,10 +2,12 @@ package com.rodrilang.librarymanager.dto.response;
 
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
+import com.rodrilang.librarymanager.catalog.contribution.enums.BookFieldSource;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public record BookDetailResponse(
@@ -53,6 +55,8 @@ public record BookDetailResponse(
         PublisherResponse publisher,
 
         Set<AuthorResponse> authors,
+
+        Map<String, BookFieldSource> fieldSources,
 
         List<BookProviderResponse> providers,
 

@@ -13,6 +13,7 @@ import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportStatus;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class InventoryPriceImportApplyService {
     private final BookstoreContext bookstoreContext;
     private final InventoryPriceImportRepository importRepository;
     private final InventoryPriceImportItemRepository itemRepository;
+    private final InventoryPriceImportProviderRowRepository providerRowRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -123,6 +125,7 @@ public class InventoryPriceImportApplyService {
         priceImport.setStatus(InventoryPriceImportStatus.FAILED);
         priceImport.setProcessingFinishedAt(Instant.now());
         priceImport.setProcessingError(errorMessage(exception));
+        providerRowRepository.deleteAllByPriceImportId(importId);
     }
 
     private Set<Long> requestedIds(

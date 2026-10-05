@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.service.impl;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.catalog.contribution.enums.BookField;
+import com.rodrilang.librarymanager.catalog.contribution.enums.BookFieldSource;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
@@ -156,6 +158,8 @@ public class BookServiceImpl implements BookService {
         if (request.authorIds() != null) {
             book.setAuthors(authorService.getEntitiesByIds(request.authorIds()));
         }
+
+        markAdminVerifiedFields(book, request);
 
         Book saved = bookRepository.save(book);
 
@@ -376,4 +380,29 @@ public class BookServiceImpl implements BookService {
         List<BookProviderResponse> providers = providerBookService.findActiveProvidersByBookId(book.getId());
         return bookMapper.toDetailResponse(book, providers);
     }
+    private void markAdminVerifiedFields(Book book, UpdateBookRequest request) {
+        markVerified(book, BookField.TITLE, request.title());
+        markVerified(book, BookField.SUBTITLE, request.subtitle());
+        markVerified(book, BookField.DESCRIPTION, request.description());
+        markVerified(book, BookField.LANGUAGE, request.language());
+        markVerified(book, BookField.PUBLICATION_YEAR, request.publicationYear());
+        markVerified(book, BookField.PUBLICATION_MONTH, request.publicationMonth());
+        markVerified(book, BookField.COVER_URL, request.coverUrl());
+        markVerified(book, BookField.CATEGORY_NAME, request.categoryName());
+        markVerified(book, BookField.GENRE_NAME, request.genreName());
+        markVerified(book, BookField.PUBLISHER, request.publisherId());
+        markVerified(book, BookField.AUTHORS, request.authorIds());
+        markVerified(book, BookField.PAGE_COUNT, request.pageCount());
+        markVerified(book, BookField.WEIGHT_GRAMS, request.weightGrams());
+        markVerified(book, BookField.WIDTH_CM, request.widthCm());
+        markVerified(book, BookField.HEIGHT_CM, request.heightCm());
+        markVerified(book, BookField.DEPTH_CM, request.depthCm());
+    }
+
+    private void markVerified(Book book, BookField field, Object suppliedValue) {
+        if (suppliedValue != null) {
+            book.setFieldSource(field, BookFieldSource.VERIFIED);
+        }
+    }
+
 }

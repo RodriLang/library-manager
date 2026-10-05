@@ -7,5 +7,6 @@ public enum InventoryMovementReferenceType {
     PURCHASE,
     TIENDANUBE_ORDER,
     STOCK_ADJUSTMENT,
-    INVENTORY_COUNT
+    INVENTORY_COUNT,
+    GOODS_RECEIPT
 }

@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.purchasing.model;
 
 import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
@@ -56,4 +57,17 @@ public class BookstoreProviderBookTerm extends AuditableEntity {
 
     @Column(name = "last_purchase_date")
     private LocalDate lastPurchaseDate;
+
+    @Column(name = "latest_list_price", precision = 12, scale = 2)
+    private BigDecimal latestListPrice;
+
+    @Column(name = "latest_list_effective_from")
+    private LocalDate latestListEffectiveFrom;
+
+    @Column(name = "last_seen_in_price_list_at")
+    private LocalDate lastSeenInPriceListAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "last_price_import_id")
+    private InventoryPriceImport lastPriceImport;
 }

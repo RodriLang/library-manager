@@ -252,8 +252,8 @@ public class InventoryCountService {
     }
 
     private void validateModePurpose(InventoryCountMode mode, InventoryCountPurpose purpose) {
-        if (purpose == InventoryCountPurpose.DELIVERY && mode != InventoryCountMode.ADDITIVE) {
-            throw new BusinessException("Una recepción de mercadería debe utilizar modo ADDITIVE");
+        if (purpose == InventoryCountPurpose.DELIVERY) {
+            throw new BusinessException("Las nuevas recepciones de mercadería se registran desde el módulo Recepciones.");
         }
         if ((purpose == InventoryCountPurpose.AUDIT || purpose == InventoryCountPurpose.RECONCILIATION)
                 && mode != InventoryCountMode.ABSOLUTE) {

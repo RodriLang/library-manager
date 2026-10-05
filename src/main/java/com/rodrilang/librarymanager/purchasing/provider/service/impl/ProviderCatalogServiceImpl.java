@@ -15,6 +15,8 @@ import com.rodrilang.librarymanager.purchasing.provider.dto.response.ProviderCat
 import com.rodrilang.librarymanager.purchasing.provider.repository.ProviderBookSpecifications;
 import com.rodrilang.librarymanager.purchasing.provider.repository.projection.BookAlternativeProviderProjection;
 import com.rodrilang.librarymanager.purchasing.provider.service.ProviderCatalogService;
+import com.rodrilang.librarymanager.purchasing.model.BookstoreProviderBookTerm;
+import com.rodrilang.librarymanager.purchasing.repository.BookstoreProviderBookTermRepository;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirement;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
@@ -49,6 +51,7 @@ public class ProviderCatalogServiceImpl
     private final InventoryPriceService inventoryPriceService;
     private final InventoryRepository inventoryRepository;
     private final PurchaseRequirementRepository requirementRepository;
+    private final BookstoreProviderBookTermRepository providerBookTermRepository;
 
     private final BookstoreContext bookstoreContext;
 
@@ -102,9 +105,19 @@ public class ProviderCatalogServiceImpl
                         bookIds
                 );
 
+        Map<Long, BookstoreProviderBookTerm> termsByBookId =
+                providerBookTermRepository
+                        .findAllByBookstoreIdAndProviderIdAndBookIdIn(bookstoreId, providerId, bookIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                term -> term.getBook().getId(),
+                                Function.identity()
+                        ));
+
         Map<Long, List<ProviderCatalogAlternativeResponse>>
                 alternativesByBookId =
                 loadAlternatives(
+                        bookstoreId,
                         providerId,
                         bookIds
                 );
@@ -129,7 +142,8 @@ public class ProviderCatalogServiceImpl
                         inventoryByBookId,
                         requirementByBookId,
                         alternativesByBookId,
-                        authorsByBookId
+                        authorsByBookId,
+                        termsByBookId
                 )
         );
     }
@@ -178,6 +192,7 @@ public class ProviderCatalogServiceImpl
 
     private Map<Long, List<ProviderCatalogAlternativeResponse>>
     loadAlternatives(
+            Long bookstoreId,
             Long providerId,
             List<Long> bookIds
     ) {
@@ -193,6 +208,21 @@ public class ProviderCatalogServiceImpl
         if (providers.isEmpty()) {
             return Map.of();
         }
+
+        Map<ProviderBookKey, BigDecimal> pricesByProviderBook =
+                providerBookTermRepository
+                        .findAllByBookstoreIdAndBookIdIn(bookstoreId, bookIds)
+                        .stream()
+                        .filter(term -> term.getLatestListPrice() != null)
+                        .collect(Collectors.toMap(
+                                term -> new ProviderBookKey(
+                                        term.getProvider().getId(),
+                                        term.getBook().getId()
+                                ),
+                                BookstoreProviderBookTerm::getLatestListPrice,
+                                (left, right) -> right
+                        ));
+
         return providers.stream()
                 .collect(
                         Collectors.groupingBy(
@@ -202,7 +232,12 @@ public class ProviderCatalogServiceImpl
                                                 new ProviderCatalogAlternativeResponse(
                                                         provider.getProviderId(),
                                                         provider.getProviderName(),
-                                                        null
+                                                        pricesByProviderBook.get(
+                                                                new ProviderBookKey(
+                                                                        provider.getProviderId(),
+                                                                        provider.getBookId()
+                                                                )
+                                                        )
                                                 ),
                                         Collectors.toList()
                                 )
@@ -215,7 +250,8 @@ public class ProviderCatalogServiceImpl
             Map<Long, Inventory> inventoryByBookId,
             Map<Long, PurchaseRequirement> requirementByBookId,
             Map<Long, List<ProviderCatalogAlternativeResponse>> alternativesByBookId,
-            Map<Long, List<String>> authorsByBookId
+            Map<Long, List<String>> authorsByBookId,
+            Map<Long, BookstoreProviderBookTerm> termsByBookId
     ) {
 
         var book = providerBook.getBook();
@@ -225,6 +261,11 @@ public class ProviderCatalogServiceImpl
         Inventory inventory = inventoryByBookId.get(bookId);
         BigDecimal salePrice = inventory != null
                 ? inventoryPriceService.currentAmount(inventory.getId())
+                : null;
+
+        BookstoreProviderBookTerm providerTerm = termsByBookId.get(bookId);
+        BigDecimal providerPrice = providerTerm != null
+                ? providerTerm.getLatestListPrice()
                 : null;
 
         PurchaseRequirement requirement = requirementByBookId.get(bookId);
@@ -248,6 +289,18 @@ public class ProviderCatalogServiceImpl
                 book.getCoverUrl(),
 
                 providerBook.getExternalCode(),
+
+                providerBook.getFirstSeenAt(),
+                providerBook.getLastSeenAt(),
+                providerBook.getSource(),
+                providerBook.getVerificationStatus(),
+
+                providerPrice,
+                providerTerm != null ? providerTerm.getLatestListEffectiveFrom() : null,
+                providerTerm != null ? providerTerm.getLastSeenInPriceListAt() : null,
+                providerTerm != null && providerTerm.getLastPriceImport() != null
+                        ? providerTerm.getLastPriceImport().getId()
+                        : null,
 
                 salePrice,
 
@@ -286,6 +339,9 @@ public class ProviderCatalogServiceImpl
                         List.of()
                 )
         );
+    }
+
+    private record ProviderBookKey(Long providerId, Long bookId) {
     }
 
     private void validateProvider(Long providerId) {

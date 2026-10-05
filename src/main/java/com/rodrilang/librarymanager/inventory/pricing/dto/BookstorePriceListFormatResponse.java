@@ -2,6 +2,8 @@ package com.rodrilang.librarymanager.inventory.pricing.dto;
 
 public record BookstorePriceListFormatResponse(
         Long id,
+        Long providerId,
+        String providerName,
         String name,
         boolean standard,
         Integer sheetIndex,

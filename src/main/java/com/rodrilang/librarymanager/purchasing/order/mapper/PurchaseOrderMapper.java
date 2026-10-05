@@ -36,8 +36,13 @@ public interface PurchaseOrderMapper {
                 requirementQuantity,
                 additionalQuantity,
 
+                item.getReceivedQuantity() != null ? item.getReceivedQuantity() : 0,
+                Math.max(item.getQuantity() - (item.getReceivedQuantity() != null ? item.getReceivedQuantity() : 0), 0),
+
                 item.getUnitPrice(),
-                subtotal
+                subtotal,
+
+                item.getNotes()
         );
     }
 }

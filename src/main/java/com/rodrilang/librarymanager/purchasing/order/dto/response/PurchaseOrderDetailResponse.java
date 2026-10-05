@@ -21,6 +21,8 @@ public record PurchaseOrderDetailResponse(
 
         Integer itemCount,
         Integer totalUnits,
+        Integer receivedUnits,
+        Integer pendingUnits,
         BigDecimal estimatedTotal,
 
         Instant createdAt,

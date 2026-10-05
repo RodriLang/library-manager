@@ -16,7 +16,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(
         name = "Condiciones comerciales de proveedores",
-        description = "Descuentos habituales por libro para la librería actual"
+        description = "Condiciones por libro y último precio de lista conocido para la librería actual"
 )
 public class ProviderCommercialTermController {
 

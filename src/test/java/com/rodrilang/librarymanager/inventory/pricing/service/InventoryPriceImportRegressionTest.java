@@ -18,6 +18,7 @@ import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceListStorage;
 import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
@@ -26,6 +27,7 @@ import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
+import com.rodrilang.librarymanager.purchasing.service.BookstoreProviderPriceListService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -214,7 +216,9 @@ class InventoryPriceImportRegressionTest {
                 .selectedForApply(true).build();
         when(imports.findById(30L)).thenReturn(Optional.of(priceImport));
         when(items.findAllByPriceImportIdOrderByRowNumberAsc(30L)).thenReturn(List.of(item));
-        new InventoryPriceImportApplyWorker(imports, items, service).process(30L, 5L);
+        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
+        BookstoreProviderPriceListService providerPrices = mock(BookstoreProviderPriceListService.class);
+        new InventoryPriceImportApplyWorker(imports, items, providerRows, service, providerPrices).process(30L, 5L);
         assertEquals(new BigDecimal("43800.00"), service.currentAmount(10L));
         assertTrue(item.isApplied());
         assertEquals(1, priceImport.getAppliedRows());
@@ -266,7 +270,8 @@ class InventoryPriceImportRegressionTest {
         when(imports.findByIdAndBookstoreIdForUpdate(30L, 7L)).thenReturn(Optional.of(importReady));
         when(items.findAllByPriceImportIdOrderByRowNumberAsc(30L)).thenReturn(List.of(unchanged));
 
-        new InventoryPriceImportApplyService(context, imports, items, events)
+        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
+        new InventoryPriceImportApplyService(context, imports, items, providerRows, events)
                 .start(30L, new ApplyInventoryPriceImportRequest(List.of()));
 
         assertTrue(unchanged.isSelectedForApply());
@@ -317,8 +322,9 @@ class InventoryPriceImportRegressionTest {
             consumer.accept(new PriceListRow(2, ISBN, "Un libro", null, "Editorial", new BigDecimal(incoming), null, null, null));
             return null;
         }).when(parser).parse(any(), any(), any());
+        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
         InventoryPriceImportService importer = new InventoryPriceImportService(context, bookstores,
-                inventoryRepository, priceRepository, service, formats, imports, items, files, parser, normalized, isbns);
+                inventoryRepository, priceRepository, service, formats, imports, items, files, parser, normalized, isbns, providerRows);
         return importer.preview(1L, "Editorial", month,
                 new MockMultipartFile("file", "lista.xlsx", "application/octet-stream", new byte[]{1}));
     }

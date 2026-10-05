@@ -8,6 +8,11 @@ import com.rodrilang.librarymanager.inventory.pricing.dto.BookstorePriceListForm
 import com.rodrilang.librarymanager.inventory.pricing.model.BookstorePriceListFormat;
 import com.rodrilang.librarymanager.inventory.pricing.repository.BookstorePriceListFormatRepository;
 import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.model.ProviderType;
+import com.rodrilang.librarymanager.provider.bookstore.model.BookstoreProvider;
+import com.rodrilang.librarymanager.provider.bookstore.repository.BookstoreProviderRepository;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +29,8 @@ public class BookstorePriceListFormatService {
     private final BookstorePriceListFormatRepository repository;
     private final BookstoreRepository bookstoreRepository;
     private final BookstoreContext bookstoreContext;
+    private final ProviderRepository providerRepository;
+    private final BookstoreProviderRepository bookstoreProviderRepository;
 
     @Transactional
     public List<BookstorePriceListFormatResponse> list() {
@@ -46,8 +53,12 @@ public class BookstorePriceListFormatService {
         Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró la librería seleccionada."));
 
+        Provider provider = resolveProvider(request.providerId());
+        ensureBookstoreProvider(bookstore, provider);
+
         BookstorePriceListFormat entity = BookstorePriceListFormat.builder()
                 .bookstore(bookstore)
+                .provider(provider)
                 .name(request.name().trim())
                 .standard(false)
                 .sheetIndex(request.sheetIndex())
@@ -72,6 +83,9 @@ public class BookstorePriceListFormatService {
             throw new BusinessException("El formato Anaquel no se puede modificar.");
         }
 
+        Provider provider = resolveProvider(request.providerId());
+        ensureBookstoreProvider(entity.getBookstore(), provider);
+        entity.setProvider(provider);
         entity.setName(request.name().trim());
         entity.setSheetIndex(request.sheetIndex());
         entity.setFirstDataRowIndex(request.firstDataRowIndex());
@@ -138,9 +152,39 @@ public class BookstorePriceListFormatService {
 
     private BookstorePriceListFormatResponse toResponse(BookstorePriceListFormat entity) {
         return new BookstorePriceListFormatResponse(
-                entity.getId(), entity.getName(), entity.isStandard(), entity.getSheetIndex(),
+                entity.getId(),
+                entity.getProvider() != null ? entity.getProvider().getId() : null,
+                entity.getProvider() != null ? entity.getProvider().getName() : null,
+                entity.getName(), entity.isStandard(), entity.getSheetIndex(),
                 entity.getFirstDataRowIndex(), entity.getIsbnColumn(), entity.getTitleColumn(),
                 entity.getAuthorColumn(), entity.getPublisherColumn(), entity.getPriceColumn(), entity.isActive()
         );
+    }
+
+    private void ensureBookstoreProvider(Bookstore bookstore, Provider provider) {
+        if (provider == null) {
+            return;
+        }
+        BookstoreProvider relation = bookstoreProviderRepository
+                .findByBookstoreIdAndProviderId(bookstore.getId(), provider.getId())
+                .orElseGet(() -> BookstoreProvider.builder()
+                        .bookstore(bookstore)
+                        .provider(provider)
+                        .active(true)
+                        .build());
+        relation.setActive(true);
+        bookstoreProviderRepository.save(relation);
+    }
+
+    private Provider resolveProvider(Long providerId) {
+        if (providerId == null) {
+            return null;
+        }
+        Provider provider = providerRepository.findById(providerId)
+                .orElseThrow(() -> new BusinessException("No se encontró el proveedor seleccionado."));
+        if (!provider.isActive() || provider.getType() != ProviderType.COMMERCIAL) {
+            throw new BusinessException("El proveedor seleccionado no está disponible.");
+        }
+        return provider;
     }
 }

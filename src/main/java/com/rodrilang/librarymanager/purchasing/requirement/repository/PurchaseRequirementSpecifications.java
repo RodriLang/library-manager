@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.purchasing.requirement.repository;
 
+import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderItem;
+import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirement;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import org.springframework.data.jpa.domain.Specification;
@@ -37,6 +39,28 @@ public final class PurchaseRequirementSpecifications {
 
         return (root, query, cb) ->
                 cb.equal(root.get("preferredProvider").get("id"), providerId);
+    }
+
+    public static Specification<PurchaseRequirement> hasRemainingQuantity() {
+
+        return (root, query, cb) -> {
+            var orderedQuantity = query.subquery(Long.class);
+            var item = orderedQuantity.from(PurchaseOrderItem.class);
+
+            orderedQuantity.select(
+                    cb.coalesce(
+                            cb.sumAsLong(item.<Integer>get("requirementQuantity")),
+                            0L
+                    )
+            );
+
+            orderedQuantity.where(
+                    cb.equal(item.get("requirement").get("id"), root.get("id")),
+                    cb.notEqual(item.get("purchaseOrder").get("status"), PurchaseOrderStatus.CANCELLED)
+            );
+
+            return cb.gt(root.<Integer>get("quantity"), orderedQuantity);
+        };
     }
 
     public static Specification<PurchaseRequirement> search(String query) {

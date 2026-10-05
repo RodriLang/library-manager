@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record BookstorePriceListFormatRequest(
+        Long providerId,
         @NotBlank @Size(max = 120) String name,
         @NotNull @Min(0) Integer sheetIndex,
         @NotNull @Min(0) Integer firstDataRowIndex,

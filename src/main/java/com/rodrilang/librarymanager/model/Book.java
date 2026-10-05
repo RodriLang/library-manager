@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.model;
 
 import com.rodrilang.librarymanager.cover.enums.BookCoverSource;
+import com.rodrilang.librarymanager.catalog.contribution.enums.BookField;
+import com.rodrilang.librarymanager.catalog.contribution.enums.BookFieldSource;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.enums.CoverCandidateStatus;
@@ -22,6 +24,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -30,8 +34,11 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Getter
@@ -97,6 +104,9 @@ public class Book extends AuditableEntity {
 
     @Column(name = "genre_name")
     private String genreName;
+
+    @Column(name = "collection_name", length = 255)
+    private String collectionName;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "source", nullable = false)
@@ -167,6 +177,11 @@ public class Book extends AuditableEntity {
 
     @Column(name = "depth_cm", precision = 10, scale = 2)
     private BigDecimal depthCm;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "field_metadata", nullable = false, columnDefinition = "jsonb")
+    @Builder.Default
+    private Map<String, String> fieldMetadata = new HashMap<>();
 
     @PrePersist
     @PreUpdate
@@ -274,4 +289,74 @@ public class Book extends AuditableEntity {
                 && BookCoverSource.MANUAL_UPLOAD.name()
                 .equalsIgnoreCase(coverSource);
     }
+    public void setFieldSource(BookField field, BookFieldSource source) {
+        if (fieldMetadata == null) {
+            fieldMetadata = new HashMap<>();
+        }
+        if (source == null) {
+            fieldMetadata.remove(field.key());
+        } else {
+            fieldMetadata.put(field.key(), source.name());
+        }
+    }
+
+    @Transient
+    public Map<String, BookFieldSource> getEffectiveFieldSources() {
+        Map<String, BookFieldSource> result = new LinkedHashMap<>();
+        for (BookField field : BookField.values()) {
+            if (!hasValue(field)) {
+                continue;
+            }
+
+            BookFieldSource explicit = parseFieldSource(fieldMetadata == null ? null : fieldMetadata.get(field.key()));
+            result.put(field.key(), explicit != null ? explicit : defaultFieldSource());
+        }
+        return result;
+    }
+
+    private BookFieldSource defaultFieldSource() {
+        if (catalogStatus == BookCatalogStatus.VERIFIED) {
+            return BookFieldSource.VERIFIED;
+        }
+        if (source == BookSource.EXTERNAL_METADATA) {
+            return BookFieldSource.EXTERNAL;
+        }
+        if (source == BookSource.IMPORTED) {
+            return BookFieldSource.IMPORTED;
+        }
+        return createdByBookstore != null ? BookFieldSource.STORE : BookFieldSource.ADMIN;
+    }
+
+    private BookFieldSource parseFieldSource(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return BookFieldSource.valueOf(value);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private boolean hasValue(BookField field) {
+        return switch (field) {
+            case TITLE -> title != null && !title.isBlank();
+            case SUBTITLE -> subtitle != null && !subtitle.isBlank();
+            case DESCRIPTION -> description != null && !description.isBlank();
+            case LANGUAGE -> language != null && !language.isBlank();
+            case PAGE_COUNT -> pageCount != null;
+            case PUBLICATION_YEAR -> publicationYear != null;
+            case PUBLICATION_MONTH -> publicationMonth != null;
+            case COVER_URL -> coverUrl != null && !coverUrl.isBlank();
+            case CATEGORY_NAME -> categoryName != null && !categoryName.isBlank();
+            case GENRE_NAME -> genreName != null && !genreName.isBlank();
+            case PUBLISHER -> publisher != null;
+            case AUTHORS -> authors != null && !authors.isEmpty();
+            case WEIGHT_GRAMS -> weightGrams != null;
+            case WIDTH_CM -> widthCm != null;
+            case HEIGHT_CM -> heightCm != null;
+            case DEPTH_CM -> depthCm != null;
+        };
+    }
+
 }

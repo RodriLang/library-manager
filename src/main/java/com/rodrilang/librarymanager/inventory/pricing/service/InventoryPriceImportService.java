@@ -18,6 +18,7 @@ import com.rodrilang.librarymanager.inventory.pricing.dto.*;
 import com.rodrilang.librarymanager.inventory.pricing.model.*;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceListStorage;
 import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
@@ -65,6 +66,7 @@ public class InventoryPriceImportService {
     private final StreamingConfigurablePriceListParser parser;
     private final NormalizedPriceListStorage normalizedStorage;
     private final CanonicalIsbnResolver canonicalIsbnResolver;
+    private final InventoryPriceImportProviderRowRepository providerRowRepository;
 
     @Transactional
     public InventoryPriceImportPreviewResponse preview(
@@ -87,7 +89,8 @@ public class InventoryPriceImportService {
         InventoryPriceImport priceImport = importRepository.save(InventoryPriceImport.builder()
                 .bookstore(bookstore)
                 .format(format)
-                .sourceName(normalizeSourceName(sourceName))
+                .provider(format.getProvider())
+                .sourceName(resolveSourceName(sourceName, format))
                 .originalFilename(resolveFilename(file))
                 .effectiveFrom(effectiveFrom)
                 .status(InventoryPriceImportStatus.PREVIEW_READY)
@@ -101,6 +104,7 @@ public class InventoryPriceImportService {
                 .map(Inventory::getId).toList(), applicationDate);
         Map<String, List<InventoryPriceImportItem>> itemsByDuplicateKey = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
+        List<InventoryPriceImportProviderRow> providerRows = new ArrayList<>();
 
         AtomicInteger total = new AtomicInteger();
         AtomicInteger matched = new AtomicInteger();
@@ -122,6 +126,13 @@ public class InventoryPriceImportService {
                     total.incrementAndGet();
                     writeNormalized(writer, row);
 
+                    InventoryPriceImportProviderRow providerRow = format.getProvider() != null
+                            ? toProviderRow(priceImport, row)
+                            : null;
+                    if (providerRow != null) {
+                        providerRows.add(providerRow);
+                    }
+
                     MatchResult match = match(row, matchIndex);
                     if (match.inventory() == null) {
                         if (match.ambiguous()) {
@@ -135,6 +146,9 @@ public class InventoryPriceImportService {
 
                     matched.incrementAndGet();
                     Inventory inventory = match.inventory();
+                    if (providerRow != null) {
+                        providerRow.setBook(inventory.getBook());
+                    }
                     InventoryPriceImportItem item = classify(
                             priceImport,
                             inventory,
@@ -170,9 +184,13 @@ public class InventoryPriceImportService {
                     existingItems.add(item);
                     items.add(item);
                 });
+
             }
 
             itemRepository.saveAll(items);
+            if (!providerRows.isEmpty()) {
+                providerRowRepository.saveAll(providerRows);
+            }
             updateCounters(priceImport, total.get(), matched.get(), unmatched.get(), items);
 
             try {
@@ -225,6 +243,7 @@ public class InventoryPriceImportService {
             throw new BusinessException("Sólo se puede cancelar una importación que todavía no fue aplicada.");
         }
         priceImport.setStatus(InventoryPriceImportStatus.CANCELLED);
+        providerRowRepository.deleteAllByPriceImportId(importId);
     }
 
     @Transactional
@@ -482,6 +501,23 @@ public class InventoryPriceImportService {
         config.getMappings().add(mapping);
     }
 
+    private InventoryPriceImportProviderRow toProviderRow(
+            InventoryPriceImport priceImport,
+            PriceListRow row
+    ) {
+        String externalCode = row.metadata() != null ? trim(row.metadata().externalCode()) : null;
+        return InventoryPriceImportProviderRow.builder()
+                .priceImport(priceImport)
+                .rowNumber(row.rowNumber())
+                .isbn(trim(row.isbn()))
+                .title(trim(row.title()))
+                .author(trim(row.authorName()))
+                .publisher(trim(row.publisherName()))
+                .incomingPrice(row.retailPrice())
+                .externalCode(externalCode)
+                .build();
+    }
+
     private void writeNormalized(BufferedWriter writer, PriceListRow row) {
         try {
             writer.write(csv(row.isbn()));
@@ -504,6 +540,8 @@ public class InventoryPriceImportService {
                 priceImport.getId(),
                 priceImport.getOriginalFilename(),
                 priceImport.getFormat() != null ? priceImport.getFormat().getName() : null,
+                priceImport.getProvider() != null ? priceImport.getProvider().getId() : null,
+                priceImport.getProvider() != null ? priceImport.getProvider().getName() : null,
                 priceImport.getSourceName(),
                 priceImport.getEffectiveFrom(),
                 priceImport.getStatus(),
@@ -651,6 +689,8 @@ public class InventoryPriceImportService {
                 priceImport.getId(),
                 priceImport.getOriginalFilename(),
                 priceImport.getFormat() != null ? priceImport.getFormat().getName() : null,
+                priceImport.getProvider() != null ? priceImport.getProvider().getId() : null,
+                priceImport.getProvider() != null ? priceImport.getProvider().getName() : null,
                 priceImport.getSourceName(),
                 priceImport.getEffectiveFrom(),
                 priceImport.getStatus(),
@@ -876,6 +916,16 @@ public class InventoryPriceImportService {
 
     private boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String resolveSourceName(String value, BookstorePriceListFormat format) {
+        String normalized = normalizeSourceName(value);
+        if (normalized != null) {
+            return normalized;
+        }
+        return format != null && format.getProvider() != null
+                ? normalizeSourceName(format.getProvider().getName())
+                : null;
     }
 
     private String normalizeSourceName(String value) {

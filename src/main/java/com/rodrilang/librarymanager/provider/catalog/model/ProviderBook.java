@@ -3,6 +3,8 @@ package com.rodrilang.librarymanager.provider.catalog.model;
 import com.rodrilang.librarymanager.provider.model.Provider;
 
 import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookIdentifierStatus;
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookSource;
+import com.rodrilang.librarymanager.provider.catalog.enums.ProviderBookVerificationStatus;
 import com.rodrilang.librarymanager.model.Book;
 import jakarta.persistence.*;
 import lombok.*;
@@ -60,8 +62,21 @@ public class ProviderBook {
     @Builder.Default
     private boolean active = true;
 
+    @Column(name = "first_seen_at")
+    private Instant firstSeenAt;
+
     @Column(name = "last_seen_at")
     private Instant lastSeenAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 30)
+    @Builder.Default
+    private ProviderBookSource source = ProviderBookSource.LEGACY;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false, length = 20)
+    @Builder.Default
+    private ProviderBookVerificationStatus verificationStatus = ProviderBookVerificationStatus.VERIFIED;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

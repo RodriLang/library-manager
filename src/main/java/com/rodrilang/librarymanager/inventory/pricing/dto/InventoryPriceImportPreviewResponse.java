@@ -9,6 +9,8 @@ public record InventoryPriceImportPreviewResponse(
         Long importId,
         String originalFilename,
         String formatName,
+        Long providerId,
+        String providerName,
         String sourceName,
         LocalDate effectiveFrom,
         InventoryPriceImportStatus status,

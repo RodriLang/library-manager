@@ -24,8 +24,7 @@ public class BookstoreContext {
         Long bookstoreId = requested != null ? requested : user.bookstoreId();
         if (bookstoreId == null) throw new BusinessException("Seleccioná una librería para realizar esta operación.");
 
-        boolean platformAdmin = user.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-        if (!platformAdmin && !membershipRepository.existsByUser_IdAndBookstore_IdAndEnabledTrue(user.userId(), bookstoreId)) {
+        if (!membershipRepository.existsByUser_IdAndBookstore_IdAndEnabledTrue(user.userId(), bookstoreId)) {
             throw new BusinessException("No tenés acceso a la librería seleccionada.");
         }
         return bookstoreId;

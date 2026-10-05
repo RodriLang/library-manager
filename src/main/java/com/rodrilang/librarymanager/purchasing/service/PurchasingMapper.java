@@ -31,7 +31,11 @@ public class PurchasingMapper {
                 term.getBook().getPreferredIsbn(),
                 term.getBook().getTitle(),
                 term.getDiscountPercentage(),
-                term.getLastPurchaseDate()
+                term.getLastPurchaseDate(),
+                term.getLatestListPrice(),
+                term.getLatestListEffectiveFrom(),
+                term.getLastSeenInPriceListAt(),
+                term.getLastPriceImport() != null ? term.getLastPriceImport().getId() : null
         );
     }
 

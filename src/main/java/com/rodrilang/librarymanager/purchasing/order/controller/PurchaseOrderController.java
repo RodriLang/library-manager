@@ -1,14 +1,21 @@
 package com.rodrilang.librarymanager.purchasing.order.controller;
 
+import java.nio.charset.StandardCharsets;
+
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.PurchaseOrderFilter;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.AddPurchaseOrderItemRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrdersFromRequirementsRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemNotesRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.CreatePurchaseOrdersFromRequirementsResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderDetailResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderResponse;
+import com.rodrilang.librarymanager.purchasing.order.export.PurchaseOrderExportFile;
+import com.rodrilang.librarymanager.purchasing.order.export.PurchaseOrderExportFormat;
+import com.rodrilang.librarymanager.purchasing.order.export.PurchaseOrderExportService;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus;
 import com.rodrilang.librarymanager.purchasing.order.service.PurchaseOrderService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +25,10 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,6 +47,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PurchaseOrderController {
 
     private final PurchaseOrderService service;
+    private final PurchaseOrderExportService exportService;
 
     @PostMapping
     public ResponseEntity<PurchaseOrderDetailResponse> create(
@@ -85,6 +96,36 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(service.findById(orderId));
     }
 
+    @PatchMapping("/{orderId}")
+    public ResponseEntity<PurchaseOrderDetailResponse> update(
+            @PathVariable Long orderId,
+            @Valid
+            @RequestBody UpdatePurchaseOrderRequest request
+    ) {
+        return ResponseEntity.ok(service.update(orderId, request));
+    }
+
+    @GetMapping("/{orderId}/export/{format}")
+    public ResponseEntity<byte[]> export(
+            @PathVariable Long orderId,
+            @PathVariable String format
+    ) {
+        PurchaseOrderExportFile file = exportService.export(
+                orderId,
+                PurchaseOrderExportFormat.from(format)
+        );
+
+        ContentDisposition disposition = ContentDisposition
+                .attachment()
+                .filename(file.fileName(), StandardCharsets.UTF_8)
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .contentType(MediaType.parseMediaType(file.contentType()))
+                .body(file.content());
+    }
+
     @PostMapping("/{orderId}/items")
     public ResponseEntity<PurchaseOrderDetailResponse> addItem(
             @PathVariable Long orderId,
@@ -108,6 +149,17 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(service.updateItem(orderId, itemId, request));
     }
 
+    @PatchMapping("/{orderId}/items/{itemId}/notes")
+    public ResponseEntity<PurchaseOrderDetailResponse> updateItemNotes(
+            @PathVariable Long orderId,
+            @PathVariable Long itemId,
+            @Valid
+            @RequestBody UpdatePurchaseOrderItemNotesRequest request
+    ) {
+
+        return ResponseEntity.ok(service.updateItemNotes(orderId, itemId, request));
+    }
+
     @DeleteMapping("/{orderId}/items/{itemId}")
     public ResponseEntity<PurchaseOrderDetailResponse> removeItem(
             @PathVariable Long orderId,
@@ -123,6 +175,13 @@ public class PurchaseOrderController {
     ) {
 
         return ResponseEntity.ok(service.send(orderId));
+    }
+
+    @PostMapping("/{orderId}/close-incomplete")
+    public ResponseEntity<PurchaseOrderDetailResponse> closeIncomplete(
+            @PathVariable Long orderId
+    ) {
+        return ResponseEntity.ok(service.closeIncomplete(orderId));
     }
 
     @DeleteMapping("/{orderId}")

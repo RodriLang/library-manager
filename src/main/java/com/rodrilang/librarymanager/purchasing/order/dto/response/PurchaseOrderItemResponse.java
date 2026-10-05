@@ -18,8 +18,13 @@ public record PurchaseOrderItemResponse(
         Integer requirementQuantity,
         Integer additionalQuantity,
 
+        Integer receivedQuantity,
+        Integer pendingQuantity,
+
         BigDecimal unitPrice,
-        BigDecimal subtotal
+        BigDecimal subtotal,
+
+        String notes
 
 ) {
 }

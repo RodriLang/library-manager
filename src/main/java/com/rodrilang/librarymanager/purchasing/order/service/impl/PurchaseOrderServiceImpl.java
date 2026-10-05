@@ -12,7 +12,9 @@ import com.rodrilang.librarymanager.purchasing.order.dto.PurchaseOrderFilter;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.AddPurchaseOrderItemRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.CreatePurchaseOrdersFromRequirementsRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemNotesRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderItemRequest;
+import com.rodrilang.librarymanager.purchasing.order.dto.request.UpdatePurchaseOrderRequest;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.CreatePurchaseOrdersFromRequirementsResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PreparedPurchaseOrderResponse;
 import com.rodrilang.librarymanager.purchasing.order.dto.response.PurchaseOrderDetailResponse;
@@ -30,6 +32,8 @@ import com.rodrilang.librarymanager.purchasing.order.repository.projection.Purch
 import com.rodrilang.librarymanager.purchasing.order.service.PurchaseOrderService;
 import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirement;
+import com.rodrilang.librarymanager.purchasing.receipt.model.GoodsReceiptStatus;
+import com.rodrilang.librarymanager.purchasing.receipt.repository.GoodsReceiptRepository;
 import com.rodrilang.librarymanager.purchasing.requirement.model.PurchaseRequirementStatus;
 import com.rodrilang.librarymanager.purchasing.requirement.repository.PurchaseRequirementRepository;
 import com.rodrilang.librarymanager.service.BookService;
@@ -65,6 +69,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final PurchaseOrderItemRepository itemRepository;
 
     private final PurchaseRequirementRepository requirementRepository;
+
+    private final GoodsReceiptRepository goodsReceiptRepository;
 
     private final ProviderRepository providerRepository;
     private final ProviderBookRepository providerBookRepository;
@@ -312,6 +318,18 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Transactional
     @Override
+    public PurchaseOrderDetailResponse update(Long orderId, UpdatePurchaseOrderRequest request) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        PurchaseOrder order = getDraftOrderForUpdate(orderId, bookstoreId);
+        order.setNotes(normalizeNullableText(request != null ? request.notes() : null));
+
+        return getDetailResponse(order);
+    }
+
+    @Transactional
+    @Override
     public PurchaseOrderDetailResponse addItem(Long orderId, AddPurchaseOrderItemRequest request) {
 
         validateAddItemRequest(request);
@@ -381,6 +399,24 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Transactional
     @Override
+    public PurchaseOrderDetailResponse updateItemNotes(
+            Long orderId,
+            Long itemId,
+            UpdatePurchaseOrderItemNotesRequest request
+    ) {
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        PurchaseOrder order = getDraftOrderForUpdate(orderId, bookstoreId);
+        PurchaseOrderItem item = getOrderItem(order.getId(), itemId);
+
+        item.setNotes(normalizeNullableText(request != null ? request.notes() : null));
+
+        return getDetailResponse(order);
+    }
+
+    @Transactional
+    @Override
     public PurchaseOrderDetailResponse removeItem(Long orderId, Long itemId) {
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
@@ -429,6 +465,38 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Transactional
     @Override
+    public PurchaseOrderDetailResponse closeIncomplete(Long orderId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        PurchaseOrder order = orderRepository.findByIdAndBookstoreIdForUpdate(orderId, bookstoreId)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el pedido con ID: " + orderId));
+
+        if (order.getStatus() != PurchaseOrderStatus.SENT
+                && order.getStatus() != PurchaseOrderStatus.PARTIALLY_RECEIVED) {
+            throw new BusinessException("Solo se puede cerrar como incompleto un pedido enviado o parcialmente recibido.");
+        }
+        if (goodsReceiptRepository.existsByPurchaseOrderIdAndStatus(order.getId(), GoodsReceiptStatus.DRAFT)) {
+            throw new BusinessException("Hay una recepción en borrador para este pedido. Confirmala o cancelala antes de cerrar el pedido.");
+        }
+
+        List<PurchaseOrderItem> items = itemRepository.findAllByPurchaseOrderIdOrderByIdAsc(order.getId());
+        for (PurchaseOrderItem item : items) {
+            if (item.getRequirement() == null || item.getRequirementQuantity() == null) {
+                continue;
+            }
+            int received = item.getReceivedQuantity() != null ? item.getReceivedQuantity() : 0;
+            int fulfilledRequirement = Math.min(item.getRequirementQuantity(), received);
+            item.setRequirementQuantity(fulfilledRequirement);
+            if (fulfilledRequirement == 0) {
+                item.setRequirement(null);
+            }
+        }
+
+        order.setStatus(PurchaseOrderStatus.CLOSED_INCOMPLETE);
+        return buildDetailResponse(order, items);
+    }
+
+    @Transactional
+    @Override
     public void cancel(Long orderId) {
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
@@ -438,6 +506,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         if (order.getStatus() == PurchaseOrderStatus.CANCELLED) {
             throw new BusinessException("El pedido ya se encuentra cancelado.");
+        }
+        if (order.getStatus() != PurchaseOrderStatus.DRAFT) {
+            throw new BusinessException("Solo se puede cancelar un pedido en borrador. Un pedido enviado debe cerrarse como incompleto si no llegará el resto.");
         }
 
         order.setStatus(PurchaseOrderStatus.CANCELLED);
@@ -613,18 +684,22 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     private PurchaseOrder getDraftOrderForUpdate(Long orderId, Long bookstoreId) {
 
-        return orderRepository
-                .findByIdAndBookstoreIdAndStatusForUpdate(
-                        orderId,
-                        bookstoreId,
-                        PurchaseOrderStatus.DRAFT
-                )
+        PurchaseOrder order = orderRepository
+                .findByIdAndBookstoreIdForUpdate(orderId, bookstoreId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "No se encontró un pedido en borrador con ID: "
-                                        + orderId
+                                "No se encontró el pedido con ID: " + orderId
                         )
                 );
+
+        if (order.getStatus() != PurchaseOrderStatus.DRAFT) {
+            throw new BusinessException(
+                    "El pedido ya fue enviado o cancelado y no puede modificarse. "
+                            + "Las nuevas unidades deben incorporarse a Reponer para generar otro pedido."
+            );
+        }
+
+        return order;
     }
 
     private PurchaseOrderItem getOrderItem(Long orderId, Long itemId) {
@@ -657,6 +732,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 .mapToInt(PurchaseOrderItem::getQuantity)
                 .sum();
 
+        int receivedUnits = items.stream()
+                .mapToInt(item -> Math.min(item.getReceivedQuantity() != null ? item.getReceivedQuantity() : 0, item.getQuantity()))
+                .sum();
+        int pendingUnits = Math.max(totalUnits - receivedUnits, 0);
         BigDecimal estimatedTotal = calculateEstimatedTotal(items);
 
         return new PurchaseOrderDetailResponse(
@@ -668,6 +747,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 order.getNotes(),
                 items.size(),
                 totalUnits,
+                receivedUnits,
+                pendingUnits,
                 estimatedTotal,
                 order.getCreatedAt(),
                 order.getSentAt(),

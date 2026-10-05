@@ -11,7 +11,11 @@ import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepo
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderItem;
+import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus;
 import com.rodrilang.librarymanager.purchasing.order.repository.PurchaseOrderItemRepository;
+import com.rodrilang.librarymanager.purchasing.model.BookstoreProviderBookTerm;
+import com.rodrilang.librarymanager.purchasing.repository.BookstoreProviderBookTermRepository;
 import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
 import com.rodrilang.librarymanager.purchasing.preference.service.ProviderPreferenceService;
 import com.rodrilang.librarymanager.purchasing.order.repository.projection.PurchaseRequirementOrderedQuantityProjection;
@@ -19,6 +23,7 @@ import com.rodrilang.librarymanager.purchasing.requirement.dto.PurchaseRequireme
 import com.rodrilang.librarymanager.purchasing.requirement.dto.internal.AddPurchaseRequirementCommand;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.AddPurchaseRequirementResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.BookPurchaseRequirementStatusResponse;
+import com.rodrilang.librarymanager.purchasing.requirement.dto.response.BookReplenishmentState;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementProviderResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementReasonResponse;
 import com.rodrilang.librarymanager.purchasing.requirement.dto.response.PurchaseRequirementResponse;
@@ -59,6 +64,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
     private final ProviderBookRepository providerBookRepository;
     private final ProviderRepository providerRepository;
+    private final BookstoreProviderBookTermRepository providerBookTermRepository;
 
     private final InventoryRepository inventoryRepository;
 
@@ -257,6 +263,68 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         purchaseOrderItemRepository.flush();
     }
 
+    private void increaseDraftOrderAllocation(Long requirementId, int quantityToAdd) {
+        if (quantityToAdd <= 0) {
+            return;
+        }
+
+        List<PurchaseOrderItem> draftItems =
+                purchaseOrderItemRepository.findDraftItemsByRequirementIdForUpdate(requirementId);
+
+        if (draftItems.isEmpty()) {
+            return;
+        }
+
+        PurchaseOrderItem item = draftItems.getFirst();
+        int linkedQuantity = item.getRequirementQuantity() != null
+                ? item.getRequirementQuantity()
+                : 0;
+
+        item.setQuantity(item.getQuantity() + quantityToAdd);
+        item.setRequirementQuantity(linkedQuantity + quantityToAdd);
+    }
+
+    private PurchaseOrderItem findOrderItemForRequirement(
+            List<PurchaseOrderItem> items,
+            PurchaseRequirement requirement,
+            PurchaseOrderStatus status
+    ) {
+        return items.stream()
+                .filter(item -> item.getPurchaseOrder().getStatus() == status)
+                .filter(item -> requirement == null
+                        || (item.getRequirement() != null
+                        && item.getRequirement().getId().equals(requirement.getId())))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private BookPurchaseRequirementStatusResponse buildBookStatusWithoutPendingRequirement(
+            PurchaseOrderItem item,
+            Long preferredProviderId,
+            String preferredProviderName
+    ) {
+        BookReplenishmentState state = item.getPurchaseOrder().getStatus() == PurchaseOrderStatus.DRAFT
+                ? BookReplenishmentState.IN_DRAFT_ORDER
+                : BookReplenishmentState.IN_SENT_ORDER;
+
+        return new BookPurchaseRequirementStatusResponse(
+                false,
+                null,
+                0,
+                0,
+                0,
+                preferredProviderId,
+                preferredProviderName,
+                state,
+                item.getPurchaseOrder().getId(),
+                item.getId(),
+                item.getPurchaseOrder().getOrderNumber(),
+                item.getPurchaseOrder().getStatus(),
+                item.getQuantity(),
+                item.getRequirementQuantity() != null ? item.getRequirementQuantity() : 0
+        );
+    }
+
     private AddPurchaseRequirementResponse reverseSource(
             PurchaseRequirement requirement,
             PurchaseRequirementSource source
@@ -272,9 +340,20 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
         );
 
-        if (newQuantity < orderedQuantity) {
+        int lockedOrderedQuantity = Math.toIntExact(
+                purchaseOrderItemRepository.sumLockedOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        if (newQuantity < lockedOrderedQuantity) {
             throw new BusinessException(
-                    "La acción no puede deshacerse porque parte de esas unidades ya fue incorporada a pedidos."
+                    "La acción no puede deshacerse porque parte de esas unidades ya pertenece a pedidos enviados."
+            );
+        }
+
+        if (newQuantity < orderedQuantity) {
+            releaseDraftOrderAllocation(
+                    requirement.getId(),
+                    orderedQuantity - newQuantity
             );
         }
 
@@ -357,25 +436,39 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         PurchaseRequirement requirement = getPendingRequirementForUpdate(requirementId);
 
-        int orderedQuantity = Math.toIntExact(
-                purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
-        );
-
-        if (quantity < orderedQuantity) {
-            throw new BusinessException(
-                    "La necesidad no puede quedar por debajo de las "
-                            + orderedQuantity
-                            + " unidades ya incorporadas a pedidos."
-            );
-        }
-
         int currentQuantity = requirement.getQuantity();
 
         if (quantity == currentQuantity) {
             return purchaseRequirementMapper.toResponse(requirement);
         }
 
+        int orderedQuantity = Math.toIntExact(
+                purchaseOrderItemRepository.sumOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        int lockedOrderedQuantity = Math.toIntExact(
+                purchaseOrderItemRepository.sumLockedOrderedQuantityByRequirementId(requirement.getId())
+        );
+
+        if (quantity < lockedOrderedQuantity) {
+            throw new BusinessException(
+                    "La necesidad no puede quedar por debajo de las "
+                            + lockedOrderedQuantity
+                            + " unidades que ya pertenecen a pedidos enviados."
+            );
+        }
+
+        int remainingBefore = Math.max(currentQuantity - orderedQuantity, 0);
         int delta = quantity - currentQuantity;
+
+        if (quantity < orderedQuantity) {
+            releaseDraftOrderAllocation(
+                    requirement.getId(),
+                    orderedQuantity - quantity
+            );
+        } else if (delta > 0 && remainingBefore == 0) {
+            increaseDraftOrderAllocation(requirement.getId(), delta);
+        }
 
         PurchaseRequirementSource adjustment =
                 PurchaseRequirementSource.builder()
@@ -438,6 +531,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             throw new BusinessException("La necesidad de compra ya se encuentra cancelada.");
         }
 
+        releaseDraftOrderAllocation(requirement.getId(), Integer.MAX_VALUE);
         requirement.setStatus(PurchaseRequirementStatus.CANCELLED);
     }
 
@@ -461,6 +555,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         return purchaseRequirementMapper.toResponse(requirement);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public BookPurchaseRequirementStatusResponse findBookStatus(Long bookId) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
@@ -473,14 +568,54 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 )
                 .orElse(null);
 
+        List<PurchaseOrderItem> activeOrderItems =
+                purchaseOrderItemRepository.findActiveItemsByBook(bookstoreId, bookId);
+
+        PurchaseOrderItem draftItem = findOrderItemForRequirement(
+                activeOrderItems,
+                requirement,
+                PurchaseOrderStatus.DRAFT
+        );
+
+        PurchaseOrderItem sentItem = findOrderItemForRequirement(
+                activeOrderItems,
+                requirement,
+                PurchaseOrderStatus.SENT
+        );
+        if (sentItem == null) {
+            sentItem = findOrderItemForRequirement(
+                    activeOrderItems,
+                    requirement,
+                    PurchaseOrderStatus.PARTIALLY_RECEIVED
+            );
+        }
+
         if (requirement == null) {
+            PurchaseOrderItem activeItem = draftItem != null
+                    ? draftItem
+                    : sentItem;
+
             PreferredProviderResponse preference = providerPreferenceService.findForCurrentBookstore(bookId);
-            return preference.currentlyAvailable()
-                    ? BookPurchaseRequirementStatusResponse.notPending(
-                    preference.providerId(),
-                    preference.providerName()
-            )
-                    : BookPurchaseRequirementStatusResponse.notPending();
+
+            Long preferredProviderId = preference.currentlyAvailable()
+                    ? preference.providerId()
+                    : null;
+            String preferredProviderName = preference.currentlyAvailable()
+                    ? preference.providerName()
+                    : null;
+
+            if (activeItem == null) {
+                return BookPurchaseRequirementStatusResponse.notPending(
+                        preferredProviderId,
+                        preferredProviderName
+                );
+            }
+
+            return buildBookStatusWithoutPendingRequirement(
+                    activeItem,
+                    preferredProviderId,
+                    preferredProviderName
+            );
         }
 
         int orderedQuantity = Math.toIntExact(
@@ -491,6 +626,21 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
 
         Provider provider = requirement.getPreferredProvider();
 
+        PurchaseOrderItem primaryOrderItem = draftItem != null
+                ? draftItem
+                : sentItem;
+
+        BookReplenishmentState state;
+        if (remainingQuantity > 0) {
+            state = BookReplenishmentState.TO_ORDER;
+        } else if (draftItem != null) {
+            state = BookReplenishmentState.IN_DRAFT_ORDER;
+        } else if (sentItem != null) {
+            state = BookReplenishmentState.IN_SENT_ORDER;
+        } else {
+            state = BookReplenishmentState.NONE;
+        }
+
         return new BookPurchaseRequirementStatusResponse(
                 true,
                 requirement.getId(),
@@ -498,7 +648,16 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                 orderedQuantity,
                 remainingQuantity,
                 provider != null ? provider.getId() : null,
-                provider != null ? provider.getName() : null
+                provider != null ? provider.getName() : null,
+                state,
+                primaryOrderItem != null ? primaryOrderItem.getPurchaseOrder().getId() : null,
+                primaryOrderItem != null ? primaryOrderItem.getId() : null,
+                primaryOrderItem != null ? primaryOrderItem.getPurchaseOrder().getOrderNumber() : null,
+                primaryOrderItem != null ? primaryOrderItem.getPurchaseOrder().getStatus() : null,
+                primaryOrderItem != null ? primaryOrderItem.getQuantity() : 0,
+                primaryOrderItem != null && primaryOrderItem.getRequirementQuantity() != null
+                        ? primaryOrderItem.getRequirementQuantity()
+                        : 0
         );
     }
 
@@ -513,7 +672,10 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                         PurchaseRequirementSpecifications.bookstoreId(bookstoreId),
                         PurchaseRequirementSpecifications.search(filter.query()),
                         PurchaseRequirementSpecifications.providerId(filter.providerId()),
-                        PurchaseRequirementSpecifications.status(filter.status())
+                        PurchaseRequirementSpecifications.status(filter.status()),
+                        filter.status() == PurchaseRequirementStatus.PENDING
+                                ? PurchaseRequirementSpecifications.hasRemainingQuantity()
+                                : null
                 );
 
         Page<PurchaseRequirement> page = requirementRepository.findAll(specification, pageable);
@@ -587,6 +749,19 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                                 )
                         );
 
+        Map<ProviderBookKey, BookstoreProviderBookTerm> providerTerms =
+                providerBookTermRepository
+                        .findAllByBookstoreIdAndBookIdIn(bookstoreId, bookIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                term -> new ProviderBookKey(
+                                        term.getProvider().getId(),
+                                        term.getBook().getId()
+                                ),
+                                Function.identity(),
+                                (left, right) -> right
+                        ));
+
         Map<Long, List<PurchaseRequirementProviderResponse>>
                 availableProvidersByBookId =
                 providerBookRepository
@@ -596,12 +771,19 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
                                 Collectors.groupingBy(
                                         PurchaseRequirementProviderProjection::getBookId,
                                         Collectors.mapping(
-                                                provider ->
-                                                        new PurchaseRequirementProviderResponse(
-                                                                provider.getProviderId(),
-                                                                provider.getProviderName(),
-                                                                provider.getPrice()
-                                                        ),
+                                                provider -> {
+                                                    BookstoreProviderBookTerm term = providerTerms.get(
+                                                            new ProviderBookKey(
+                                                                    provider.getProviderId(),
+                                                                    provider.getBookId()
+                                                            )
+                                                    );
+                                                    return new PurchaseRequirementProviderResponse(
+                                                            provider.getProviderId(),
+                                                            provider.getProviderName(),
+                                                            term != null ? term.getLatestListPrice() : null
+                                                    );
+                                                },
                                                 Collectors.toList()
                                         )
                                 )
@@ -922,6 +1104,9 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
         if (sourceRepository.existsByReversedSourceId(source.getId())) {
             throw new BusinessException("La acción ya fue deshecha.");
         }
+    }
+
+    private record ProviderBookKey(Long providerId, Long bookId) {
     }
 
     private record RequirementAddResult(
