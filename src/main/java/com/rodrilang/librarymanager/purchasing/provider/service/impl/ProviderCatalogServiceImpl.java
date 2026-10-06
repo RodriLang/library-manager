@@ -3,10 +3,9 @@ package com.rodrilang.librarymanager.purchasing.provider.service.impl;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.exception.BusinessException;
-import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.provider.model.ProviderType;
 import com.rodrilang.librarymanager.provider.catalog.model.ProviderBook;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.purchasing.provider.dto.ProviderCatalogFilter;
@@ -45,7 +44,7 @@ public class ProviderCatalogServiceImpl
         implements ProviderCatalogService {
 
     private final ProviderBookRepository providerBookRepository;
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final BookRepository bookRepository;
 
     private final InventoryPriceService inventoryPriceService;
@@ -346,13 +345,6 @@ public class ProviderCatalogServiceImpl
 
     private void validateProvider(Long providerId) {
 
-        providerRepository
-                .findById(providerId)
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() ->
-                        new BusinessException(
-                                "El proveedor seleccionado no se encuentra activo."
-                        )
-                );
+        providerAccessService.requireUsableByCurrentBookstore(providerId);
     }
 }

@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
 import com.rodrilang.librarymanager.purchasing.preference.model.BookstoreBookProviderPreference;
 import com.rodrilang.librarymanager.purchasing.preference.model.ProviderPreferenceSource;
@@ -28,6 +29,7 @@ public class ProviderPreferenceService {
     private final BookstoreBookProviderPreferenceRepository repository;
     private final PurchaseRequirementRepository requirementRepository;
     private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final ProviderBookRepository providerBookRepository;
     private final BookService bookService;
     private final BookstoreService bookstoreService;
@@ -45,7 +47,7 @@ public class ProviderPreferenceService {
     public Provider findPreferredProviderEntity(Long bookstoreId, Long bookId) {
         return repository.findByBookstoreIdAndBookId(bookstoreId, bookId)
                 .map(BookstoreBookProviderPreference::getProvider)
-                .filter(Provider::isPurchasable)
+                .filter(provider -> providerAccessService.isUsableByBookstore(provider, bookstoreId))
                 .filter(provider -> providerBookRepository.existsByProviderIdAndBookIdAndActiveTrue(
                         provider.getId(),
                         bookId
@@ -85,7 +87,7 @@ public class ProviderPreferenceService {
     @Transactional
     public void rememberLastUsed(Long bookstoreId, Long bookId, Long providerId, Instant usedAt) {
         Provider provider = providerRepository.findById(providerId)
-                .filter(Provider::isPurchasable)
+                .filter(candidate -> providerAccessService.isUsableByBookstore(candidate, bookstoreId))
                 .orElse(null);
         if (provider == null) {
             return;
@@ -125,9 +127,7 @@ public class ProviderPreferenceService {
     }
 
     private Provider requireAvailableProvider(Long providerId, Long bookId) {
-        Provider provider = providerRepository.findById(providerId)
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() -> new BusinessException("El proveedor seleccionado no se encuentra activo."));
+        Provider provider = providerAccessService.requireUsableByCurrentBookstore(providerId);
 
         if (!providerBookRepository.existsByProviderIdAndBookIdAndActiveTrue(providerId, bookId)) {
             throw new BusinessException("El proveedor seleccionado no comercializa este libro.");
@@ -138,9 +138,10 @@ public class ProviderPreferenceService {
 
     private PreferredProviderResponse toResponse(BookstoreBookProviderPreference preference) {
         Provider provider = preference.getProvider();
-        boolean available = provider != null
-                && provider.isPurchasable()
-                && providerBookRepository.existsByProviderIdAndBookIdAndActiveTrue(
+        boolean available = providerAccessService.isUsableByBookstore(
+                provider,
+                preference.getBookstore().getId()
+        ) && providerBookRepository.existsByProviderIdAndBookIdAndActiveTrue(
                 provider.getId(),
                 preference.getBook().getId()
         );

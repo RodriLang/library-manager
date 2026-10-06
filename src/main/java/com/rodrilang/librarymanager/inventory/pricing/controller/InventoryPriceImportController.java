@@ -66,7 +66,10 @@ public class InventoryPriceImportController {
     }
 
     @GetMapping
-    public PageResponse<InventoryPriceImportHistoryResponse> history(Pageable pageable) {
-        return service.history(pageable);
+    public PageResponse<InventoryPriceImportHistoryResponse> history(
+            @RequestParam(required = false) Long providerId,
+            Pageable pageable
+    ) {
+        return service.history(providerId, pageable);
     }
 }

@@ -10,14 +10,14 @@ import com.rodrilang.librarymanager.inventory.movement.repository.InventoryMovem
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.model.InventoryMovement;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
 public class InventoryBulkConsignmentHandler implements InventoryBulkActionHandler {
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final InventoryMovementRepository movementRepository;
 
     @Override
@@ -37,9 +37,7 @@ public class InventoryBulkConsignmentHandler implements InventoryBulkActionHandl
             return InventoryBulkMutationResult.modified();
         }
 
-        Provider provider = providerRepository.findById(request.consignmentProviderId())
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() -> new BusinessException("El proveedor de consignación no existe o no está activo."));
+        Provider provider = providerAccessService.requireUsableByCurrentBookstore(request.consignmentProviderId());
         if (before > 0 && inventory.getConsignmentProvider() != null
                 && !inventory.getConsignmentProvider().getId().equals(provider.getId())) {
             throw new BusinessException("Un inventario seleccionado ya tiene consignación de otro proveedor.");

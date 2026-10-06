@@ -28,6 +28,28 @@ class ProviderTest {
     }
 
     @Test
+    void rejectedCommercialProviderIsNotPurchasable() {
+        Provider provider = Provider.builder()
+                .type(ProviderType.COMMERCIAL)
+                .verificationStatus(ProviderVerificationStatus.REJECTED)
+                .active(true)
+                .build();
+
+        assertFalse(provider.isPurchasable());
+    }
+
+    @Test
+    void withdrawnCommercialProviderIsNotPurchasable() {
+        Provider provider = Provider.builder()
+                .type(ProviderType.COMMERCIAL)
+                .verificationStatus(ProviderVerificationStatus.WITHDRAWN)
+                .active(true)
+                .build();
+
+        assertFalse(provider.isPurchasable());
+    }
+
+    @Test
     void inactiveCommercialProviderIsNotPurchasable() {
         Provider provider = Provider.builder()
                 .type(ProviderType.COMMERCIAL)

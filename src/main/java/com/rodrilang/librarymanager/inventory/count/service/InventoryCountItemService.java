@@ -15,7 +15,7 @@ import com.rodrilang.librarymanager.inventory.count.model.InventoryCountSession;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountStatus;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemRepository;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemScanRepository;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountResultRepository;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
@@ -40,7 +40,7 @@ public class InventoryCountItemService {
     private final BookRepository bookRepository;
     private final InventoryCountBookResolver bookResolver;
     private final InventoryCountPriceResolver priceResolver;
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final InventoryCountReviewResetService reviewResetService;
     private final InventoryCountPendingApplyService pendingApplyService;
     private final InventoryCountResponseMapper responseMapper;
@@ -222,15 +222,11 @@ public class InventoryCountItemService {
                         ? request.consignmentProviderId()
                         : item.getConsignmentProvider() != null ? item.getConsignmentProvider().getId() : null;
                 if (providerId == null) throw new BusinessException("Debe indicar el proveedor de consignación");
-                Provider provider = providerRepository.findById(providerId)
-                        .filter(Provider::isPurchasable)
-                        .orElseThrow(() -> new BusinessException("El proveedor de consignación no existe o no está activo"));
+                Provider provider = providerAccessService.requireUsableByCurrentBookstore(providerId);
                 item.setConsignmentProvider(provider);
             }
         } else if (request.consignmentProviderId() != null) {
-            Provider provider = providerRepository.findById(request.consignmentProviderId())
-                    .filter(Provider::isPurchasable)
-                    .orElseThrow(() -> new BusinessException("El proveedor de consignación no existe o no está activo"));
+            Provider provider = providerAccessService.requireUsableByCurrentBookstore(request.consignmentProviderId());
             item.setConsignmentProvider(provider);
         }
 

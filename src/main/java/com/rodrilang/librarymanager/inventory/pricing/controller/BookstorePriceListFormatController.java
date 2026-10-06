@@ -24,8 +24,10 @@ public class BookstorePriceListFormatController {
     private final PriceListWorkbookAnalyzer workbookAnalyzer;
 
     @GetMapping
-    public List<BookstorePriceListFormatResponse> list() {
-        return service.list();
+    public List<BookstorePriceListFormatResponse> list(
+            @RequestParam(required = false) Long providerId
+    ) {
+        return service.list(providerId);
     }
 
     @PostMapping

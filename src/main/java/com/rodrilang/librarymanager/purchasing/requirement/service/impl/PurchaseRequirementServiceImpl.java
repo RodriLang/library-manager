@@ -6,7 +6,7 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.provider.model.ProviderType;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.provider.catalog.repository.ProviderBookRepository;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
@@ -63,7 +63,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
     private final PurchaseOrderItemRepository purchaseOrderItemRepository;
 
     private final ProviderBookRepository providerBookRepository;
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final BookstoreProviderBookTermRepository providerBookTermRepository;
 
     private final InventoryRepository inventoryRepository;
@@ -1024,13 +1024,7 @@ public class PurchaseRequirementServiceImpl implements PurchaseRequirementServic
             return null;
         }
 
-        Provider provider =
-                providerRepository
-                        .findById(providerId)
-                        .filter(Provider::isPurchasable)
-                        .orElseThrow(() ->
-                                new BusinessException("El proveedor seleccionado no se encuentra activo.")
-                        );
+        Provider provider = providerAccessService.requireUsableByCurrentBookstore(providerId);
 
         boolean available =
                 providerBookRepository

@@ -47,6 +47,28 @@ public class Provider {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false, length = 20)
+    @Builder.Default
+    private ProviderVerificationStatus verificationStatus = ProviderVerificationStatus.VERIFIED;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private ProviderSource source = ProviderSource.LEGACY;
+
+    @Column(name = "created_by_bookstore_id")
+    private Long createdByBookstoreId;
+
+    @Column(name = "created_by_user_id")
+    private Long createdByUserId;
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
+    @Column(name = "reviewed_by_user_id")
+    private Long reviewedByUserId;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean active = true;
@@ -58,6 +80,9 @@ public class Provider {
     private Instant updatedAt;
 
     public boolean isPurchasable() {
-        return active && type == ProviderType.COMMERCIAL;
+        return active
+                && type == ProviderType.COMMERCIAL
+                && (verificationStatus == ProviderVerificationStatus.VERIFIED
+                    || verificationStatus == ProviderVerificationStatus.PENDING_REVIEW);
     }
 }

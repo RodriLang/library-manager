@@ -12,7 +12,7 @@ import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockSer
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.model.InventoryMovement;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,7 +25,7 @@ public class InventoryStockServiceImpl implements InventoryStockService {
     private final InventoryRepository inventoryRepository;
     private final InventoryMovementRepository movementRepository;
     private final InventoryCostMovementService inventoryCostMovementService;
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
 
     @Override
     @Transactional
@@ -203,9 +203,7 @@ public class InventoryStockServiceImpl implements InventoryStockService {
     }
 
     private Provider requireProvider(Long id) {
-        return providerRepository.findById(id)
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() -> new BusinessException("El proveedor de consignación no existe o no está activo."));
+        return providerAccessService.requireUsableByCurrentBookstore(id);
     }
 
     private boolean sameProvider(Inventory inventory, Long providerId) {

@@ -10,7 +10,7 @@ import com.rodrilang.librarymanager.inventory.movement.repository.InventoryMovem
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.model.InventoryMovement;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class ConsignmentService {
     private final InventoryMovementRepository movementRepository;
     private final ConsignmentSettlementRepository settlementRepository;
     private final ConsignmentSettlementItemRepository settlementItemRepository;
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final BookstoreService bookstoreService;
     private final UserRepository userRepository;
     private final BookstoreContext bookstoreContext;
@@ -59,9 +59,7 @@ public class ConsignmentService {
     @Transactional
     public ConsignmentSettlementResponse settle(CreateConsignmentSettlementRequest request) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-        Provider provider = providerRepository.findById(request.providerId())
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() -> new BusinessException("El proveedor no existe o no está activo."));
+        Provider provider = providerAccessService.requireUsableByBookstore(request.providerId(), bookstoreId);
 
         List<Long> ids = request.movementIds().stream().distinct().toList();
         List<InventoryMovement> movements = movementRepository.findConsignmentSalesByIds(bookstoreId, ids);

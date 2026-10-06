@@ -16,7 +16,7 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrder;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderItem;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus;
@@ -58,7 +58,7 @@ public class GoodsReceiptService {
     private final GoodsReceiptItemRepository itemRepository;
     private final PurchaseOrderRepository orderRepository;
     private final PurchaseOrderItemRepository orderItemRepository;
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final BookRepository bookRepository;
     private final BookCatalogService bookCatalogService;
     private final InventoryRepository inventoryRepository;
@@ -437,9 +437,7 @@ public class GoodsReceiptService {
     }
 
     private Provider requireProvider(Long id) {
-        return providerRepository.findById(id)
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() -> new BusinessException("El proveedor seleccionado no se encuentra activo."));
+        return providerAccessService.requireUsableByCurrentBookstore(id);
     }
 
     private GoodsReceiptDetailResponse detail(GoodsReceipt receipt) {

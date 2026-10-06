@@ -19,10 +19,20 @@ public class BookstoreContext {
     private final BookstoreMembershipRepository membershipRepository;
 
     public Long getCurrentBookstoreId() {
+        Long bookstoreId = getCurrentBookstoreIdOrNull();
+        if (bookstoreId == null) {
+            throw new BusinessException("Seleccioná una librería para realizar esta operación.");
+        }
+        return bookstoreId;
+    }
+
+    public Long getCurrentBookstoreIdOrNull() {
         AuthenticatedUser user = getCurrentUser();
         Long requested = requestedBookstoreId();
         Long bookstoreId = requested != null ? requested : user.bookstoreId();
-        if (bookstoreId == null) throw new BusinessException("Seleccioná una librería para realizar esta operación.");
+        if (bookstoreId == null) {
+            return null;
+        }
 
         if (!membershipRepository.existsByUser_IdAndBookstore_IdAndEnabledTrue(user.userId(), bookstoreId)) {
             throw new BusinessException("No tenés acceso a la librería seleccionada.");
