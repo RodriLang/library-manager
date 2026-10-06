@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.inventory.count.model;
 import com.rodrilang.librarymanager.catalog.candidate.model.CatalogCandidate;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Book;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -79,6 +80,13 @@ public class InventoryCountItem extends AuditableEntity {
 
     @Column(name = "minimum_stock_override")
     private Integer minimumStockOverride;
+
+    @Column(name = "consignment_quantity_override")
+    private Integer consignmentQuantityOverride;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consignment_provider_id")
+    private Provider consignmentProvider;
 
     @Column(name = "first_scanned_at", nullable = false)
     private Instant firstScannedAt;

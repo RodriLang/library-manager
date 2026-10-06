@@ -209,6 +209,9 @@ public interface InventoryRepository
     })
     Optional<Inventory> findByIdAndBookstoreIdAndActiveTrue(Long id, Long bookstoreId);
 
+    @EntityGraph(attributePaths = {"book", "book.publisher", "consignmentProvider"})
+    Page<Inventory> findAllByBookstoreIdAndConsignmentStockGreaterThan(Long bookstoreId, Integer consignmentStock, Pageable pageable);
+
     @Query("""
             SELECT
                 i.id AS inventoryId,

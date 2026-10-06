@@ -7,6 +7,8 @@ import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItemStat
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountSession;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountStatus;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +21,7 @@ public class InventoryCountConfigurationService {
     private final InventoryCountItemRepository itemRepository;
     private final InventoryCountReviewResetService reviewResetService;
     private final InventoryCountPendingApplyService pendingApplyService;
+    private final ProviderRepository providerRepository;
 
     public void update(InventoryCountSession session, UpdateInventoryCountConfigurationRequest request) {
         requireConfigurable(session);
@@ -31,6 +34,20 @@ public class InventoryCountConfigurationService {
         }
         if (request.minimumStock() != null) {
             session.setDefaultMinimumStock(request.minimumStock());
+        }
+        if (request.consignment() != null) {
+            session.setDefaultConsignment(request.consignment());
+            if (Boolean.TRUE.equals(request.consignment())) {
+                if (request.consignmentProviderId() == null) {
+                    throw new BusinessException("Debe indicar el proveedor de consignación");
+                }
+                Provider provider = providerRepository.findById(request.consignmentProviderId())
+                        .filter(Provider::isPurchasable)
+                        .orElseThrow(() -> new BusinessException("El proveedor de consignación no existe o no está activo"));
+                session.setDefaultConsignmentProvider(provider);
+            } else {
+                session.setDefaultConsignmentProvider(null);
+            }
         }
 
         if (session.getStatus() == InventoryCountStatus.REVIEW) {
@@ -56,6 +73,15 @@ public class InventoryCountConfigurationService {
             }
             if (request.minimumStock() != null) {
                 item.setMinimumStockOverride(request.minimumStock());
+            }
+            if (request.consignment() != null) {
+                if (Boolean.TRUE.equals(request.consignment())) {
+                    item.setConsignmentQuantityOverride(item.getQuantity());
+                    item.setConsignmentProvider(session.getDefaultConsignmentProvider());
+                } else {
+                    item.setConsignmentQuantityOverride(0);
+                    item.setConsignmentProvider(null);
+                }
             }
 
             if (item.getBook() == null) {

@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.model;
 import com.rodrilang.librarymanager.enums.InventoryMovementReferenceType;
 import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -74,6 +75,22 @@ public class InventoryMovement extends AuditableEntity {
 
     @Column(name = "stock_after", nullable = false)
     private Integer stockAfter;
+
+    @Builder.Default
+    @Column(name = "consignment_delta", nullable = false)
+    private Integer consignmentDelta = 0;
+
+    @Builder.Default
+    @Column(name = "consignment_before", nullable = false)
+    private Integer consignmentBefore = 0;
+
+    @Builder.Default
+    @Column(name = "consignment_after", nullable = false)
+    private Integer consignmentAfter = 0;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consignment_provider_id")
+    private Provider consignmentProvider;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "reference_type", length = 40)

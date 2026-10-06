@@ -17,6 +17,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.lang.Nullable;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 
 @NonNullApi
 public interface InventoryMovementRepository
@@ -34,6 +36,13 @@ public interface InventoryMovementRepository
     );
 
     boolean existsByInventoryIdAndTypeAndReferenceTypeAndReferenceId(
+            Long inventoryId,
+            InventoryMovementType type,
+            InventoryMovementReferenceType referenceType,
+            String referenceId
+    );
+
+    java.util.Optional<InventoryMovement> findFirstByInventoryIdAndTypeAndReferenceTypeAndReferenceIdOrderByIdAsc(
             Long inventoryId,
             InventoryMovementType type,
             InventoryMovementReferenceType referenceType,
@@ -59,5 +68,38 @@ public interface InventoryMovementRepository
             @Param("after") Instant after,
             @Param("countReferenceType") InventoryMovementReferenceType countReferenceType,
             @Param("sessionReferenceId") String sessionReferenceId
+    );
+
+    @Query("""
+            SELECT m
+            FROM InventoryMovement m
+            WHERE m.inventory.bookstore.id = :bookstoreId
+              AND m.type = com.rodrilang.librarymanager.enums.InventoryMovementType.SALE
+              AND m.consignmentDelta < 0
+              AND (:providerId IS NULL OR m.consignmentProvider.id = :providerId)
+              AND (
+                    :settled IS NULL
+                    OR (:settled = true AND EXISTS (SELECT si.id FROM com.rodrilang.librarymanager.inventory.consignment.model.ConsignmentSettlementItem si WHERE si.inventoryMovement.id = m.id))
+                    OR (:settled = false AND NOT EXISTS (SELECT si.id FROM com.rodrilang.librarymanager.inventory.consignment.model.ConsignmentSettlementItem si WHERE si.inventoryMovement.id = m.id))
+              )
+            """)
+    Page<InventoryMovement> findConsignmentSales(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("providerId") Long providerId,
+            @Param("settled") Boolean settled,
+            Pageable pageable
+    );
+
+    @Query("""
+            SELECT m
+            FROM InventoryMovement m
+            WHERE m.inventory.bookstore.id = :bookstoreId
+              AND m.id IN :ids
+              AND m.type = com.rodrilang.librarymanager.enums.InventoryMovementType.SALE
+              AND m.consignmentDelta < 0
+            """)
+    List<InventoryMovement> findConsignmentSalesByIds(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("ids") Collection<Long> ids
     );
 }

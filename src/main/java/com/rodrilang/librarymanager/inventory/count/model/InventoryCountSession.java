@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.auth.models.User;
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Bookstore;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -85,6 +86,14 @@ public class InventoryCountSession extends AuditableEntity {
     @Builder.Default
     @Column(name = "default_minimum_stock", nullable = false)
     private Integer defaultMinimumStock = 0;
+
+    @Builder.Default
+    @Column(name = "default_consignment", nullable = false)
+    private Boolean defaultConsignment = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "default_consignment_provider_id")
+    private Provider defaultConsignmentProvider;
 
     @Column(length = 500)
     private String notes;

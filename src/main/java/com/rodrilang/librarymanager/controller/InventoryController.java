@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.controller;
 
 import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
+import com.rodrilang.librarymanager.dto.request.AdjustConsignmentRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
@@ -99,6 +100,7 @@ public class InventoryController {
             @RequestParam(required = false) List<Long> authorIds,
             @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
             @RequestParam(defaultValue = "ACTIVE") InventoryActiveFilter active,
+            @RequestParam(required = false) Boolean consignment,
             @ParameterObject
             @PageableDefault(
                     size = 30,
@@ -113,7 +115,8 @@ public class InventoryController {
                         publisherIds,
                         authorIds,
                         priceMode,
-                        active
+                        active,
+                        consignment
                 );
 
         InventorySearchCriteria criteria =
@@ -140,7 +143,8 @@ public class InventoryController {
             @RequestParam(required = false) List<Long> publisherIds,
             @RequestParam(required = false) List<Long> authorIds,
             @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
-            @RequestParam(defaultValue = "ACTIVE") InventoryActiveFilter active
+            @RequestParam(defaultValue = "ACTIVE") InventoryActiveFilter active,
+            @RequestParam(required = false) Boolean consignment
     ) {
         InventoryAdvancedFilters filters =
                 new InventoryAdvancedFilters(
@@ -148,7 +152,8 @@ public class InventoryController {
                         publisherIds,
                         authorIds,
                         priceMode,
-                        active
+                        active,
+                        consignment
                 );
 
         return ResponseEntity.ok(
@@ -172,6 +177,14 @@ public class InventoryController {
         return ResponseEntity.ok(
                 inventoryService.getByBookId(bookId)
         );
+    }
+
+    @PutMapping("/{inventoryId}/consignment")
+    public ResponseEntity<InventoryDetailResponse> adjustConsignment(
+            @PathVariable Long inventoryId,
+            @Valid @RequestBody AdjustConsignmentRequest request
+    ) {
+        return ResponseEntity.ok(inventoryService.adjustConsignment(inventoryId, request));
     }
 
     @PutMapping("/{inventoryId}")

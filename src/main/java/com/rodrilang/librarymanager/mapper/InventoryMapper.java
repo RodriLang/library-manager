@@ -40,6 +40,9 @@ public abstract class InventoryMapper {
     @Mapping(target = "currentPriceLastConfirmedSource", expression = "java(currentPrice != null ? currentPrice.getLastConfirmedSource() : null)")
     @Mapping(target = "nextSalePrice", expression = "java(nextPrice != null ? nextPrice.getAmount() : null)")
     @Mapping(target = "nextPriceEffectiveFrom", expression = "java(nextPrice != null ? nextPrice.getEffectiveFrom() : null)")
+    @Mapping(target = "ownedStock", expression = "java(inventory.getStock() - inventory.getConsignmentStock())")
+    @Mapping(target = "consignmentProviderId", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getId() : null)")
+    @Mapping(target = "consignmentProviderName", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getName() : null)")
     public abstract InventoryDetailResponse toDetailResponse(
             Inventory inventory,
             InventoryPrice currentPrice,
@@ -72,6 +75,9 @@ public abstract class InventoryMapper {
     @Mapping(target = "nextSalePrice", expression = "java(nextPrice != null ? nextPrice.getAmount() : null)")
     @Mapping(target = "nextPriceEffectiveFrom", expression = "java(nextPrice != null ? nextPrice.getEffectiveFrom() : null)")
     @Mapping(target = "authorNames", expression = "java(toAuthorNames(inventory))")
+    @Mapping(target = "ownedStock", expression = "java(inventory.getStock() - inventory.getConsignmentStock())")
+    @Mapping(target = "consignmentProviderId", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getId() : null)")
+    @Mapping(target = "consignmentProviderName", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getName() : null)")
     public abstract InventorySummaryResponse toSummaryResponse(
             Inventory inventory,
             InventoryPrice currentPrice,
@@ -92,6 +98,8 @@ public abstract class InventoryMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "book", ignore = true)
     @Mapping(target = "stock", ignore = true)
+    @Mapping(target = "consignmentStock", ignore = true)
+    @Mapping(target = "consignmentProvider", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "bookstore", ignore = true)

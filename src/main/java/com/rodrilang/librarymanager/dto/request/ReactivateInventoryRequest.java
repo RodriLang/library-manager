@@ -10,6 +10,8 @@ public record ReactivateInventoryRequest(
         @Min(0) Integer stock,
         @Positive BigDecimal salePrice,
         @Min(0) Integer minimumStock,
+        @Min(0) Integer consignmentStock,
+        Long consignmentProviderId,
         BookCondition condition,
         Boolean publishOnTiendanube,
         Boolean tiendanubePriceSyncEnabled

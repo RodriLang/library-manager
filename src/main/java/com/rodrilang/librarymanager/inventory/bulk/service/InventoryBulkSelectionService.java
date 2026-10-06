@@ -89,6 +89,7 @@ public class InventoryBulkSelectionService {
                         null,
                         null,
                         null,
+                        null,
                         null
                 );
 
@@ -98,7 +99,8 @@ public class InventoryBulkSelectionService {
                         resolved.publisherIds(),
                         resolved.authorIds(),
                         resolved.priceMode(),
-                        resolved.active()
+                        resolved.active(),
+                        resolved.consignment()
                 );
 
         /*

@@ -160,6 +160,15 @@ public class InventoryBulkService {
                     "La acción seleccionada no utiliza stock mínimo"
             );
         }
+
+        if (request.action() == InventoryBulkAction.MARK_AS_CONSIGNMENT
+                && request.consignmentProviderId() == null) {
+            throw new BusinessException("Debe indicar el proveedor de consignación");
+        }
+        if (request.action() != InventoryBulkAction.MARK_AS_CONSIGNMENT
+                && request.consignmentProviderId() != null) {
+            throw new BusinessException("La acción seleccionada no utiliza proveedor de consignación");
+        }
     }
 
     private InventoryBulkActionHandler findHandler(
@@ -255,12 +264,12 @@ public class InventoryBulkService {
     private String parameterValue(
             InventoryBulkActionRequest request
     ) {
-        if (request.action()
-                == InventoryBulkAction.SET_MINIMUM_STOCK) {
-            return "minimumStock="
-                    + request.minimumStock();
+        if (request.action() == InventoryBulkAction.SET_MINIMUM_STOCK) {
+            return "minimumStock=" + request.minimumStock();
         }
-
+        if (request.action() == InventoryBulkAction.MARK_AS_CONSIGNMENT) {
+            return "consignmentProviderId=" + request.consignmentProviderId();
+        }
         return null;
     }
 
@@ -311,6 +320,8 @@ public class InventoryBulkService {
                 + filter.priceMode()
                 + "; stock="
                 + filter.stock()
+                + "; consignment="
+                + filter.consignment()
                 + "; excluded="
                 + excluded;
     }

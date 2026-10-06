@@ -14,33 +14,18 @@ public record InventoryBulkFilterRequest(
         List<Long> publisherIds,
         List<Long> authorIds,
         InventoryPriceMode priceMode,
-        InventoryStockFilter stock
+        InventoryStockFilter stock,
+        Boolean consignment
 ) {
+    public InventoryBulkFilterRequest(String q, BookCondition condition, InventoryActiveFilter active, List<Long> publisherIds, List<Long> authorIds, InventoryPriceMode priceMode, InventoryStockFilter stock) {
+        this(q, condition, active, publisherIds, authorIds, priceMode, stock, null);
+    }
 
     public InventoryBulkFilterRequest {
-        active =
-                active != null
-                        ? active
-                        : InventoryActiveFilter.ACTIVE;
-
-        publisherIds =
-                publisherIds != null
-                        ? List.copyOf(publisherIds)
-                        : List.of();
-
-        authorIds =
-                authorIds != null
-                        ? List.copyOf(authorIds)
-                        : List.of();
-
-        priceMode =
-                priceMode != null
-                        ? priceMode
-                        : InventoryPriceMode.ALL;
-
-        stock =
-                stock != null
-                        ? stock
-                        : InventoryStockFilter.ALL;
+        active = active != null ? active : InventoryActiveFilter.ACTIVE;
+        publisherIds = publisherIds != null ? List.copyOf(publisherIds) : List.of();
+        authorIds = authorIds != null ? List.copyOf(authorIds) : List.of();
+        priceMode = priceMode != null ? priceMode : InventoryPriceMode.ALL;
+        stock = stock != null ? stock : InventoryStockFilter.ALL;
     }
 }

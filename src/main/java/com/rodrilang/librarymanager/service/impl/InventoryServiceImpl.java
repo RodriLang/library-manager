@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.dto.internal.InventoryAdvancedFilters;
 import com.rodrilang.librarymanager.dto.internal.InventoryStockSummaryCounts;
 import com.rodrilang.librarymanager.dto.request.AddBookToInventoryRequest;
+import com.rodrilang.librarymanager.dto.request.AdjustConsignmentRequest;
 import com.rodrilang.librarymanager.dto.request.InventoryQuantityRequest;
 import com.rodrilang.librarymanager.dto.request.InventorySaleRequest;
 import com.rodrilang.librarymanager.dto.request.ReactivateInventoryRequest;
@@ -29,6 +30,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubePubl
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountStatus;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemRepository;
+import com.rodrilang.librarymanager.inventory.consignment.repository.ConsignmentSettlementItemRepository;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockAdjustmentCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeResult;
@@ -69,6 +71,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final InventoryCountItemRepository inventoryCountItemRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
+    private final ConsignmentSettlementItemRepository consignmentSettlementItemRepository;
     private final InventoryMapper inventoryMapper;
     private final BookService bookService;
     private final InventoryPriceService inventoryPriceService;
@@ -143,18 +146,26 @@ public class InventoryServiceImpl implements InventoryService {
             );
         }
 
-        if (request.initialStock() > 0) {
+        int initialStock = request.initialStock() != null ? request.initialStock() : 0;
+        int initialConsignment = request.consignmentStock() != null ? request.consignmentStock() : 0;
+        if (initialConsignment > initialStock) {
+            throw new BusinessException("El stock consignado inicial no puede superar el stock inicial.");
+        }
+
+        if (initialStock > 0) {
 
             InventoryStockChangeResult result =
                     inventoryStockService.changeStock(
                             saved.getId(),
                             new InventoryStockChangeCommand(
-                                    request.initialStock(),
+                                    initialStock,
                                     InventoryMovementType.INITIAL_STOCK,
                                     InventoryMovementSource.MANUAL,
                                     null,
                                     null,
-                                    "Stock informado al agregar el libro al inventario"
+                                    "Stock informado al agregar el libro al inventario",
+                                    initialConsignment,
+                                    request.consignmentProviderId()
                             )
                     );
 
@@ -192,7 +203,9 @@ public class InventoryServiceImpl implements InventoryService {
                                 InventoryMovementSource.MANUAL,
                                 null,
                                 null,
-                                null
+                                null,
+                                request.consignmentQuantity() != null ? request.consignmentQuantity() : 0,
+                                request.consignmentProviderId()
                         )
                 );
 
@@ -288,6 +301,16 @@ public class InventoryServiceImpl implements InventoryService {
                         )
                 ).inventory();
 
+        int consignmentStock = request.consignmentStock() != null ? request.consignmentStock() : 0;
+        if (consignmentStock > 0) {
+            adjusted = inventoryStockService.adjustConsignment(
+                    adjusted.getId(),
+                    consignmentStock,
+                    request.consignmentProviderId(),
+                    "Consignación informada al reactivar el inventario"
+            ).inventory();
+        }
+
         if (request.salePrice() != null) {
             inventoryPriceService.upsertSystem(
                     adjusted,
@@ -330,6 +353,15 @@ public class InventoryServiceImpl implements InventoryService {
         Boolean previousPriceSyncEnabled = inventory.getTiendanubePriceSyncEnabled();
 
         inventoryMapper.updateEntity(request, inventory);
+
+        if (request.consignmentStock() != null) {
+            inventory = inventoryStockService.adjustConsignment(
+                    inventory.getId(),
+                    request.consignmentStock(),
+                    request.consignmentProviderId(),
+                    "Ajuste de consignación desde edición de inventario"
+            ).inventory();
+        }
 
         if (request.salePrice() != null) {
             inventoryPriceService.upsertSystem(
@@ -428,6 +460,18 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Transactional
+    public InventoryDetailResponse adjustConsignment(Long inventoryId, AdjustConsignmentRequest request) {
+        Inventory inventory = getEntityById(inventoryId);
+        Inventory adjusted = inventoryStockService.adjustConsignment(
+                inventory.getId(),
+                request.consignmentStock(),
+                request.providerId(),
+                request.note()
+        ).inventory();
+        return toDetailResponse(adjusted);
+    }
+
+    @Transactional
     @Override
     public void deactivate(Long inventoryId) {
 
@@ -499,6 +543,19 @@ public class InventoryServiceImpl implements InventoryService {
             );
         }
 
+        var originalSaleMovement = inventoryMovementRepository
+                .findFirstByInventoryIdAndTypeAndReferenceTypeAndReferenceIdOrderByIdAsc(
+                        inventoryId,
+                        InventoryMovementType.SALE,
+                        InventoryMovementReferenceType.TIENDANUBE_ORDER,
+                        orderId
+                )
+                .orElseThrow(() -> new BusinessException("No se encontró el movimiento original de la venta TiendaNube"));
+
+        if (consignmentSettlementItemRepository.existsByInventoryMovementId(originalSaleMovement.getId())) {
+            throw new BusinessException("No se puede restaurar la venta porque las unidades consignadas ya fueron rendidas.");
+        }
+
         inventoryStockService.changeStock(
                 inventoryId,
                 new InventoryStockChangeCommand(
@@ -507,7 +564,9 @@ public class InventoryServiceImpl implements InventoryService {
                         InventoryMovementSource.TIENDANUBE,
                         InventoryMovementReferenceType.TIENDANUBE_ORDER,
                         orderId,
-                        "Stock restaurado por cancelación del pedido"
+                        "Stock restaurado por cancelación del pedido",
+                        Math.max(0, -originalSaleMovement.getConsignmentDelta()),
+                        originalSaleMovement.getConsignmentProvider() != null ? originalSaleMovement.getConsignmentProvider().getId() : null
                 )
         );
     }

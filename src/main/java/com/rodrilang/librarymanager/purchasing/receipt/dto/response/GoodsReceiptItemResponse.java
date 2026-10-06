@@ -14,6 +14,7 @@ public record GoodsReceiptItemResponse(
         Integer documentQuantity,
         Integer scannedQuantity,
         Integer receivedQuantity,
+        Integer consignmentQuantity,
         Integer differenceFromOrder,
         Integer differenceFromDocument,
         String notes

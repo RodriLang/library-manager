@@ -13,5 +13,7 @@ public interface InventoryMovementMapper {
     @Mapping(target = "isbn", source = "inventory.book.preferredIsbn")
     @Mapping(target = "title", source = "inventory.book.title")
     @Mapping(target = "coverUrl", source = "inventory.book.coverUrl")
+    @Mapping(target = "consignmentProviderId", source = "consignmentProvider.id")
+    @Mapping(target = "consignmentProviderName", source = "consignmentProvider.name")
     InventoryMovementResponse toResponse(InventoryMovement movement);
 }

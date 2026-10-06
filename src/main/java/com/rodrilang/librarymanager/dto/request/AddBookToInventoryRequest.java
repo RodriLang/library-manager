@@ -17,6 +17,11 @@ public record AddBookToInventoryRequest(
         @Min(0)
         Integer minimumStock,
 
+        @Min(0)
+        Integer consignmentStock,
+
+        Long consignmentProviderId,
+
         BookCondition condition,
 
         Boolean publishOnTiendanube,
@@ -25,4 +30,7 @@ public record AddBookToInventoryRequest(
         Boolean tiendanubePriceSyncEnabled
 
 ) {
+    public AddBookToInventoryRequest(BigDecimal salePrice, Integer initialStock, Integer minimumStock, BookCondition condition, Boolean publishOnTiendanube, Boolean tiendanubePriceSyncEnabled) {
+        this(salePrice, initialStock, minimumStock, 0, null, condition, publishOnTiendanube, tiendanubePriceSyncEnabled);
+    }
 }

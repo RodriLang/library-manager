@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.model;
 
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -61,6 +62,14 @@ public class Inventory extends AuditableEntity {
     @Builder.Default
     @Column(nullable = false)
     private Integer minimumStock = 0;
+
+    @Builder.Default
+    @Column(name = "consignment_stock", nullable = false)
+    private Integer consignmentStock = 0;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consignment_provider_id")
+    private Provider consignmentProvider;
 
     @Builder.Default
     @Enumerated(EnumType.STRING)

@@ -53,6 +53,10 @@ public class GoodsReceiptItem extends AuditableEntity {
     @Column(name = "received_quantity", nullable = false)
     private Integer receivedQuantity = 0;
 
+    @Builder.Default
+    @Column(name = "consignment_quantity", nullable = false)
+    private Integer consignmentQuantity = 0;
+
     @Column(length = 500)
     private String notes;
 }

@@ -9,4 +9,6 @@ public interface InventoryStockService {
     InventoryStockChangeResult changeStock(Long inventoryId, InventoryStockChangeCommand command);
 
     InventoryStockChangeResult adjustStockTo(Long inventoryId, InventoryStockAdjustmentCommand command);
+
+    InventoryStockChangeResult adjustConsignment(Long inventoryId, int targetConsignmentStock, Long providerId, String note);
 }

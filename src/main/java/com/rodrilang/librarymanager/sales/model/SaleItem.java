@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.sales.model;
 
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -68,4 +69,13 @@ public class SaleItem extends AuditableEntity {
 
     @Column(length = 20)
     private String isbn;
+
+    @Builder.Default
+    @Column(name = "consignment_quantity", nullable = false)
+    private Integer consignmentQuantity = 0;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consignment_provider_id")
+    private Provider consignmentProvider;
+
 }
