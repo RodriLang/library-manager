@@ -18,6 +18,13 @@ public interface InventoryPriceImportRepository extends JpaRepository<InventoryP
     Page<InventoryPriceImport> findAllByBookstoreIdOrderByCreatedAtDesc(Long bookstoreId, Pageable pageable);
 
     @EntityGraph(attributePaths = {"format", "provider"})
+    Page<InventoryPriceImport> findAllByBookstoreIdAndProviderIdOrderByCreatedAtDesc(
+            Long bookstoreId,
+            Long providerId,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"format", "provider"})
     Optional<InventoryPriceImport> findByIdAndBookstoreId(Long id, Long bookstoreId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

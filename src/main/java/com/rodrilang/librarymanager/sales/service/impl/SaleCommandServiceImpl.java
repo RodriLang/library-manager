@@ -15,6 +15,7 @@ import com.rodrilang.librarymanager.fiscal.repository.FiscalDocumentRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeSyncType;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.TiendanubeSyncRequestedEvent;
 import com.rodrilang.librarymanager.inventory.movement.dto.InventoryStockChangeCommand;
+import com.rodrilang.librarymanager.inventory.consignment.repository.ConsignmentSettlementItemRepository;
 import com.rodrilang.librarymanager.inventory.movement.service.InventoryStockService;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
@@ -72,6 +73,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
     private final UserRepository userRepository;
 
     private final InventoryStockService inventoryStockService;
+    private final ConsignmentSettlementItemRepository consignmentSettlementItemRepository;
     private final PurchaseRequirementService purchaseRequirementService;
     private final SaleCalculator calculator;
     private final SaleMapper mapper;
@@ -191,7 +193,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
                 .toList();
 
         for (SaleItem saleItem : stockOrderedItems) {
-            inventoryStockService.changeStock(
+            var stockResult = inventoryStockService.changeStock(
                     saleItem.getInventory().getId(),
                     new InventoryStockChangeCommand(
                             -saleItem.getQuantity(),
@@ -202,6 +204,13 @@ public class SaleCommandServiceImpl implements SaleCommandService {
                             "Venta #" + sale.getId()
                     )
             );
+
+            int consignmentSold = Math.max(0, -stockResult.movement().getConsignmentDelta());
+            if (consignmentSold > 0) {
+                saleItem.setConsignmentQuantity(consignmentSold);
+                saleItem.setConsignmentProvider(stockResult.movement().getConsignmentProvider());
+                itemRepository.save(saleItem);
+            }
 
             CreateSaleItemRequest itemRequest = requestByInventoryId.get(
                     saleItem.getInventory().getId()
@@ -245,6 +254,10 @@ public class SaleCommandServiceImpl implements SaleCommandService {
             throw new BusinessException("La venta ya se encuentra cancelada.");
         }
 
+        if (consignmentSettlementItemRepository.existsSettledSale(sale.getId().toString())) {
+            throw new BusinessException("No se puede cancelar la venta porque contiene unidades consignadas que ya fueron rendidas.");
+        }
+
         validateFiscalCancellation(sale, bookstoreId);
 
         List<SaleItem> items = itemRepository.findAllBySaleIdOrderByIdAsc(sale.getId());
@@ -264,7 +277,9 @@ public class SaleCommandServiceImpl implements SaleCommandService {
                             InventoryMovementSource.MANUAL,
                             InventoryMovementReferenceType.SALE,
                             sale.getId().toString(),
-                            "Cancelación de venta #" + sale.getId()
+                            "Cancelación de venta #" + sale.getId(),
+                            value(item.getConsignmentQuantity()),
+                            item.getConsignmentProvider() != null ? item.getConsignmentProvider().getId() : null
                     )
             );
 
@@ -429,4 +444,6 @@ public class SaleCommandServiceImpl implements SaleCommandService {
 
         return value.trim();
     }
+    private int value(Integer value) { return value == null ? 0 : value; }
+
 }

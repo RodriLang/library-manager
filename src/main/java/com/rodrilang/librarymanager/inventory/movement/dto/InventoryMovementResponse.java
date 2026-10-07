@@ -23,6 +23,11 @@ public record InventoryMovementResponse(
         Integer quantity,
         Integer stockBefore,
         Integer stockAfter,
+        Integer consignmentDelta,
+        Integer consignmentBefore,
+        Integer consignmentAfter,
+        Long consignmentProviderId,
+        String consignmentProviderName,
 
         InventoryMovementReferenceType referenceType,
         String referenceId,

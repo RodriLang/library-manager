@@ -1,12 +1,17 @@
 package com.rodrilang.librarymanager.provider.service.impl;
 
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.provider.dto.request.CreateProviderRequest;
 import com.rodrilang.librarymanager.provider.dto.request.UpdateProviderRequest;
 import com.rodrilang.librarymanager.provider.dto.response.ProviderResponse;
 import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.model.ProviderSource;
 import com.rodrilang.librarymanager.provider.model.ProviderType;
+import com.rodrilang.librarymanager.provider.model.ProviderVerificationStatus;
 import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
+import com.rodrilang.librarymanager.provider.service.ProviderResponseMapper;
 import com.rodrilang.librarymanager.provider.service.ProviderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +26,9 @@ import java.util.Locale;
 public class ProviderServiceImpl implements ProviderService {
 
     private final ProviderRepository providerRepository;
+    private final ProviderResponseMapper responseMapper;
+    private final ProviderAccessService providerAccessService;
+    private final BookstoreContext bookstoreContext;
 
     @Override
     @Transactional
@@ -41,12 +49,16 @@ public class ProviderServiceImpl implements ProviderService {
                 .email(clean(request.email()))
                 .phone(clean(request.phone()))
                 .notes(clean(request.notes()))
+                .verificationStatus(ProviderVerificationStatus.VERIFIED)
+                .source(ProviderSource.ADMIN)
+                .reviewedAt(now)
+                .reviewedByUserId(bookstoreContext.getCurrentUserId())
                 .active(true)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
 
-        return toResponse(providerRepository.save(provider));
+        return responseMapper.toResponse(providerRepository.save(provider));
     }
 
     @Override
@@ -67,17 +79,22 @@ public class ProviderServiceImpl implements ProviderService {
         if (request.active() != null) provider.setActive(request.active());
         provider.setUpdatedAt(Instant.now());
 
-        return toResponse(provider);
+        return responseMapper.toResponse(provider);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ProviderResponse> findAllActive(ProviderType type) {
-        List<Provider> providers = type == null
-                ? providerRepository.findAllByActiveTrueOrderByNameAsc()
-                : providerRepository.findAllByActiveTrueAndTypeOrderByNameAsc(type);
-
-        return providers.stream().map(this::toResponse).toList();
+        Long bookstoreId = isAdmin() ? null : bookstoreContext.getCurrentBookstoreIdOrNull();
+        return providerRepository.findAvailableForBookstore(
+                        type,
+                        bookstoreId,
+                        ProviderVerificationStatus.VERIFIED,
+                        ProviderVerificationStatus.PENDING_REVIEW
+                )
+                .stream()
+                .map(responseMapper::toResponse)
+                .toList();
     }
 
     @Override
@@ -86,22 +103,19 @@ public class ProviderServiceImpl implements ProviderService {
         Provider provider = providerRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("No se encontró el proveedor solicitado."));
 
-        return toResponse(provider);
+        if (!isAdmin()) {
+            Long bookstoreId = bookstoreContext.getCurrentBookstoreIdOrNull();
+            if (!providerAccessService.isVisibleToBookstore(provider, bookstoreId)) {
+                throw new BusinessException("El proveedor solicitado no se encuentra disponible para esta librería.");
+            }
+        }
+
+        return responseMapper.toResponse(provider);
     }
 
-    private ProviderResponse toResponse(Provider provider) {
-        return new ProviderResponse(
-                provider.getId(),
-                provider.getCode(),
-                provider.getName(),
-                provider.getType(),
-                provider.getTaxId(),
-                provider.getEmail(),
-                provider.getPhone(),
-                provider.getNotes(),
-                provider.isActive(),
-                provider.isPurchasable()
-        );
+    private boolean isAdmin() {
+        return bookstoreContext.getCurrentUser().getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
     }
 
     private String clean(String value) {

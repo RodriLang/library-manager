@@ -16,7 +16,7 @@ import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrder;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderItem;
 import com.rodrilang.librarymanager.purchasing.order.model.PurchaseOrderStatus;
@@ -58,7 +58,7 @@ public class GoodsReceiptService {
     private final GoodsReceiptItemRepository itemRepository;
     private final PurchaseOrderRepository orderRepository;
     private final PurchaseOrderItemRepository orderItemRepository;
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
     private final BookRepository bookRepository;
     private final BookCatalogService bookCatalogService;
     private final InventoryRepository inventoryRepository;
@@ -180,10 +180,19 @@ public class GoodsReceiptService {
                         .expectedQuantity(expectedFor(receipt, book.getId()))
                         .scannedQuantity(0)
                         .receivedQuantity(0)
+                        .consignmentQuantity(0)
                         .build());
 
+        int consignmentQuantity = request.consignmentQuantity() != null ? request.consignmentQuantity() : 0;
+        if (consignmentQuantity > request.receivedQuantity()) {
+            throw new BusinessException("La cantidad consignada no puede superar la cantidad a ingresar.");
+        }
+        if (consignmentQuantity > 0 && receipt.getProvider() == null) {
+            throw new BusinessException("Debe indicar un proveedor para recibir unidades en consignación.");
+        }
         item.setDocumentQuantity(request.documentQuantity());
         item.setReceivedQuantity(request.receivedQuantity());
+        item.setConsignmentQuantity(consignmentQuantity);
         item.setNotes(clean(request.notes()));
         itemRepository.save(item);
         return detail(receipt);
@@ -210,6 +219,7 @@ public class GoodsReceiptService {
                         .expectedQuantity(expectedFor(receipt, book.getId()))
                         .scannedQuantity(0)
                         .receivedQuantity(0)
+                        .consignmentQuantity(0)
                         .build());
 
         item.setScannedQuantity(item.getScannedQuantity() + 1);
@@ -276,7 +286,9 @@ public class GoodsReceiptService {
                             InventoryMovementSource.MANUAL,
                             InventoryMovementReferenceType.GOODS_RECEIPT,
                             receipt.getId().toString(),
-                            "Recepción de mercadería " + receipt.getReceiptNumber()
+                            "Recepción de mercadería " + receipt.getReceiptNumber(),
+                            value(item.getConsignmentQuantity()),
+                            value(item.getConsignmentQuantity()) > 0 && receipt.getProvider() != null ? receipt.getProvider().getId() : null
                     )
             );
 
@@ -425,9 +437,7 @@ public class GoodsReceiptService {
     }
 
     private Provider requireProvider(Long id) {
-        return providerRepository.findById(id)
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() -> new BusinessException("El proveedor seleccionado no se encuentra activo."));
+        return providerAccessService.requireUsableByCurrentBookstore(id);
     }
 
     private GoodsReceiptDetailResponse detail(GoodsReceipt receipt) {
@@ -467,7 +477,7 @@ public class GoodsReceiptService {
                 item.getId(), item.getBook().getId(), item.getBook().getPreferredIsbn(), item.getBook().getTitle(),
                 item.getBook().getCoverUrl(),
                 item.getPurchaseOrderItem() != null ? item.getPurchaseOrderItem().getId() : null,
-                item.getCondition(), expected, document, value(item.getScannedQuantity()), received,
+                item.getCondition(), expected, document, value(item.getScannedQuantity()), received, value(item.getConsignmentQuantity()),
                 expected != null ? received - expected : null,
                 document != null ? received - document : null,
                 item.getNotes()

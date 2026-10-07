@@ -15,7 +15,12 @@ public record InventoryBulkActionRequest(
         InventoryBulkAction action,
 
         @Min(0)
-        Integer minimumStock
+        Integer minimumStock,
+
+        Long consignmentProviderId
 
 ) {
+    public InventoryBulkActionRequest(InventoryBulkSelectionRequest selection, InventoryBulkAction action, Integer minimumStock) {
+        this(selection, action, minimumStock, null);
+    }
 }

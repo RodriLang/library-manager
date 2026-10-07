@@ -298,7 +298,7 @@ public class InventoryCostMovementService {
         return switch (movement.getType()) {
             case PURCHASE -> InventoryCostSourceType.PURCHASE;
             case RETURN -> InventoryCostSourceType.RETURN;
-            case ADJUSTMENT -> InventoryCostSourceType.ADJUSTMENT;
+            case ADJUSTMENT, OWNERSHIP_ADJUSTMENT -> InventoryCostSourceType.ADJUSTMENT;
             case INITIAL_STOCK, ENTRY -> InventoryCostSourceType.STOCK_ENTRY;
             case SALE, DAMAGE, LOSS -> throw new IllegalArgumentException(
                     "Un movimiento de salida no puede crear una capa de costo"

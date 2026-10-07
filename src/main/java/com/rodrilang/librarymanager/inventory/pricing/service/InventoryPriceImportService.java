@@ -228,11 +228,16 @@ public class InventoryPriceImportService {
 
     @Transactional(readOnly = true)
     public PageResponse<InventoryPriceImportHistoryResponse> history(Pageable pageable) {
+        return history(null, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<InventoryPriceImportHistoryResponse> history(Long providerId, Pageable pageable) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-        Page<InventoryPriceImportHistoryResponse> page = importRepository
-                .findAllByBookstoreIdOrderByCreatedAtDesc(bookstoreId, pageable)
-                .map(this::toHistory);
-        return PageResponse.of(page);
+        Page<InventoryPriceImport> imports = providerId == null
+                ? importRepository.findAllByBookstoreIdOrderByCreatedAtDesc(bookstoreId, pageable)
+                : importRepository.findAllByBookstoreIdAndProviderIdOrderByCreatedAtDesc(bookstoreId, providerId, pageable);
+        return PageResponse.of(imports.map(this::toHistory));
     }
 
     @Transactional

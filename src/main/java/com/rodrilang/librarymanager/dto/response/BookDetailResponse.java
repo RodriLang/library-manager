@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.dto.response;
 import com.rodrilang.librarymanager.enums.BookCatalogStatus;
 import com.rodrilang.librarymanager.enums.BookSource;
 import com.rodrilang.librarymanager.catalog.contribution.enums.BookFieldSource;
+import com.rodrilang.librarymanager.catalog.contribution.dto.BookFieldOverrideResponse;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -57,6 +58,8 @@ public record BookDetailResponse(
         Set<AuthorResponse> authors,
 
         Map<String, BookFieldSource> fieldSources,
+
+        Map<String, BookFieldOverrideResponse> fieldOverrides,
 
         List<BookProviderResponse> providers,
 

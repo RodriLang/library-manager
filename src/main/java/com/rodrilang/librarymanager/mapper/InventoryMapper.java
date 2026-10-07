@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.mapper;
 
+import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookFieldOverrideService;
 import com.rodrilang.librarymanager.dto.request.UpdateInventoryRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.dto.response.BookProviderResponse;
@@ -22,10 +23,16 @@ import java.util.List;
 public abstract class InventoryMapper {
 
     protected BookMapper bookMapper;
+    protected BookstoreBookFieldOverrideService overrideService;
 
     @Autowired
     public void setBookMapper(BookMapper bookMapper) {
         this.bookMapper = bookMapper;
+    }
+
+    @Autowired
+    public void setOverrideService(BookstoreBookFieldOverrideService overrideService) {
+        this.overrideService = overrideService;
     }
 
     @Mapping(target = "id", source = "inventory.id")
@@ -40,6 +47,9 @@ public abstract class InventoryMapper {
     @Mapping(target = "currentPriceLastConfirmedSource", expression = "java(currentPrice != null ? currentPrice.getLastConfirmedSource() : null)")
     @Mapping(target = "nextSalePrice", expression = "java(nextPrice != null ? nextPrice.getAmount() : null)")
     @Mapping(target = "nextPriceEffectiveFrom", expression = "java(nextPrice != null ? nextPrice.getEffectiveFrom() : null)")
+    @Mapping(target = "ownedStock", expression = "java(inventory.getStock() - inventory.getConsignmentStock())")
+    @Mapping(target = "consignmentProviderId", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getId() : null)")
+    @Mapping(target = "consignmentProviderName", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getName() : null)")
     public abstract InventoryDetailResponse toDetailResponse(
             Inventory inventory,
             InventoryPrice currentPrice,
@@ -58,6 +68,17 @@ public abstract class InventoryMapper {
         return bookMapper.toDetailResponse(inventory.getBook(), providers);
     }
 
+    public InventorySummaryResponse toSummaryResponse(
+            Inventory inventory,
+            InventoryPrice currentPrice,
+            InventoryPrice nextPrice
+    ) {
+        InventorySummaryResponse base = toSummaryResponseBase(inventory, currentPrice, nextPrice);
+        return inventory == null || inventory.getBook() == null
+                ? base
+                : overrideService.applyToInventorySummary(base, inventory.getBook());
+    }
+
     @Mapping(target = "id", source = "inventory.id")
     @Mapping(target = "bookId", source = "inventory.book.id")
     @Mapping(target = "isbn", expression = "java(inventory.getBook().getPreferredIsbn())")
@@ -72,7 +93,10 @@ public abstract class InventoryMapper {
     @Mapping(target = "nextSalePrice", expression = "java(nextPrice != null ? nextPrice.getAmount() : null)")
     @Mapping(target = "nextPriceEffectiveFrom", expression = "java(nextPrice != null ? nextPrice.getEffectiveFrom() : null)")
     @Mapping(target = "authorNames", expression = "java(toAuthorNames(inventory))")
-    public abstract InventorySummaryResponse toSummaryResponse(
+    @Mapping(target = "ownedStock", expression = "java(inventory.getStock() - inventory.getConsignmentStock())")
+    @Mapping(target = "consignmentProviderId", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getId() : null)")
+    @Mapping(target = "consignmentProviderName", expression = "java(inventory.getConsignmentProvider() != null ? inventory.getConsignmentProvider().getName() : null)")
+    protected abstract InventorySummaryResponse toSummaryResponseBase(
             Inventory inventory,
             InventoryPrice currentPrice,
             InventoryPrice nextPrice
@@ -92,6 +116,8 @@ public abstract class InventoryMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "book", ignore = true)
     @Mapping(target = "stock", ignore = true)
+    @Mapping(target = "consignmentStock", ignore = true)
+    @Mapping(target = "consignmentProvider", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "bookstore", ignore = true)

@@ -5,13 +5,23 @@ import com.rodrilang.librarymanager.enums.InventoryMovementSource;
 import com.rodrilang.librarymanager.enums.InventoryMovementType;
 
 public record InventoryStockChangeCommand(
-
         int quantity,
         InventoryMovementType type,
         InventoryMovementSource source,
         InventoryMovementReferenceType referenceType,
         String referenceId,
-        String note
-
+        String note,
+        Integer consignmentDelta,
+        Long consignmentProviderId
 ) {
+    public InventoryStockChangeCommand(
+            int quantity,
+            InventoryMovementType type,
+            InventoryMovementSource source,
+            InventoryMovementReferenceType referenceType,
+            String referenceId,
+            String note
+    ) {
+        this(quantity, type, source, referenceType, referenceId, note, null, null);
+    }
 }

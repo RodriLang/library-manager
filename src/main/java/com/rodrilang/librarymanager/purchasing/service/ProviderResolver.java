@@ -1,8 +1,7 @@
 package com.rodrilang.librarymanager.purchasing.service;
 
-import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -10,11 +9,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ProviderResolver {
 
-    private final ProviderRepository providerRepository;
+    private final ProviderAccessService providerAccessService;
 
     public Provider requirePurchasable(Long providerId) {
-        return providerRepository.findById(providerId)
-                .filter(Provider::isPurchasable)
-                .orElseThrow(() -> new BusinessException("Proveedor no encontrado, inactivo o no disponible para compras"));
+        return providerAccessService.requireUsableByCurrentBookstore(providerId);
     }
 }

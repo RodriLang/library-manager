@@ -2,6 +2,8 @@ package com.rodrilang.librarymanager.sales.repository;
 
 import com.rodrilang.librarymanager.sales.model.SaleItem;
 import com.rodrilang.librarymanager.sales.repository.projection.SaleItemsSummaryProjection;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -12,10 +14,7 @@ import java.util.List;
 
 public interface SaleItemRepository extends JpaRepository<SaleItem, Long> {
 
-    @EntityGraph(attributePaths = {
-            "inventory",
-            "inventory.book"
-    })
+    @EntityGraph(attributePaths = {"inventory", "inventory.book", "consignmentProvider"})
     List<SaleItem> findAllBySaleIdOrderByIdAsc(Long saleId);
 
     @Query("""

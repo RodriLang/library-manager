@@ -14,6 +14,8 @@ import com.rodrilang.librarymanager.inventory.count.model.InventoryCountItemStat
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountSession;
 import com.rodrilang.librarymanager.inventory.count.model.InventoryCountStatus;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemRepository;
+import com.rodrilang.librarymanager.provider.model.Provider;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountItemScanRepository;
 import com.rodrilang.librarymanager.inventory.count.repository.InventoryCountResultRepository;
 import com.rodrilang.librarymanager.isbn.model.ParsedIsbn;
@@ -38,6 +40,7 @@ public class InventoryCountItemService {
     private final BookRepository bookRepository;
     private final InventoryCountBookResolver bookResolver;
     private final InventoryCountPriceResolver priceResolver;
+    private final ProviderAccessService providerAccessService;
     private final InventoryCountReviewResetService reviewResetService;
     private final InventoryCountPendingApplyService pendingApplyService;
     private final InventoryCountResponseMapper responseMapper;
@@ -66,6 +69,12 @@ public class InventoryCountItemService {
 
             if (existing != null) {
                 existing.setQuantity(existing.getQuantity() + 1);
+                if (Boolean.TRUE.equals(session.getDefaultConsignment())) {
+                    existing.setConsignmentQuantityOverride(existing.getConsignmentQuantityOverride() == null
+                            ? existing.getQuantity()
+                            : existing.getConsignmentQuantityOverride() + 1);
+                    existing.setConsignmentProvider(session.getDefaultConsignmentProvider());
+                }
                 existing.setLastScannedAt(Instant.now());
 
                 if (existing.getRawIdentifier() == null) {
@@ -125,6 +134,12 @@ public class InventoryCountItemService {
 
         if (item != null) {
             item.setQuantity(item.getQuantity() + request.quantity());
+            if (Boolean.TRUE.equals(session.getDefaultConsignment())) {
+                item.setConsignmentQuantityOverride(item.getConsignmentQuantityOverride() == null
+                        ? item.getQuantity()
+                        : item.getConsignmentQuantityOverride() + request.quantity());
+                item.setConsignmentProvider(session.getDefaultConsignmentProvider());
+            }
             item.setLastScannedAt(now);
 
             refreshKnownItemStatus(item);
@@ -140,6 +155,8 @@ public class InventoryCountItemService {
                 .isbn13(book.getIsbn13())
                 .book(book)
                 .quantity(request.quantity())
+                .consignmentQuantityOverride(Boolean.TRUE.equals(session.getDefaultConsignment()) ? request.quantity() : 0)
+                .consignmentProvider(Boolean.TRUE.equals(session.getDefaultConsignment()) ? session.getDefaultConsignmentProvider() : null)
                 .status(InventoryCountItemStatus.RESOLVED)
                 .firstScannedAt(now)
                 .lastScannedAt(now)
@@ -160,7 +177,9 @@ public class InventoryCountItemService {
                 && request.salePrice() == null
                 && request.publishOnTiendanube() == null
                 && request.tiendanubePriceSyncEnabled() == null
-                && request.minimumStock() == null) {
+                && request.minimumStock() == null
+                && request.consignmentQuantity() == null
+                && request.consignmentProviderId() == null) {
             throw new BusinessException("Debe indicar al menos un dato para modificar");
         }
 
@@ -169,7 +188,15 @@ public class InventoryCountItemService {
         }
 
         if (request.quantity() != null) {
+            if (item.getConsignmentQuantityOverride() != null && item.getConsignmentQuantityOverride() > request.quantity()
+                    && request.consignmentQuantity() == null) {
+                throw new BusinessException("La nueva cantidad no puede quedar por debajo de la cantidad consignada.");
+            }
             item.setQuantity(request.quantity());
+            if (Boolean.TRUE.equals(session.getDefaultConsignment()) && request.consignmentQuantity() == null) {
+                item.setConsignmentQuantityOverride(request.quantity());
+                item.setConsignmentProvider(session.getDefaultConsignmentProvider());
+            }
         }
         if (request.salePrice() != null) {
             item.setSalePriceOverride(request.salePrice());
@@ -182,6 +209,25 @@ public class InventoryCountItemService {
         }
         if (request.minimumStock() != null) {
             item.setMinimumStockOverride(request.minimumStock());
+        }
+        if (request.consignmentQuantity() != null) {
+            if (request.consignmentQuantity() > item.getQuantity()) {
+                throw new BusinessException("La cantidad consignada no puede superar la cantidad del ítem");
+            }
+            item.setConsignmentQuantityOverride(request.consignmentQuantity());
+            if (request.consignmentQuantity() == 0) {
+                item.setConsignmentProvider(null);
+            } else {
+                Long providerId = request.consignmentProviderId() != null
+                        ? request.consignmentProviderId()
+                        : item.getConsignmentProvider() != null ? item.getConsignmentProvider().getId() : null;
+                if (providerId == null) throw new BusinessException("Debe indicar el proveedor de consignación");
+                Provider provider = providerAccessService.requireUsableByCurrentBookstore(providerId);
+                item.setConsignmentProvider(provider);
+            }
+        } else if (request.consignmentProviderId() != null) {
+            Provider provider = providerAccessService.requireUsableByCurrentBookstore(request.consignmentProviderId());
+            item.setConsignmentProvider(provider);
         }
 
         refreshKnownItemStatus(item);

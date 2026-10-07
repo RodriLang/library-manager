@@ -10,6 +10,11 @@ public record UpdateInventoryCountItemRequest(
         @Positive BigDecimal salePrice,
         Boolean publishOnTiendanube,
         Boolean tiendanubePriceSyncEnabled,
-        @PositiveOrZero Integer minimumStock
+        @PositiveOrZero Integer minimumStock,
+        @PositiveOrZero Integer consignmentQuantity,
+        @Positive Long consignmentProviderId
 ) {
+    public UpdateInventoryCountItemRequest(Integer quantity, BigDecimal salePrice, Boolean publishOnTiendanube, Boolean tiendanubePriceSyncEnabled, Integer minimumStock) {
+        this(quantity, salePrice, publishOnTiendanube, tiendanubePriceSyncEnabled, minimumStock, null, null);
+    }
 }

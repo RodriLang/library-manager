@@ -52,8 +52,8 @@ public class InventoryCountStockOperationService {
         }
 
         InventoryStockChangeResult stockResult = session.getMode() == InventoryCountMode.ADDITIVE
-                ? addStock(session, inventory, result.getCountedQuantity())
-                : setStock(session, inventory, result.getCountedQuantity());
+                ? addStock(session, inventory, result.getCountedQuantity(), item)
+                : setStock(session, inventory, result.getCountedQuantity(), item);
 
         int delta = stockResult.movement() != null ? stockResult.movement().getQuantity() : 0;
         result.setAppliedDelta(delta);
@@ -113,7 +113,7 @@ public class InventoryCountStockOperationService {
         return correction != 0 || reactivated ? Optional.of(inventory.getId()) : Optional.empty();
     }
 
-    private InventoryStockChangeResult addStock(InventoryCountSession session, Inventory inventory, int quantity) {
+    private InventoryStockChangeResult addStock(InventoryCountSession session, Inventory inventory, int quantity, InventoryCountItem item) {
         InventoryStockChangeResult result = stockService.changeStock(
                 inventory.getId(),
                 new InventoryStockChangeCommand(
@@ -122,14 +122,16 @@ public class InventoryCountStockOperationService {
                         InventoryMovementSource.MANUAL,
                         InventoryMovementReferenceType.INVENTORY_COUNT,
                         session.getId().toString(),
-                        "Entrada aplicada desde conteo de inventario"
+                        "Entrada aplicada desde conteo de inventario",
+                        consignmentQuantity(session, item, quantity),
+                        consignmentProviderId(session, item)
                 )
         );
         inventoryCostMovementService.applyInventoryCount(session, result.movement());
         return result;
     }
 
-    private InventoryStockChangeResult setStock(InventoryCountSession session, Inventory inventory, int targetStock) {
+    private InventoryStockChangeResult setStock(InventoryCountSession session, Inventory inventory, int targetStock, InventoryCountItem item) {
         InventoryStockChangeResult result = stockService.adjustStockTo(
                 inventory.getId(),
                 new InventoryStockAdjustmentCommand(
@@ -141,7 +143,28 @@ public class InventoryCountStockOperationService {
                 )
         );
         inventoryCostMovementService.applyInventoryCount(session, result.movement());
+        int targetConsignment = consignmentQuantity(session, item, targetStock);
+        if (item != null && (item.getConsignmentQuantityOverride() != null || Boolean.TRUE.equals(session.getDefaultConsignment()))) {
+            stockService.adjustConsignment(
+                    inventory.getId(),
+                    targetConsignment,
+                    targetConsignment > 0 ? consignmentProviderId(session, item) : null,
+                    "Consignación aplicada desde conteo de inventario"
+            );
+        }
         return result;
+    }
+
+    private int consignmentQuantity(InventoryCountSession session, InventoryCountItem item, int quantity) {
+        if (item != null && item.getConsignmentQuantityOverride() != null) {
+            return Math.min(item.getConsignmentQuantityOverride(), quantity);
+        }
+        return Boolean.TRUE.equals(session.getDefaultConsignment()) ? quantity : 0;
+    }
+
+    private Long consignmentProviderId(InventoryCountSession session, InventoryCountItem item) {
+        if (item != null && item.getConsignmentProvider() != null) return item.getConsignmentProvider().getId();
+        return session.getDefaultConsignmentProvider() != null ? session.getDefaultConsignmentProvider().getId() : null;
     }
 
     private void markAppliedWithoutInventory(InventoryCountResult result, InventoryCountItem item) {

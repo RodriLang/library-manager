@@ -989,6 +989,10 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     """);
         }
 
+        if (filters.consignmentOnly()) {
+            sql.append("\n                    AND i.consignment_stock > 0\n                    ");
+        }
+
         switch (filters.resolvedPriceMode()) {
             case WITH_PRICE -> sql.append("""
                     

@@ -16,7 +16,8 @@ public class ExternalApiLoggingAspect {
 
     private static final long SLOW_EXTERNAL_API_THRESHOLD_MS = 1000;
 
-    @Around("within(com.rodrilang.librarymanager.metadata..*)")
+    @Around("target(com.rodrilang.librarymanager.metadata.BookMetadataProvider) || " +
+            "target(com.rodrilang.librarymanager.metadata.cover.provider.CoverProvider)")
     public Object logExternalApiExecution(ProceedingJoinPoint joinPoint) throws Throwable {
         long startTime = System.currentTimeMillis();
 

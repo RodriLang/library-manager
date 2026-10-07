@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.factory;
 
+import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookEffectiveValues;
+import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookFieldOverrideService;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.*;
 import com.rodrilang.librarymanager.integrations.tiendanube.util.TiendanubeProductUtils;
 import com.rodrilang.librarymanager.model.Author;
@@ -19,11 +21,13 @@ import java.util.Map;
 public class TiendanubeProductRequestFactory {
 
     private final InventoryPriceService inventoryPriceService;
+    private final BookstoreBookFieldOverrideService overrideService;
 
     public TiendanubeCreateProductRequest createProduct(
             Inventory inventory
     ) {
         Book book = inventory.getBook();
+        BookstoreBookEffectiveValues values = effectiveValues(inventory);
 
         String sku = buildSku(inventory);
 
@@ -35,22 +39,22 @@ public class TiendanubeProductRequestFactory {
                         inventory.getStock(),
                         sku,
                         isbn,
-                        book.getWeightGrams(),
-                        book.getWidthCm(),
-                        book.getHeightCm(),
-                        book.getDepthCm()
+                        values.weightGrams(),
+                        values.widthCm(),
+                        values.heightCm(),
+                        values.depthCm()
                 );
 
         List<TiendanubeCreateImageRequest> images =
-                book.getCoverUrl() == null || book.getCoverUrl().isBlank()
+                values.coverUrl() == null || values.coverUrl().isBlank()
                         ? List.of()
                         : List.of(
-                        new TiendanubeCreateImageRequest(book.getCoverUrl(), 1)
+                        new TiendanubeCreateImageRequest(values.coverUrl(), 1)
                 );
 
         return new TiendanubeCreateProductRequest(
-                buildName(book),
-                buildDescription(book),
+                buildName(book, values),
+                buildDescription(values),
                 List.of(variant),
                 images,
                 true
@@ -58,35 +62,35 @@ public class TiendanubeProductRequestFactory {
     }
 
     public TiendanubeUpdateProductRequest updateProduct(Inventory inventory) {
-        Book book = inventory.getBook();
+        BookstoreBookEffectiveValues values = effectiveValues(inventory);
 
         return new TiendanubeUpdateProductRequest(
-                buildName(book),
-                buildDescription(book)
+                buildName(inventory.getBook(), values),
+                buildDescription(values)
         );
     }
 
-    private Map<String, String> buildName(Book book) {
+    private Map<String, String> buildName(Book book, BookstoreBookEffectiveValues values) {
 
         log.info(
                 "Construyendo nombre Tiendanube. bookId={}, title={}, authorsCount={}, authors={}",
                 book.getId(),
-                book.getTitle(),
-                book.getAuthors() != null ? book.getAuthors().size() : null,
-                book.getAuthors() != null
-                        ? book.getAuthors().stream().map(Author::getName).toList()
+                values.title(),
+                values.authors() != null ? values.authors().size() : null,
+                values.authors() != null
+                        ? values.authors().stream().map(Author::getName).toList()
                         : null
         );
 
-        String authorName = book.getAuthors()
+        String authorName = values.authors()
                 .stream()
                 .findFirst()
                 .map(Author::getName)
                 .orElse(null);
 
         String name = authorName == null || authorName.isBlank()
-                ? book.getTitle()
-                : book.getTitle() + " - " + authorName;
+                ? values.title()
+                : values.title() + " - " + authorName;
 
         log.info(
                 "Nombre Tiendanube generado. bookId={}, result={}",
@@ -97,12 +101,12 @@ public class TiendanubeProductRequestFactory {
         return Map.of("es", name);
     }
 
-    private Map<String, String> buildDescription(Book book) {
-        if (book.getDescription() == null || book.getDescription().isBlank()) {
+    private Map<String, String> buildDescription(BookstoreBookEffectiveValues values) {
+        if (values.description() == null || values.description().isBlank()) {
             return Map.of();
         }
 
-        return Map.of("es", book.getDescription());
+        return Map.of("es", values.description());
     }
 
     private String buildSku(Inventory inventory) {
@@ -114,5 +118,12 @@ public class TiendanubeProductRequestFactory {
         }
 
         return "LM-" + inventory.getId();
+    }
+
+    private BookstoreBookEffectiveValues effectiveValues(Inventory inventory) {
+        return overrideService.resolve(
+                inventory.getBook(),
+                inventory.getBookstore().getId()
+        );
     }
 }

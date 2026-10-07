@@ -6,5 +6,7 @@ public enum InventoryBulkAction {
     MARK_FOR_REPLENISHMENT,
 
     ACTIVATE,
-    DEACTIVATE
+    DEACTIVATE,
+    MARK_AS_CONSIGNMENT,
+    CLEAR_CONSIGNMENT
 }

@@ -1,9 +1,12 @@
 package com.rodrilang.librarymanager.provider.dto.response;
 
+import com.rodrilang.librarymanager.provider.model.ProviderSource;
 import com.rodrilang.librarymanager.provider.model.ProviderType;
+import com.rodrilang.librarymanager.provider.model.ProviderVerificationStatus;
+
+import java.time.Instant;
 
 public record ProviderResponse(
-
         Long id,
         String code,
         String name,
@@ -13,7 +16,12 @@ public record ProviderResponse(
         String phone,
         String notes,
         boolean active,
-        boolean purchasable
-
+        boolean purchasable,
+        ProviderVerificationStatus verificationStatus,
+        ProviderSource source,
+        Long createdByBookstoreId,
+        Long createdByUserId,
+        Instant reviewedAt,
+        Long reviewedByUserId
 ) {
 }

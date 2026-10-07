@@ -2,13 +2,16 @@ package com.rodrilang.librarymanager.metadata.google;
 
 import com.rodrilang.librarymanager.metadata.BookMetadata;
 import com.rodrilang.librarymanager.metadata.BookMetadataProvider;
+import com.rodrilang.librarymanager.metadata.google.config.GoogleBooksProperties;
 import com.rodrilang.librarymanager.metadata.google.dto.GoogleBookItemDto;
 import com.rodrilang.librarymanager.metadata.google.dto.GoogleBooksResponse;
 import com.rodrilang.librarymanager.metadata.google.dto.GoogleVolumeInfoDto;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -16,25 +19,34 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class GoogleBooksProvider implements BookMetadataProvider {
 
     private final RestClient googleBooksRestClient;
+    private final GoogleBooksProperties googleBooksProperties;
 
     @Override
     public Optional<BookMetadata> findByIsbn(String isbn) {
+        if (!googleBooksProperties.hasApiKey()) {
+            log.debug("Google Books omitido para ISBN {}: GOOGLE_BOOKS_API_KEY no está configurada", isbn);
+            return Optional.empty();
+        }
+
         try {
             GoogleBooksResponse response = googleBooksRestClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/books/v1/volumes")
                             .queryParam("q", "isbn:" + isbn)
+                            .queryParam("key", googleBooksProperties.apiKey())
                             .build())
                     .retrieve()
                     .body(GoogleBooksResponse.class);
 
             if (response == null || response.totalItems() == null || response.totalItems() == 0
                     || response.items() == null || response.items().isEmpty()) {
+                log.debug("Google Books no encontró resultados para ISBN {}", isbn);
                 return Optional.empty();
             }
 
@@ -45,6 +57,7 @@ public class GoogleBooksProvider implements BookMetadataProvider {
                     .orElse(null);
 
             if (volume == null) {
+                log.debug("Google Books devolvió resultados sin metadatos utilizables para ISBN {}", isbn);
                 return Optional.empty();
             }
 
@@ -65,7 +78,11 @@ public class GoogleBooksProvider implements BookMetadataProvider {
                     resolveCoverUrl(volume)
             ));
 
+        } catch (RestClientResponseException ex) {
+            logGoogleBooksHttpError(isbn, ex);
+            return Optional.empty();
         } catch (RestClientException ex) {
+            log.warn("Error de comunicación con Google Books para ISBN {}: {}", isbn, ex.getMessage());
             return Optional.empty();
         }
     }
@@ -73,6 +90,22 @@ public class GoogleBooksProvider implements BookMetadataProvider {
     @Override
     public int order() {
         return 2;
+    }
+
+    private void logGoogleBooksHttpError(String isbn, RestClientResponseException ex) {
+        int status = ex.getStatusCode().value();
+
+        if (status == 429) {
+            log.warn("Google Books rechazó la consulta del ISBN {} por cuota/rate limit (HTTP 429)", isbn);
+            return;
+        }
+
+        if (status == 403) {
+            log.warn("Google Books rechazó la consulta del ISBN {} (HTTP 403). Revisar API key, restricciones y API habilitada", isbn);
+            return;
+        }
+
+        log.warn("Google Books respondió HTTP {} para ISBN {}: {}", status, isbn, ex.getStatusText());
     }
 
     private Set<String> resolveAuthors(GoogleVolumeInfoDto volume) {

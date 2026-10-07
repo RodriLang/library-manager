@@ -14,6 +14,11 @@ public record UpdateInventoryRequest(
         @Min(0)
         Integer minimumStock,
 
+        @Min(0)
+        Integer consignmentStock,
+
+        Long consignmentProviderId,
+
         Boolean active,
 
         BookCondition condition,

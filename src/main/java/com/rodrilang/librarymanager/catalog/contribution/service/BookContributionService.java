@@ -9,7 +9,9 @@ import com.rodrilang.librarymanager.catalog.contribution.enums.BookFieldProposal
 import com.rodrilang.librarymanager.catalog.contribution.enums.BookFieldSource;
 import com.rodrilang.librarymanager.catalog.contribution.enums.ContributionAction;
 import com.rodrilang.librarymanager.catalog.contribution.model.BookFieldProposal;
+import com.rodrilang.librarymanager.catalog.contribution.model.BookstoreBookFieldOverride;
 import com.rodrilang.librarymanager.catalog.contribution.repository.BookFieldProposalRepository;
+import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.event.BookPublicationChangedEvent;
 import com.rodrilang.librarymanager.model.Book;
@@ -35,6 +37,7 @@ public class BookContributionService {
     private final BookRepository bookRepository;
     private final BookFieldProposalRepository proposalRepository;
     private final BookFieldValueService fieldValueService;
+    private final BookstoreBookFieldOverrideService overrideService;
     private final BookstoreContext bookstoreContext;
     private final PublisherService publisherService;
     private final AuthorService authorService;
@@ -51,10 +54,11 @@ public class BookContributionService {
             throw new BusinessException("Informá al menos un dato bibliográfico para contribuir.");
         }
 
-        validateReferences(book, request);
+        validateReferences(book, request, bookstoreId);
 
         List<ContributionFieldResult> results = new ArrayList<>();
-        boolean changed = false;
+        boolean globalChanged = false;
+        boolean localChanged = false;
 
         for (Map.Entry<BookField, Object> entry : values.entrySet()) {
             BookField field = entry.getKey();
@@ -63,12 +67,26 @@ public class BookContributionService {
                 continue;
             }
 
-            if (fieldValueService.equivalent(book, field, proposedValue)) {
-                results.add(new ContributionFieldResult(field, ContributionAction.UNCHANGED, null));
+            String catalogValue = fieldValueService.serializeCurrent(book, field);
+            BookstoreBookFieldOverride existingOverride = overrideService
+                    .findOverride(bookstoreId, bookId, field)
+                    .orElse(null);
+            String effectiveValue = existingOverride != null ? existingOverride.getValue() : catalogValue;
+
+            if (proposedValue.equals(effectiveValue)) {
+                results.add(new ContributionFieldResult(field, ContributionAction.UNCHANGED, findPendingProposalId(
+                        bookId, field, bookstoreId, proposedValue
+                )));
                 continue;
             }
 
             if (!fieldValueService.hasValue(book, field)) {
+                if (existingOverride != null) {
+                    overrideService.remove(bookstoreId, bookId, field);
+                    supersedePendingForBookstore(bookId, field, bookstoreId, null);
+                    localChanged = true;
+                }
+
                 fieldValueService.applySerialized(book, field, proposedValue);
                 book.setFieldSource(field, BookFieldSource.STORE);
                 Long proposalId = createProposalIfNeeded(
@@ -80,32 +98,64 @@ public class BookContributionService {
                         userId
                 );
                 results.add(new ContributionFieldResult(field, ContributionAction.APPLIED, proposalId));
-                changed = true;
+                globalChanged = true;
                 continue;
             }
+
+            // Si el librero vuelve manualmente al valor del catálogo, quitamos el override.
+            if (proposedValue.equals(catalogValue)) {
+                if (existingOverride != null) {
+                    overrideService.remove(bookstoreId, bookId, field);
+                    supersedePendingForBookstore(bookId, field, bookstoreId, null);
+                    localChanged = true;
+                }
+                results.add(new ContributionFieldResult(field, ContributionAction.UNCHANGED, null));
+                continue;
+            }
+
+            overrideService.upsert(book, field, proposedValue, bookstoreId, userId);
+            localChanged = true;
 
             Long proposalId = createProposalIfNeeded(
                     book,
                     field,
-                    fieldValueService.serializeCurrent(book, field),
+                    catalogValue,
                     proposedValue,
                     bookstoreId,
                     userId
             );
+            supersedePendingForBookstore(bookId, field, bookstoreId, proposalId);
             results.add(new ContributionFieldResult(field, ContributionAction.PROPOSED, proposalId));
-
         }
 
         if (results.isEmpty()) {
             throw new BusinessException("No se encontraron datos válidos para aportar.");
         }
 
-        if (changed) {
+        if (globalChanged) {
             bookRepository.save(book);
             eventPublisher.publishEvent(new BookPublicationChangedEvent(book.getId()));
+        } else if (localChanged) {
+            eventPublisher.publishEvent(new BookPublicationChangedEvent(book.getId(), bookstoreId));
         }
 
         return new BookContributionResponse(bookService.getById(bookId), results);
+    }
+
+    @Transactional
+    public BookDetailResponse resetOverride(Long bookId, BookField field) {
+        bookService.getEntityById(bookId);
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        BookstoreBookFieldOverride existing = overrideService.findOverride(bookstoreId, bookId, field).orElse(null);
+        if (existing == null) {
+            return bookService.getById(bookId);
+        }
+
+        overrideService.remove(bookstoreId, bookId, field);
+        supersedePendingForBookstore(bookId, field, bookstoreId, null);
+        eventPublisher.publishEvent(new BookPublicationChangedEvent(bookId, bookstoreId));
+        return bookService.getById(bookId);
     }
 
     private Long createProposalIfNeeded(
@@ -116,13 +166,14 @@ public class BookContributionService {
             Long bookstoreId,
             Long userId
     ) {
-        boolean alreadyPending = proposalRepository
-                .existsByBook_IdAndFieldAndSubmittedByBookstoreIdAndStatusAndProposedValue(
+        BookFieldProposal existing = proposalRepository
+                .findFirstByBook_IdAndFieldAndSubmittedByBookstoreIdAndStatusAndProposedValueOrderByCreatedAtDesc(
                         book.getId(), field, bookstoreId, BookFieldProposalStatus.PENDING, proposedValue
-                );
+                )
+                .orElse(null);
 
-        if (alreadyPending) {
-            return null;
+        if (existing != null) {
+            return existing.getId();
         }
 
         BookFieldProposal proposal = BookFieldProposal.builder()
@@ -138,16 +189,46 @@ public class BookContributionService {
         return proposalRepository.save(proposal).getId();
     }
 
-    private void validateReferences(Book book, BookContributionRequest request) {
+    private Long findPendingProposalId(Long bookId, BookField field, Long bookstoreId, String proposedValue) {
+        return proposalRepository
+                .findFirstByBook_IdAndFieldAndSubmittedByBookstoreIdAndStatusAndProposedValueOrderByCreatedAtDesc(
+                        bookId, field, bookstoreId, BookFieldProposalStatus.PENDING, proposedValue
+                )
+                .map(BookFieldProposal::getId)
+                .orElse(null);
+    }
+
+    private void supersedePendingForBookstore(
+            Long bookId,
+            BookField field,
+            Long bookstoreId,
+            Long exceptProposalId
+    ) {
+        proposalRepository.supersedePendingForBookstore(
+                bookId,
+                field,
+                bookstoreId,
+                exceptProposalId,
+                BookFieldProposalStatus.PENDING,
+                BookFieldProposalStatus.SUPERSEDED
+        );
+    }
+
+    private void validateReferences(Book book, BookContributionRequest request, Long bookstoreId) {
         if (request.publisherId() != null) {
             publisherService.getEntityById(request.publisherId());
         }
         if (request.authorIds() != null && !request.authorIds().isEmpty()) {
             authorService.getEntitiesByIds(request.authorIds());
         }
-        if (request.publicationMonth() != null
-                && request.publicationYear() == null
-                && book.getPublicationYear() == null) {
+        Integer effectivePublicationYear = request.publicationYear();
+        if (effectivePublicationYear == null) {
+            effectivePublicationYear = overrideService
+                    .findOverride(bookstoreId, book.getId(), BookField.PUBLICATION_YEAR)
+                    .map(value -> Integer.valueOf(value.getValue()))
+                    .orElse(book.getPublicationYear());
+        }
+        if (request.publicationMonth() != null && effectivePublicationYear == null) {
             throw new BusinessException("El mes de publicación requiere un año de publicación.");
         }
     }

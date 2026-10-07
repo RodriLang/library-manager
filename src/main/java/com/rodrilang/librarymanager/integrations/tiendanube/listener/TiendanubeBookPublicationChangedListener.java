@@ -18,6 +18,13 @@ public class TiendanubeBookPublicationChangedListener {
             fallbackExecution = true
     )
     public void handle(BookPublicationChangedEvent event) {
-        jobRequestService.enqueueAutomaticPublicationSyncByBookId(event.bookId());
+        if (event.bookstoreId() == null) {
+            jobRequestService.enqueueAutomaticPublicationSyncByBookId(event.bookId());
+            return;
+        }
+        jobRequestService.enqueueAutomaticPublicationSyncByBookIdAndBookstoreId(
+                event.bookId(),
+                event.bookstoreId()
+        );
     }
 }

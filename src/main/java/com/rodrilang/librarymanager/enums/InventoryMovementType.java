@@ -9,5 +9,6 @@ public enum InventoryMovementType {
     RETURN,
     ADJUSTMENT,
     DAMAGE,
-    LOSS
+    LOSS,
+    OWNERSHIP_ADJUSTMENT
 }

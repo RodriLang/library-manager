@@ -9,10 +9,9 @@ import com.rodrilang.librarymanager.inventory.pricing.model.BookstorePriceListFo
 import com.rodrilang.librarymanager.inventory.pricing.repository.BookstorePriceListFormatRepository;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.provider.model.ProviderType;
 import com.rodrilang.librarymanager.provider.bookstore.model.BookstoreProvider;
 import com.rodrilang.librarymanager.provider.bookstore.repository.BookstoreProviderRepository;
-import com.rodrilang.librarymanager.provider.repository.ProviderRepository;
+import com.rodrilang.librarymanager.provider.service.ProviderAccessService;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,17 +28,25 @@ public class BookstorePriceListFormatService {
     private final BookstorePriceListFormatRepository repository;
     private final BookstoreRepository bookstoreRepository;
     private final BookstoreContext bookstoreContext;
-    private final ProviderRepository providerRepository;
     private final BookstoreProviderRepository bookstoreProviderRepository;
+    private final ProviderAccessService providerAccessService;
 
     @Transactional
     public List<BookstorePriceListFormatResponse> list() {
+        return list(null);
+    }
+
+    @Transactional
+    public List<BookstorePriceListFormatResponse> list(Long providerId) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         ensureStandard(bookstoreId);
-        return repository.findAllByBookstoreIdAndActiveTrueOrderByStandardDescNameAsc(bookstoreId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        if (providerId != null) {
+            providerAccessService.requireUsableByBookstore(providerId, bookstoreId);
+        }
+        List<BookstorePriceListFormat> formats = providerId == null
+                ? repository.findAllByBookstoreIdAndActiveTrueOrderByStandardDescNameAsc(bookstoreId)
+                : repository.findAllByBookstoreIdAndProviderIdAndActiveTrueOrderByNameAsc(bookstoreId, providerId);
+        return formats.stream().map(this::toResponse).toList();
     }
 
     @Transactional
@@ -53,7 +60,7 @@ public class BookstorePriceListFormatService {
         Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró la librería seleccionada."));
 
-        Provider provider = resolveProvider(request.providerId());
+        Provider provider = resolveProvider(request.providerId(), bookstoreId);
         ensureBookstoreProvider(bookstore, provider);
 
         BookstorePriceListFormat entity = BookstorePriceListFormat.builder()
@@ -83,7 +90,7 @@ public class BookstorePriceListFormatService {
             throw new BusinessException("El formato Anaquel no se puede modificar.");
         }
 
-        Provider provider = resolveProvider(request.providerId());
+        Provider provider = resolveProvider(request.providerId(), bookstoreId);
         ensureBookstoreProvider(entity.getBookstore(), provider);
         entity.setProvider(provider);
         entity.setName(request.name().trim());
@@ -111,7 +118,11 @@ public class BookstorePriceListFormatService {
     public BookstorePriceListFormat getForCurrentBookstore(Long id) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         ensureStandard(bookstoreId);
-        return getEntity(id, bookstoreId);
+        BookstorePriceListFormat format = getEntity(id, bookstoreId);
+        if (format.getProvider() != null) {
+            providerAccessService.requireUsableByBookstore(format.getProvider().getId(), bookstoreId);
+        }
+        return format;
     }
 
     private BookstorePriceListFormat getEntity(Long id, Long bookstoreId) {
@@ -176,15 +187,10 @@ public class BookstorePriceListFormatService {
         bookstoreProviderRepository.save(relation);
     }
 
-    private Provider resolveProvider(Long providerId) {
+    private Provider resolveProvider(Long providerId, Long bookstoreId) {
         if (providerId == null) {
             return null;
         }
-        Provider provider = providerRepository.findById(providerId)
-                .orElseThrow(() -> new BusinessException("No se encontró el proveedor seleccionado."));
-        if (!provider.isActive() || provider.getType() != ProviderType.COMMERCIAL) {
-            throw new BusinessException("El proveedor seleccionado no está disponible.");
-        }
-        return provider;
+        return providerAccessService.requireUsableByBookstore(providerId, bookstoreId);
     }
 }
