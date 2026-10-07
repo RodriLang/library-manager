@@ -11,5 +11,6 @@ public record AdminCatalogBookResponse(
         String authors,
         String coverUrl,
         Instant updatedAt,
-        List<String> issues
+        List<String> issues,
+        boolean inInventory
 ) {}
