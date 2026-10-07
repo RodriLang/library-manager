@@ -1,5 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.job.service;
 
+import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookEffectiveValues;
+import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookFieldOverrideService;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
@@ -30,6 +32,7 @@ public class TiendanubeJobExecutionDataService {
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeProductRequestFactory productRequestFactory;
     private final InventoryPriceService inventoryPriceService;
+    private final BookstoreBookFieldOverrideService overrideService;
 
     @Transactional(readOnly = true)
     public Optional<TiendanubeLinkedInventorySnapshot> prepareLinkedInventory(Long inventoryId, Long expectedStoreId) {
@@ -42,10 +45,11 @@ public class TiendanubeJobExecutionDataService {
         return productLinkRepository.findWithInventoryBookByInventoryIdAndActiveTrue(inventoryId)
                 .map(link -> {
                     TiendanubeLinkedInventorySnapshot linked = toLinkedSnapshot(link, expectedStoreId);
+                    BookstoreBookEffectiveValues values = effectiveValues(link.getInventory());
                     return new TiendanubePublicationSnapshot(
                             linked,
                             productRequestFactory.updateProduct(link.getInventory()),
-                            link.getInventory().getBook().getCoverUrl(),
+                            values.coverUrl(),
                             link.getLastSyncedCoverUrl(),
                             link.getTiendanubeImageId(),
                             link.getPendingCoverUrl(),
@@ -65,12 +69,9 @@ public class TiendanubeJobExecutionDataService {
 
         validatePublishable(inventory);
 
+        BookstoreBookEffectiveValues values = effectiveValues(inventory);
         String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
-        String titleSearch = inventory.getBook().getTitleSearch();
-
-        if (titleSearch == null || titleSearch.isBlank()) {
-            titleSearch = TextNormalizer.normalizeForSearch(inventory.getBook().getTitle());
-        }
+        String titleSearch = TextNormalizer.normalizeForSearch(values.title());
 
         String sku = isbn != null ? isbn : "LM-" + inventoryId;
         TiendanubeUpdateVariantRequest variantRequest = new TiendanubeUpdateVariantRequest(
@@ -79,10 +80,10 @@ public class TiendanubeJobExecutionDataService {
                 inventoryPriceService.currentAmount(inventory.getId()),
                 inventory.getStock(),
                 true,
-                inventory.getBook().getWeightGrams(),
-                inventory.getBook().getWidthCm(),
-                inventory.getBook().getHeightCm(),
-                inventory.getBook().getDepthCm()
+                values.weightGrams(),
+                values.widthCm(),
+                values.heightCm(),
+                values.depthCm()
         );
 
         return Optional.of(new TiendanubePublishSnapshot(
@@ -91,7 +92,7 @@ public class TiendanubeJobExecutionDataService {
                 expectedStoreId,
                 isbn,
                 titleSearch,
-                inventory.getBook().getCoverUrl(),
+                values.coverUrl(),
                 productRequestFactory.createProduct(inventory),
                 variantRequest
         ));
@@ -115,6 +116,7 @@ public class TiendanubeJobExecutionDataService {
         validateExpectedStore(link, expectedStoreId);
         Inventory inventory = link.getInventory();
         validateSyncStatus(inventory);
+        BookstoreBookEffectiveValues values = effectiveValues(inventory);
 
         String isbn = TiendanubeProductUtils.normalizeIdentifier(inventory.getBook().getPreferredIsbn());
         String resolvedSku = link.getSku();
@@ -129,10 +131,10 @@ public class TiendanubeJobExecutionDataService {
                 inventoryPriceService.currentAmount(inventory.getId()),
                 inventory.getStock(),
                 true,
-                inventory.getBook().getWeightGrams(),
-                inventory.getBook().getWidthCm(),
-                inventory.getBook().getHeightCm(),
-                inventory.getBook().getDepthCm()
+                values.weightGrams(),
+                values.widthCm(),
+                values.heightCm(),
+                values.depthCm()
         );
 
         return new TiendanubeLinkedInventorySnapshot(
@@ -193,10 +195,18 @@ public class TiendanubeJobExecutionDataService {
             );
         }
 
-        if (inventory.getBook().getTitle() == null || inventory.getBook().getTitle().isBlank()) {
+        BookstoreBookEffectiveValues values = effectiveValues(inventory);
+        if (values.title() == null || values.title().isBlank()) {
             throw TiendanubeJobExecutionException.nonRetryable(
                     "INVALID_TITLE", "El libro no tiene título", null
             );
         }
+    }
+
+    private BookstoreBookEffectiveValues effectiveValues(Inventory inventory) {
+        return overrideService.resolve(
+                inventory.getBook(),
+                inventory.getBookstore().getId()
+        );
     }
 }

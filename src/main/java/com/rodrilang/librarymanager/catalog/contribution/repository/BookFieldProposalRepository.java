@@ -22,6 +22,39 @@ public interface BookFieldProposalRepository extends JpaRepository<BookFieldProp
             String proposedValue
     );
 
+
+    java.util.List<BookFieldProposal> findAllByBook_IdAndSubmittedByBookstoreIdOrderByCreatedAtDesc(
+            Long bookId,
+            Long submittedByBookstoreId
+    );
+
+    java.util.Optional<BookFieldProposal> findFirstByBook_IdAndFieldAndSubmittedByBookstoreIdAndStatusAndProposedValueOrderByCreatedAtDesc(
+            Long bookId,
+            BookField field,
+            Long submittedByBookstoreId,
+            BookFieldProposalStatus status,
+            String proposedValue
+    );
+
+    @Modifying
+    @Query("""
+            update BookFieldProposal p
+               set p.status = :supersededStatus
+             where p.book.id = :bookId
+               and p.field = :field
+               and p.submittedByBookstoreId = :bookstoreId
+               and p.status = :pendingStatus
+               and (:exceptProposalId is null or p.id <> :exceptProposalId)
+            """)
+    int supersedePendingForBookstore(
+            @Param("bookId") Long bookId,
+            @Param("field") BookField field,
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("exceptProposalId") Long exceptProposalId,
+            @Param("pendingStatus") BookFieldProposalStatus pendingStatus,
+            @Param("supersededStatus") BookFieldProposalStatus supersededStatus
+    );
+
     @Query("""
             select p
             from BookFieldProposal p

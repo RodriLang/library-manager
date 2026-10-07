@@ -5,5 +5,6 @@ public enum BookFieldSource {
     STORE,
     EXTERNAL,
     IMPORTED,
-    ADMIN
+    ADMIN,
+    BOOKSTORE_OVERRIDE
 }

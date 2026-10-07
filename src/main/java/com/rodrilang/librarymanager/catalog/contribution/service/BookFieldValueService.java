@@ -165,7 +165,7 @@ public class BookFieldValueService {
         return writeJson(ids);
     }
 
-    private Set<Long> readAuthorIds(String value) {
+    public Set<Long> readAuthorIds(String value) {
         try {
             return objectMapper.readValue(value, new TypeReference<Set<Long>>() {});
         } catch (JsonProcessingException ex) {

@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.mapper;
 
+import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookFieldOverrideService;
 import com.rodrilang.librarymanager.dto.request.BookRequest;
 import com.rodrilang.librarymanager.dto.request.UpdateBookRequest;
 import com.rodrilang.librarymanager.dto.response.BookDetailResponse;
@@ -11,11 +12,23 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 
 @Mapper(componentModel = "spring", uses = {AuthorMapper.class, PublisherMapper.class})
-public interface BookMapper {
+public abstract class BookMapper {
+
+    protected BookstoreBookFieldOverrideService overrideService;
+
+    @Autowired
+    public void setOverrideService(BookstoreBookFieldOverrideService overrideService) {
+        this.overrideService = overrideService;
+    }
+
+    public BookDetailResponse toDetailResponse(Book book, List<BookProviderResponse> providers) {
+        return overrideService.applyToDetail(toDetailResponseBase(book, providers), book);
+    }
 
     @Mapping(target = "isbn", expression = "java(book.getPreferredIsbn())")
     @Mapping(target = "id", source = "book.id")
@@ -25,15 +38,20 @@ public interface BookMapper {
     @Mapping(target = "updatedAt", source = "book.updatedAt")
     @Mapping(target = "providers", source = "providers")
     @Mapping(target = "fieldSources", expression = "java(book.getEffectiveFieldSources())")
-    BookDetailResponse toDetailResponse(
+    @Mapping(target = "fieldOverrides", ignore = true)
+    protected abstract BookDetailResponse toDetailResponseBase(
             Book book,
             List<BookProviderResponse> providers
     );
 
+    public BookSummaryResponse toSummaryResponse(Book book) {
+        return overrideService.applyToSummary(toSummaryResponseBase(book), book);
+    }
+
     @Mapping(target = "isbn", expression = "java(book.getPreferredIsbn())")
     @Mapping(target = "id", source = "book.id")
     @Mapping(target = "publisherName", source = "book.publisher.name")
-    BookSummaryResponse toSummaryResponse(Book book);
+    protected abstract BookSummaryResponse toSummaryResponseBase(Book book);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "isbn10", ignore = true)
@@ -43,10 +61,11 @@ public interface BookMapper {
     @Mapping(target = "authors", ignore = true)
     @Mapping(target = "source", ignore = true)
     @Mapping(target = "titleSort", ignore = true)
+    @Mapping(target = "titleSearch", ignore = true)
     @Mapping(target = "createdByBookstore", ignore = true)
     @Mapping(target = "catalogStatus", ignore = true)
     @Mapping(target = "fieldMetadata", ignore = true)
-    Book toEntity(BookRequest request);
+    public abstract Book toEntity(BookRequest request);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
@@ -59,6 +78,7 @@ public interface BookMapper {
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "active", ignore = true)
     @Mapping(target = "titleSort", ignore = true)
+    @Mapping(target = "titleSearch", ignore = true)
     @Mapping(target = "createdByBookstore", ignore = true)
     @Mapping(target = "catalogStatus", ignore = true)
     @Mapping(target = "fieldMetadata", ignore = true)
@@ -72,5 +92,5 @@ public interface BookMapper {
             source = "publicationMonth",
             nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.SET_TO_NULL
     )
-    void updateEntity(UpdateBookRequest request, @MappingTarget Book book);
+    public abstract void updateEntity(UpdateBookRequest request, @MappingTarget Book book);
 }

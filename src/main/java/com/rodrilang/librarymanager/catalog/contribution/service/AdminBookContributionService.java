@@ -29,6 +29,7 @@ public class AdminBookContributionService {
 
     private final BookFieldProposalRepository proposalRepository;
     private final BookFieldValueService fieldValueService;
+    private final BookstoreBookFieldOverrideService overrideService;
     private final BookRepository bookRepository;
     private final BookstoreContext bookstoreContext;
     private final ApplicationEventPublisher eventPublisher;
@@ -64,6 +65,11 @@ public class AdminBookContributionService {
             fieldValueService.applySerialized(book, proposal.getField(), proposal.getProposedValue());
             book.setFieldSource(proposal.getField(), BookFieldSource.VERIFIED);
             bookRepository.save(book);
+            overrideService.removeRedundantOverrides(
+                    book.getId(),
+                    proposal.getField(),
+                    proposal.getProposedValue()
+            );
 
             proposal.setStatus(BookFieldProposalStatus.APPROVED);
             proposalRepository.supersedeOtherPending(
@@ -82,6 +88,13 @@ public class AdminBookContributionService {
                     && fieldValueService.equivalent(book, proposal.getField(), proposal.getProposedValue())
                     && book.getFieldMetadata() != null
                     && BookFieldSource.STORE.name().equals(book.getFieldMetadata().get(proposal.getField().key()))) {
+                overrideService.upsert(
+                        book,
+                        proposal.getField(),
+                        proposal.getProposedValue(),
+                        proposal.getSubmittedByBookstoreId(),
+                        proposal.getSubmittedByUserId()
+                );
                 fieldValueService.clear(book, proposal.getField());
                 book.setFieldSource(proposal.getField(), null);
                 bookRepository.save(book);
