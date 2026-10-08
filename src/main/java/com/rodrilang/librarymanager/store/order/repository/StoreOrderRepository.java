@@ -25,6 +25,10 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     @Query("select o from StoreOrder o where o.id = :id")
     Optional<StoreOrder> findByIdForUpdate(@Param("id") Long id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from StoreOrder o where o.paymentExternalId = :externalId")
+    Optional<StoreOrder> findByPaymentExternalIdForUpdate(@Param("externalId") String externalId);
+
     @Query("select o.id from StoreOrder o where o.status = :status and o.reservationExpiresAt is not null and o.reservationExpiresAt <= :now")
     List<Long> findExpiredPendingIds(@Param("status") StoreOrderStatus status, @Param("now") java.time.Instant now);
 }

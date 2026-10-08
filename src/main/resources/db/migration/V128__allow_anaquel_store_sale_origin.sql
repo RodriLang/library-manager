@@ -3,4 +3,10 @@ ALTER TABLE sales
 
 ALTER TABLE sales
     ADD CONSTRAINT chk_sales_origin
-        CHECK (origin IN ('MANUAL', 'TIENDANUBE', 'ANAQUEL_STORE'));
+        CHECK (
+            origin IN (
+                       'MANUAL',
+                       'TIENDANUBE',
+                       'ANAQUEL_STORE'
+                )
+            );

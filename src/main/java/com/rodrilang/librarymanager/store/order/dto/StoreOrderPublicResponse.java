@@ -22,5 +22,7 @@ public record StoreOrderPublicResponse(
         BigDecimal total,
         Instant reservationExpiresAt,
         Instant createdAt,
+        String paymentCheckoutUrl,
+        String paymentStatusDetail,
         List<StoreOrderItemResponse> items
 ) {}

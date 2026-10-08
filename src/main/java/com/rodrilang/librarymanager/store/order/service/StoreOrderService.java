@@ -20,6 +20,8 @@ import com.rodrilang.librarymanager.store.order.repository.*;
 import com.rodrilang.librarymanager.store.repository.BookstoreStoreRepository;
 import com.rodrilang.librarymanager.store.repository.StorePublicationRepository;
 import com.rodrilang.librarymanager.store.service.SalesChannelService;
+import com.rodrilang.librarymanager.store.payment.service.StoreMercadoPagoConfigService;
+import com.rodrilang.librarymanager.store.payment.service.StoreMercadoPagoPaymentService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,6 +54,8 @@ public class StoreOrderService {
     private final BookstoreBookFieldOverrideService overrideService;
     private final StoreOrderCompletionService completionService;
     private final StoreOrderNotificationPublisher notificationPublisher;
+    private final StoreMercadoPagoConfigService mercadoPagoConfigService;
+    private final StoreMercadoPagoPaymentService mercadoPagoPaymentService;
 
     @Value("${app.store.order-reservation-minutes:1440}")
     private long reservationMinutes;
@@ -63,7 +67,7 @@ public class StoreOrderService {
         StoreOrder existing = orderRepository.findByStoreIdAndClientRequestId(store.getId(), request.clientRequestId()).orElse(null);
         if (existing != null) return toPublic(existing, loadItems(existing.getId()));
 
-        validateCreateRequest(request);
+        validateCreateRequest(store, request);
         Map<Long, Integer> requested = aggregateItems(request.items());
         List<Long> inventoryIds = requested.keySet().stream().sorted().toList();
 
@@ -160,6 +164,9 @@ public class StoreOrderService {
                 .expiresAt(expiresAt)
                 .build()).toList();
         reservationRepository.saveAll(reservations);
+        if (order.getPaymentMethod() == StorePaymentMethod.MERCADO_PAGO) {
+            mercadoPagoPaymentService.createCheckout(order, items);
+        }
         notificationPublisher.publish(StoreOrderNotificationType.RECEIVED, order, items);
 
         return toPublic(order, items);
@@ -218,6 +225,10 @@ public class StoreOrderService {
         if (order.getStatus() != StoreOrderStatus.PENDING) {
             throw new BusinessException("Sólo se pueden confirmar pedidos pendientes.");
         }
+        if (order.getPaymentMethod() == StorePaymentMethod.MERCADO_PAGO
+                && order.getPaymentStatus() != StorePaymentStatus.PAID) {
+            throw new BusinessException("Los pedidos con Mercado Pago se confirman automáticamente cuando el pago queda acreditado.");
+        }
         Instant now = Instant.now();
         List<StoreStockReservation> reservations = reservationRepository.findAllByOrderIdOrderByIdAsc(orderId);
         if (reservations.isEmpty() || reservations.stream().anyMatch(r -> r.getStatus() != StoreReservationStatus.ACTIVE
@@ -240,6 +251,10 @@ public class StoreOrderService {
         if (order.getStatus() == StoreOrderStatus.CANCELLED) return toAdmin(order, loadItems(orderId));
         if (order.getStatus() == StoreOrderStatus.EXPIRED || order.getStatus() == StoreOrderStatus.COMPLETED) {
             throw new BusinessException("El pedido ya no puede cancelarse.");
+        }
+        if (order.getPaymentMethod() == StorePaymentMethod.MERCADO_PAGO
+                && order.getPaymentStatus() == StorePaymentStatus.PAID) {
+            throw new BusinessException("El pedido ya fue pagado con Mercado Pago. El reintegro se gestionará desde el flujo de devoluciones.");
         }
         Instant now = Instant.now();
         releaseReservations(orderId, StoreReservationStatus.RELEASED, now);
@@ -288,6 +303,16 @@ public class StoreOrderService {
     }
 
     @Transactional
+    public StoreOrderResponse syncPayment(Long orderId) {
+        StoreOrder order = requireAdminOrderForUpdate(orderId);
+        if (order.getPaymentMethod() != StorePaymentMethod.MERCADO_PAGO || order.getPaymentExternalId() == null) {
+            throw new BusinessException("El pedido no tiene un pago de Mercado Pago asociado.");
+        }
+        mercadoPagoPaymentService.synchronizeFromWebhook(order.getPaymentExternalId());
+        return toAdmin(order, loadItems(orderId));
+    }
+
+    @Transactional
     public void expirePendingOrders() {
         Instant now = Instant.now();
         for (Long orderId : orderRepository.findExpiredPendingIds(StoreOrderStatus.PENDING, now)) {
@@ -322,12 +347,16 @@ public class StoreOrderService {
         return store;
     }
 
-    private void validateCreateRequest(CreateStoreOrderRequest request) {
+    private void validateCreateRequest(BookstoreStore store, CreateStoreOrderRequest request) {
         if (request.deliveryMethod() != StoreDeliveryMethod.PICKUP) {
             throw new BusinessException("Por ahora la tienda admite únicamente retiro en la librería.");
         }
-        if (request.paymentMethod() != StorePaymentMethod.PAY_AT_STORE) {
-            throw new BusinessException("Por ahora el pago se realiza en la librería.");
+        if (request.paymentMethod() != StorePaymentMethod.PAY_AT_STORE && request.paymentMethod() != StorePaymentMethod.MERCADO_PAGO) {
+            throw new BusinessException("Medio de pago no permitido.");
+        }
+        if (request.paymentMethod() == StorePaymentMethod.MERCADO_PAGO
+                && !mercadoPagoConfigService.isEnabled(store.getBookstore().getId())) {
+            throw new BusinessException("Mercado Pago no está habilitado para esta librería.");
         }
     }
 
@@ -379,13 +408,13 @@ public class StoreOrderService {
     private StoreOrderPublicResponse toPublic(StoreOrder o, List<StoreOrderItem> items) {
         return new StoreOrderPublicResponse(o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getSubtotal(), o.getShippingCost(), o.getTotal(),
-                o.getReservationExpiresAt(), o.getCreatedAt(), itemResponses(items));
+                o.getReservationExpiresAt(), o.getCreatedAt(), o.getPaymentCheckoutUrl(), o.getPaymentStatusDetail(), itemResponses(items));
     }
     private StoreOrderResponse toAdmin(StoreOrder o, List<StoreOrderItem> items) {
         return new StoreOrderResponse(o.getId(), o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getCustomerPhone(), o.getNotes(), o.getSubtotal(),
                 o.getDiscountAmount(), o.getShippingCost(), o.getTotal(), o.getReservationExpiresAt(), o.getCreatedAt(), o.getConfirmedAt(), o.getCancelledAt(),
-                o.getCancellationReason(), o.getSale() != null ? o.getSale().getId() : null, o.getCompletedAt(), itemResponses(items));
+                o.getCancellationReason(), o.getSale() != null ? o.getSale().getId() : null, o.getCompletedAt(), o.getPaymentExternalId(), o.getPaymentStatusDetail(), itemResponses(items));
     }
     private StoreOrderSummaryResponse toSummary(StoreOrder o) {
         return new StoreOrderSummaryResponse(o.getId(), o.getOrderNumber(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(), o.getCustomerName(),

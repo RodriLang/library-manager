@@ -31,5 +31,7 @@ public record StoreOrderResponse(
         String cancellationReason,
         Long saleId,
         Instant completedAt,
+        String paymentExternalId,
+        String paymentStatusDetail,
         List<StoreOrderItemResponse> items
 ) {}

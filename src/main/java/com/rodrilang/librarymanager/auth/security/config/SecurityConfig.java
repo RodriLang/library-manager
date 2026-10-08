@@ -68,6 +68,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/integrations/tiendanube/webhooks").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/storefront/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/storefront/*/checkout").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/storefront/payments/mercado-pago/webhook").permitAll()
                         .anyRequest().authenticated()
                 )
 

@@ -62,7 +62,11 @@ public class StoreOrderCompletionService {
         if (order.getFulfillmentStatus() != StoreFulfillmentStatus.READY_FOR_PICKUP) {
             throw new BusinessException("El pedido debe estar listo para retirar antes de marcarlo como entregado.");
         }
-        if (request == null || request.paymentMethod() == null) {
+        if (order.getPaymentMethod() == StorePaymentMethod.MERCADO_PAGO) {
+            if (order.getPaymentStatus() != StorePaymentStatus.PAID) {
+                throw new BusinessException("El pago de Mercado Pago todavía no está acreditado.");
+            }
+        } else if (request == null || request.paymentMethod() == null) {
             throw new BusinessException("Indicá el medio de pago utilizado al entregar el pedido.");
         }
         if (orderItems == null || orderItems.isEmpty()) {
@@ -129,9 +133,13 @@ public class StoreOrderCompletionService {
 
         salePaymentRepository.saveAndFlush(SalePayment.builder()
                 .sale(sale)
-                .method(request.paymentMethod())
+                .method(order.getPaymentMethod() == StorePaymentMethod.MERCADO_PAGO
+                        ? com.rodrilang.librarymanager.payment.model.PaymentMethod.DIGITAL_WALLET
+                        : request.paymentMethod())
                 .amount(order.getTotal())
-                .reference(normalize(request.paymentReference()))
+                .reference(order.getPaymentMethod() == StorePaymentMethod.MERCADO_PAGO
+                        ? order.getPaymentExternalId()
+                        : normalize(request.paymentReference()))
                 .build());
 
         List<SaleItem> stockOrderedItems = saleItems.stream()

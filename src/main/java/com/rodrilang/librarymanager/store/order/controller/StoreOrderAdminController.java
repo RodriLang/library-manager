@@ -49,7 +49,12 @@ public class StoreOrderAdminController {
 
     @PostMapping("/{orderId}/complete")
     public StoreOrderResponse complete(@PathVariable Long orderId,
-                                       @Valid @RequestBody CompleteStoreOrderRequest request) {
+                                       @Valid @RequestBody(required = false) CompleteStoreOrderRequest request) {
         return service.complete(orderId, request);
     }
+    @PostMapping("/{orderId}/payment/sync")
+    public StoreOrderResponse syncPayment(@PathVariable Long orderId) {
+        return service.syncPayment(orderId);
+    }
+
 }

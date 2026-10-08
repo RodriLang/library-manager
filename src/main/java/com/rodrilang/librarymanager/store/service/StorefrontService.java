@@ -12,6 +12,7 @@ import com.rodrilang.librarymanager.store.dto.*;
 import com.rodrilang.librarymanager.store.model.*;
 import com.rodrilang.librarymanager.store.repository.*;
 import com.rodrilang.librarymanager.store.order.service.StoreOrderService;
+import com.rodrilang.librarymanager.store.payment.service.StoreMercadoPagoConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class StorefrontService {
     private final SalesChannelService salesChannelService;
     private final BookstoreBookFieldOverrideService overrideService;
     private final StoreOrderService storeOrderService;
+    private final StoreMercadoPagoConfigService mercadoPagoConfigService;
 
     @Transactional(readOnly = true)
     public StorefrontResponse resolve(String hostOrSlug) {
@@ -104,7 +106,8 @@ public class StorefrontService {
     }
     private StorefrontResponse toStorefront(BookstoreStore s) {
         return new StorefrontResponse(s.getPublicId(), s.getSlug(), s.getDisplayName(), s.getDescription(), s.getLogoUrl(), s.getFaviconUrl(),
-                s.getPrimaryColor(), s.getSecondaryColor(), s.getTitleFormat(), s.getShowIsbn(), s.getShowAuthor(), s.getShowPublisher(), s.getShowStock());
+                s.getPrimaryColor(), s.getSecondaryColor(), s.getTitleFormat(), s.getShowIsbn(), s.getShowAuthor(), s.getShowPublisher(), s.getShowStock(),
+                mercadoPagoConfigService.isEnabled(s.getBookstore().getId()));
     }
     private StorefrontProductResponse toProduct(BookstoreStore store, StorePublication p, InventoryPrice price, int reserved) {
         Inventory i = p.getInventory(); Book b = i.getBook();

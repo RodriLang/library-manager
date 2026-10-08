@@ -42,4 +42,8 @@ public class StoreOrder extends AuditableEntity {
     @Column(name = "cancellation_reason", length = 500) private String cancellationReason;
     @OneToOne(fetch = FetchType.LAZY) @JoinColumn(name = "sale_id", unique = true) private Sale sale;
     @Column(name = "completed_at") private Instant completedAt;
+    @Column(name = "payment_external_id", length = 120) private String paymentExternalId;
+    @Column(name = "payment_checkout_url", columnDefinition = "TEXT") private String paymentCheckoutUrl;
+    @Column(name = "payment_status_detail", length = 120) private String paymentStatusDetail;
+    @Column(name = "payment_updated_at") private Instant paymentUpdatedAt;
 }

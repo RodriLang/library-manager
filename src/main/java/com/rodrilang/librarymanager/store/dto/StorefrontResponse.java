@@ -14,5 +14,6 @@ public record StorefrontResponse(
         boolean showIsbn,
         boolean showAuthor,
         boolean showPublisher,
-        boolean showStock
+        boolean showStock,
+        boolean mercadoPagoEnabled
 ) {}
