@@ -3,6 +3,8 @@ package com.rodrilang.librarymanager.email.service;
 import com.rodrilang.librarymanager.email.config.EmailProperties;
 import com.rodrilang.librarymanager.email.model.EmailMessage;
 import com.rodrilang.librarymanager.email.template.EmailTemplateBuilder;
+import com.rodrilang.librarymanager.email.template.StoreOrderEmailTemplateBuilder;
+import com.rodrilang.librarymanager.store.order.event.StoreOrderNotificationEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -13,6 +15,7 @@ public class EmailService {
 
     private final EmailDeliveryService deliveryService;
     private final EmailTemplateBuilder templateBuilder;
+    private final StoreOrderEmailTemplateBuilder storeOrderTemplateBuilder;
     private final EmailProperties properties;
 
     public void sendBookstoreInvitation(
@@ -47,6 +50,24 @@ public class EmailService {
                         .htmlBody(htmlBody)
                         .plainTextBody(plainTextBody)
                         .build();
+
+        deliveryService.send(message);
+    }
+
+    public void sendStoreOrderNotification(StoreOrderNotificationEvent event) {
+        if (event == null) {
+            throw new IllegalArgumentException("La notificación del pedido es obligatoria");
+        }
+        if (event.customerEmail() == null || event.customerEmail().isBlank()) {
+            throw new IllegalArgumentException("El correo electrónico del cliente es obligatorio");
+        }
+
+        EmailMessage message = EmailMessage.builder()
+                .to(event.customerEmail())
+                .subject(storeOrderTemplateBuilder.subject(event))
+                .htmlBody(storeOrderTemplateBuilder.html(event))
+                .plainTextBody(storeOrderTemplateBuilder.plainText(event))
+                .build();
 
         deliveryService.send(message);
     }

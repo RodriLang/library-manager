@@ -13,6 +13,8 @@ import com.rodrilang.librarymanager.store.channel.SalesChannelType;
 import com.rodrilang.librarymanager.store.model.BookstoreStore;
 import com.rodrilang.librarymanager.store.model.StorePublication;
 import com.rodrilang.librarymanager.store.order.dto.*;
+import com.rodrilang.librarymanager.store.order.event.StoreOrderNotificationType;
+import com.rodrilang.librarymanager.store.order.notification.StoreOrderNotificationPublisher;
 import com.rodrilang.librarymanager.store.order.model.*;
 import com.rodrilang.librarymanager.store.order.repository.*;
 import com.rodrilang.librarymanager.store.repository.BookstoreStoreRepository;
@@ -49,6 +51,7 @@ public class StoreOrderService {
     private final BookstoreContext bookstoreContext;
     private final BookstoreBookFieldOverrideService overrideService;
     private final StoreOrderCompletionService completionService;
+    private final StoreOrderNotificationPublisher notificationPublisher;
 
     @Value("${app.store.order-reservation-minutes:1440}")
     private long reservationMinutes;
@@ -157,6 +160,7 @@ public class StoreOrderService {
                 .expiresAt(expiresAt)
                 .build()).toList();
         reservationRepository.saveAll(reservations);
+        notificationPublisher.publish(StoreOrderNotificationType.RECEIVED, order, items);
 
         return toPublic(order, items);
     }
@@ -225,7 +229,9 @@ public class StoreOrderService {
         order.setConfirmedAt(now);
         order.setReservationExpiresAt(null);
         reservationRepository.saveAll(reservations);
-        return toAdmin(order, loadItems(orderId));
+        List<StoreOrderItem> items = loadItems(orderId);
+        notificationPublisher.publish(StoreOrderNotificationType.CONFIRMED, order, items);
+        return toAdmin(order, items);
     }
 
     @Transactional
@@ -241,7 +247,9 @@ public class StoreOrderService {
         order.setCancelledAt(now);
         order.setCancellationReason(request == null ? null : normalize(request.reason()));
         order.setReservationExpiresAt(null);
-        return toAdmin(order, loadItems(orderId));
+        List<StoreOrderItem> items = loadItems(orderId);
+        notificationPublisher.publish(StoreOrderNotificationType.CANCELLED, order, items);
+        return toAdmin(order, items);
     }
 
     @Transactional
@@ -259,7 +267,11 @@ public class StoreOrderService {
             throw new BusinessException("Cambio de estado de preparación no permitido en esta etapa.");
         }
         order.setFulfillmentStatus(target);
-        return toAdmin(order, loadItems(orderId));
+        List<StoreOrderItem> items = loadItems(orderId);
+        if (current != target && target == StoreFulfillmentStatus.READY_FOR_PICKUP) {
+            notificationPublisher.publish(StoreOrderNotificationType.READY_FOR_PICKUP, order, items);
+        }
+        return toAdmin(order, items);
     }
 
 
@@ -271,6 +283,7 @@ public class StoreOrderService {
         }
         List<StoreOrderItem> items = loadItems(orderId);
         completionService.complete(order, items, request);
+        notificationPublisher.publish(StoreOrderNotificationType.COMPLETED, order, items);
         return toAdmin(order, items);
     }
 
