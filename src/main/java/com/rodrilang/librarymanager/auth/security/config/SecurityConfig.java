@@ -66,6 +66,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/invitations/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/invitations/*/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/integrations/tiendanube/webhooks").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/storefront/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/storefront/*/checkout").permitAll()
                         .anyRequest().authenticated()
                 )
 

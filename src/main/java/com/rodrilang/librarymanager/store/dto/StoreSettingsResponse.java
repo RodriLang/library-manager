@@ -1,0 +1,21 @@
+package com.rodrilang.librarymanager.store.dto;
+import com.rodrilang.librarymanager.store.model.StoreTitleFormat;
+import java.util.List;
+import java.util.UUID;
+public record StoreSettingsResponse(
+        UUID publicId,
+        String slug,
+        String displayName,
+        boolean enabled,
+        StoreTitleFormat titleFormat,
+        boolean showIsbn,
+        boolean showAuthor,
+        boolean showPublisher,
+        boolean showStock,
+        String logoUrl,
+        String faviconUrl,
+        String primaryColor,
+        String secondaryColor,
+        String description,
+        List<StoreDomainResponse> domains
+) {}
