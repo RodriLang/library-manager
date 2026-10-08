@@ -29,5 +29,7 @@ public record StoreOrderResponse(
         Instant confirmedAt,
         Instant cancelledAt,
         String cancellationReason,
+        Long saleId,
+        Instant completedAt,
         List<StoreOrderItemResponse> items
 ) {}

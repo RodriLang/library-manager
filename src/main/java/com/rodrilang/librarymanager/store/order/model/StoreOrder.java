@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.store.order.model;
 import com.rodrilang.librarymanager.model.AuditableEntity;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.store.model.BookstoreStore;
+import com.rodrilang.librarymanager.sales.model.Sale;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -39,4 +40,6 @@ public class StoreOrder extends AuditableEntity {
     @Column(name = "confirmed_at") private Instant confirmedAt;
     @Column(name = "cancelled_at") private Instant cancelledAt;
     @Column(name = "cancellation_reason", length = 500) private String cancellationReason;
+    @OneToOne(fetch = FetchType.LAZY) @JoinColumn(name = "sale_id", unique = true) private Sale sale;
+    @Column(name = "completed_at") private Instant completedAt;
 }

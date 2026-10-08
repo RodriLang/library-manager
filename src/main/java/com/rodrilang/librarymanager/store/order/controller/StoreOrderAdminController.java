@@ -46,4 +46,10 @@ public class StoreOrderAdminController {
                                                 @Valid @RequestBody UpdateStoreFulfillmentRequest request) {
         return service.updateFulfillment(orderId, request);
     }
+
+    @PostMapping("/{orderId}/complete")
+    public StoreOrderResponse complete(@PathVariable Long orderId,
+                                       @Valid @RequestBody CompleteStoreOrderRequest request) {
+        return service.complete(orderId, request);
+    }
 }

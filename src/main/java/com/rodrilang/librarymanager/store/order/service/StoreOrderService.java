@@ -48,6 +48,7 @@ public class StoreOrderService {
     private final StoreStockReservationRepository reservationRepository;
     private final BookstoreContext bookstoreContext;
     private final BookstoreBookFieldOverrideService overrideService;
+    private final StoreOrderCompletionService completionService;
 
     @Value("${app.store.order-reservation-minutes:1440}")
     private long reservationMinutes;
@@ -261,6 +262,18 @@ public class StoreOrderService {
         return toAdmin(order, loadItems(orderId));
     }
 
+
+    @Transactional
+    public StoreOrderResponse complete(Long orderId, CompleteStoreOrderRequest request) {
+        StoreOrder order = requireAdminOrderForUpdate(orderId);
+        if (order.getStatus() == StoreOrderStatus.COMPLETED) {
+            return toAdmin(order, loadItems(orderId));
+        }
+        List<StoreOrderItem> items = loadItems(orderId);
+        completionService.complete(order, items, request);
+        return toAdmin(order, items);
+    }
+
     @Transactional
     public void expirePendingOrders() {
         Instant now = Instant.now();
@@ -359,7 +372,7 @@ public class StoreOrderService {
         return new StoreOrderResponse(o.getId(), o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getCustomerPhone(), o.getNotes(), o.getSubtotal(),
                 o.getDiscountAmount(), o.getShippingCost(), o.getTotal(), o.getReservationExpiresAt(), o.getCreatedAt(), o.getConfirmedAt(), o.getCancelledAt(),
-                o.getCancellationReason(), itemResponses(items));
+                o.getCancellationReason(), o.getSale() != null ? o.getSale().getId() : null, o.getCompletedAt(), itemResponses(items));
     }
     private StoreOrderSummaryResponse toSummary(StoreOrder o) {
         return new StoreOrderSummaryResponse(o.getId(), o.getOrderNumber(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(), o.getCustomerName(),
