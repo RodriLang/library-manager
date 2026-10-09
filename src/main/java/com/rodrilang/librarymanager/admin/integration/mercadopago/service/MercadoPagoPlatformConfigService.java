@@ -16,6 +16,11 @@ import java.net.URI;
 @Service
 @RequiredArgsConstructor
 public class MercadoPagoPlatformConfigService {
+    private static final String DEFAULT_API_BASE_URL = "https://api.anaquel.com.ar";
+    private static final String DEFAULT_FRONTEND_URL = "https://anaquel.com.ar";
+    private static final String OAUTH_CALLBACK_PATH = "/api/store/payments/mercado-pago/oauth/callback";
+    private static final String WEBHOOK_PATH = "/api/storefront/payments/mercado-pago/webhook";
+
     private final MercadoPagoPlatformConfigRepository repository;
     private final StoreSecretCipher cipher;
 
@@ -32,13 +37,17 @@ public class MercadoPagoPlatformConfigService {
     @Value("${app.frontend-url:https://anaquel.com.ar}")
     private String envFrontendUrl;
 
+    /**
+     * Vista tolerante para el panel admin. Una configuración parcial o inválida debe poder
+     * consultarse para que el administrador pueda corregirla; no debe provocar un 500.
+     */
     @Transactional(readOnly = true)
     public AdminMercadoPagoPlatformConfigResponse adminView() {
         MercadoPagoPlatformConfig stored = repository.findById(MercadoPagoPlatformConfig.SINGLETON_ID).orElse(null);
-        EffectiveConfig effective = effective(stored);
+        EffectiveConfig effective = effectiveLenient(stored);
         return new AdminMercadoPagoPlatformConfigResponse(
                 effective.enabled(),
-                effective.configured(cipher.isConfigured()),
+                isOperationallyConfigured(effective),
                 cipher.isConfigured(),
                 stored == null ? "ENVIRONMENT" : "DATABASE",
                 effective.clientId(),
@@ -47,7 +56,7 @@ public class MercadoPagoPlatformConfigService {
                 hasText(effective.webhookSecret()),
                 mask(effective.webhookSecret()),
                 effective.oauthRedirectUri(),
-                webhookUrl(effective.publicApiBaseUrl()),
+                webhookUrlIfAvailable(effective.publicApiBaseUrl()),
                 effective.publicApiBaseUrl(),
                 effective.frontendUrl()
         );
@@ -66,56 +75,78 @@ public class MercadoPagoPlatformConfigService {
         if (request.publicApiBaseUrl() != null) config.setPublicApiBaseUrl(normalizeRequiredBaseUrl(request.publicApiBaseUrl(), "URL pública de API"));
         if (request.frontendUrl() != null) config.setFrontendUrl(normalizeRequiredBaseUrl(request.frontendUrl(), "URL de Anaquel UI"));
 
-        EffectiveConfig candidate = effective(config);
-        if (Boolean.TRUE.equals(config.getEnabled()) && !candidate.configured(cipher.isConfigured())) {
-            throw new BusinessException("Completá Client ID, Client Secret, Webhook Secret y la clave maestra de cifrado antes de habilitar Mercado Pago.");
+        EffectiveConfig candidate = effectiveStrict(config);
+        if (Boolean.TRUE.equals(config.getEnabled()) && !isOperationallyConfigured(candidate)) {
+            throw new BusinessException("Completá Client ID, Client Secret, Webhook Secret, URLs válidas y la clave maestra de cifrado antes de habilitar Mercado Pago.");
         }
         repository.save(config);
         return adminView();
     }
 
+    /**
+     * Configuración efectiva tolerante. Se usa sólo para consultar estado/UI.
+     */
     @Transactional(readOnly = true)
     public EffectiveConfig current() {
-        return effective(repository.findById(MercadoPagoPlatformConfig.SINGLETON_ID).orElse(null));
+        return effectiveLenient(repository.findById(MercadoPagoPlatformConfig.SINGLETON_ID).orElse(null));
+    }
+
+    /**
+     * Configuración efectiva estricta para operaciones reales de Mercado Pago.
+     */
+    @Transactional(readOnly = true)
+    public EffectiveConfig requireOperationalConfig() {
+        EffectiveConfig cfg = effectiveStrict(repository.findById(MercadoPagoPlatformConfig.SINGLETON_ID).orElse(null));
+        if (!cfg.enabled()) {
+            throw new BusinessException("Mercado Pago está deshabilitado por el administrador de Anaquel.");
+        }
+        if (!isOperationallyConfigured(cfg)) {
+            throw new BusinessException("Mercado Pago no está completamente configurado por el administrador de Anaquel.");
+        }
+        return cfg;
     }
 
     public String requireClientId() {
-        String value = current().clientId();
-        if (!hasText(value)) throw new BusinessException("Mercado Pago no tiene Client ID configurado en Anaquel.");
-        return value;
+        return requireOperationalConfig().clientId();
     }
 
     public String requireClientSecret() {
-        String value = current().clientSecret();
-        if (!hasText(value)) throw new BusinessException("Mercado Pago no tiene Client Secret configurado en Anaquel.");
-        return value;
+        return requireOperationalConfig().clientSecret();
     }
 
     public String requireWebhookSecret() {
-        String value = current().webhookSecret();
-        if (!hasText(value)) throw new BusinessException("Mercado Pago no tiene Webhook Secret configurado en Anaquel.");
-        return value;
+        return requireOperationalConfig().webhookSecret();
     }
 
+    /**
+     * Nunca lanza por una URL o secreto faltante/incorrecto. Es un chequeo de disponibilidad.
+     */
     public boolean isConfiguredAndEnabled() {
-        EffectiveConfig cfg = current();
-        return cfg.enabled() && cfg.configured(cipher.isConfigured());
+        try {
+            EffectiveConfig cfg = current();
+            return cfg.enabled() && isOperationallyConfigured(cfg);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     public String redirectUri() {
-        return current().oauthRedirectUri();
+        return requireOperationalConfig().oauthRedirectUri();
     }
 
     public String publicApiBaseUrl() {
-        return current().publicApiBaseUrl();
+        return requireOperationalConfig().publicApiBaseUrl();
     }
 
     public String frontendUrl() {
-        return current().frontendUrl();
+        return requireOperationalConfig().frontendUrl();
     }
 
+    /**
+     * Útil para respuestas de estado. Devuelve null si todavía no hay una URL de API válida.
+     */
     public String webhookUrl() {
-        return webhookUrl(current().publicApiBaseUrl());
+        return webhookUrlIfAvailable(current().publicApiBaseUrl());
     }
 
     private MercadoPagoPlatformConfig newFromEnvironment() {
@@ -126,43 +157,135 @@ public class MercadoPagoPlatformConfigService {
                 .clientSecretEncrypted(hasText(envClientSecret) ? cipher.encrypt(envClientSecret.trim()) : null)
                 .webhookSecretEncrypted(hasText(envWebhookSecret) ? cipher.encrypt(envWebhookSecret.trim()) : null)
                 .oauthRedirectUri(trimToNull(envOauthRedirectUri))
-                .publicApiBaseUrl(normalizeBaseOrDefault(envPublicApiBaseUrl, "https://api.anaquel.com.ar"))
-                .frontendUrl(normalizeBaseOrDefault(envFrontendUrl, "https://anaquel.com.ar"))
+                .publicApiBaseUrl(validBaseOrRaw(envPublicApiBaseUrl, DEFAULT_API_BASE_URL))
+                .frontendUrl(validBaseOrRaw(envFrontendUrl, DEFAULT_FRONTEND_URL))
                 .build();
     }
 
-    private EffectiveConfig effective(MercadoPagoPlatformConfig stored) {
+    private EffectiveConfig effectiveLenient(MercadoPagoPlatformConfig stored) {
         if (stored == null) {
-            String api = normalizeBaseOrDefault(envPublicApiBaseUrl, "https://api.anaquel.com.ar");
-            String frontend = normalizeBaseOrDefault(envFrontendUrl, "https://anaquel.com.ar");
+            String api = validBaseOrRaw(envPublicApiBaseUrl, DEFAULT_API_BASE_URL);
+            String frontend = validBaseOrRaw(envFrontendUrl, DEFAULT_FRONTEND_URL);
             String redirect = hasText(envOauthRedirectUri)
-                    ? normalizeAbsoluteUrl(envOauthRedirectUri, "Redirect URI")
-                    : api + "/api/store/payments/mercado-pago/oauth/callback";
+                    ? validAbsoluteOrRaw(envOauthRedirectUri)
+                    : deriveRedirectIfPossible(api);
             boolean enabled = hasText(envClientId) && hasText(envClientSecret) && hasText(envWebhookSecret);
-            return new EffectiveConfig(enabled, trimToNull(envClientId), trimToNull(envClientSecret), trimToNull(envWebhookSecret), redirect, api, frontend);
+            return new EffectiveConfig(
+                    enabled,
+                    trimToNull(envClientId),
+                    trimToNull(envClientSecret),
+                    trimToNull(envWebhookSecret),
+                    redirect,
+                    api,
+                    frontend
+            );
         }
-        String api = normalizeBaseOrDefault(stored.getPublicApiBaseUrl(), normalizeBaseOrDefault(envPublicApiBaseUrl, "https://api.anaquel.com.ar"));
-        String frontend = normalizeBaseOrDefault(stored.getFrontendUrl(), normalizeBaseOrDefault(envFrontendUrl, "https://anaquel.com.ar"));
+
+        String apiFallback = validBaseOrRaw(envPublicApiBaseUrl, DEFAULT_API_BASE_URL);
+        String frontendFallback = validBaseOrRaw(envFrontendUrl, DEFAULT_FRONTEND_URL);
+        String api = hasText(stored.getPublicApiBaseUrl()) ? stored.getPublicApiBaseUrl().trim() : apiFallback;
+        String frontend = hasText(stored.getFrontendUrl()) ? stored.getFrontendUrl().trim() : frontendFallback;
         String redirect = hasText(stored.getOauthRedirectUri())
-                ? normalizeAbsoluteUrl(stored.getOauthRedirectUri(), "Redirect URI")
-                : api + "/api/store/payments/mercado-pago/oauth/callback";
+                ? stored.getOauthRedirectUri().trim()
+                : deriveRedirectIfPossible(api);
+
         return new EffectiveConfig(
                 Boolean.TRUE.equals(stored.getEnabled()),
                 trimToNull(stored.getClientId()),
-                decrypt(stored.getClientSecretEncrypted()),
-                decrypt(stored.getWebhookSecretEncrypted()),
+                decryptLenient(stored.getClientSecretEncrypted()),
+                decryptLenient(stored.getWebhookSecretEncrypted()),
                 redirect,
                 api,
                 frontend
         );
     }
 
-    private String decrypt(String value) {
+    private EffectiveConfig effectiveStrict(MercadoPagoPlatformConfig stored) {
+        if (stored == null) {
+            String api = normalizeBaseOrDefault(envPublicApiBaseUrl, DEFAULT_API_BASE_URL);
+            String frontend = normalizeBaseOrDefault(envFrontendUrl, DEFAULT_FRONTEND_URL);
+            String redirect = hasText(envOauthRedirectUri)
+                    ? normalizeAbsoluteUrl(envOauthRedirectUri, "Redirect URI")
+                    : api + OAUTH_CALLBACK_PATH;
+            boolean enabled = hasText(envClientId) && hasText(envClientSecret) && hasText(envWebhookSecret);
+            return new EffectiveConfig(
+                    enabled,
+                    trimToNull(envClientId),
+                    trimToNull(envClientSecret),
+                    trimToNull(envWebhookSecret),
+                    redirect,
+                    api,
+                    frontend
+            );
+        }
+
+        String api = normalizeBaseOrDefault(
+                stored.getPublicApiBaseUrl(),
+                normalizeBaseOrDefault(envPublicApiBaseUrl, DEFAULT_API_BASE_URL)
+        );
+        String frontend = normalizeBaseOrDefault(
+                stored.getFrontendUrl(),
+                normalizeBaseOrDefault(envFrontendUrl, DEFAULT_FRONTEND_URL)
+        );
+        String redirect = hasText(stored.getOauthRedirectUri())
+                ? normalizeAbsoluteUrl(stored.getOauthRedirectUri(), "Redirect URI")
+                : api + OAUTH_CALLBACK_PATH;
+
+        return new EffectiveConfig(
+                Boolean.TRUE.equals(stored.getEnabled()),
+                trimToNull(stored.getClientId()),
+                decryptStrict(stored.getClientSecretEncrypted()),
+                decryptStrict(stored.getWebhookSecretEncrypted()),
+                redirect,
+                api,
+                frontend
+        );
+    }
+
+    private String decryptStrict(String value) {
         return hasText(value) ? cipher.decrypt(value) : null;
     }
 
-    private String webhookUrl(String apiBase) {
-        return normalizeBaseOrDefault(apiBase, "https://api.anaquel.com.ar") + "/api/storefront/payments/mercado-pago/webhook";
+    private String decryptLenient(String value) {
+        if (!hasText(value) || !cipher.isConfigured()) return null;
+        try {
+            return cipher.decrypt(value);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private boolean isOperationallyConfigured(EffectiveConfig cfg) {
+        return cfg != null
+                && cipher.isConfigured()
+                && hasText(cfg.clientId())
+                && hasText(cfg.clientSecret())
+                && hasText(cfg.webhookSecret())
+                && isAbsoluteHttpUrl(cfg.publicApiBaseUrl())
+                && isAbsoluteHttpUrl(cfg.frontendUrl())
+                && isAbsoluteHttpUrl(cfg.oauthRedirectUri());
+    }
+
+    private String webhookUrlIfAvailable(String apiBase) {
+        if (!isAbsoluteHttpUrl(apiBase)) return null;
+        return stripTrailingSlash(apiBase.trim()) + WEBHOOK_PATH;
+    }
+
+    private String deriveRedirectIfPossible(String apiBase) {
+        if (!isAbsoluteHttpUrl(apiBase)) return null;
+        return stripTrailingSlash(apiBase.trim()) + OAUTH_CALLBACK_PATH;
+    }
+
+    private String validBaseOrRaw(String value, String fallback) {
+        String candidate = hasText(value) ? value.trim() : fallback;
+        if (isAbsoluteHttpUrl(candidate)) return stripTrailingSlash(candidate);
+        return candidate;
+    }
+
+    private String validAbsoluteOrRaw(String value) {
+        String candidate = trimToNull(value);
+        if (candidate == null) return null;
+        return isAbsoluteHttpUrl(candidate) ? candidate : candidate;
     }
 
     private String normalizeOptionalAbsoluteUrl(String value, String label) {
@@ -182,14 +305,21 @@ public class MercadoPagoPlatformConfigService {
     }
 
     private String normalizeAbsoluteUrl(String value, String label) {
+        if (!isAbsoluteHttpUrl(value)) {
+            throw new BusinessException(label + " debe ser una URL absoluta http/https válida.");
+        }
+        return URI.create(value.trim()).toString();
+    }
+
+    private boolean isAbsoluteHttpUrl(String value) {
+        if (!hasText(value)) return false;
         try {
             URI uri = URI.create(value.trim());
-            if (uri.getScheme() == null || uri.getHost() == null || !("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))) {
-                throw new IllegalArgumentException();
-            }
-            return uri.toString();
-        } catch (Exception e) {
-            throw new BusinessException(label + " debe ser una URL absoluta http/https válida.");
+            return uri.getScheme() != null
+                    && uri.getHost() != null
+                    && ("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()));
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
@@ -223,10 +353,5 @@ public class MercadoPagoPlatformConfigService {
             String publicApiBaseUrl,
             String frontendUrl
     ) {
-        public boolean configured(boolean encryptionConfigured) {
-            return encryptionConfigured && clientId != null && !clientId.isBlank()
-                    && clientSecret != null && !clientSecret.isBlank()
-                    && webhookSecret != null && !webhookSecret.isBlank();
-        }
     }
 }
