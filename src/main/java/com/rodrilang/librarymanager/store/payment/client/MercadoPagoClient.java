@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -15,6 +17,43 @@ public class MercadoPagoClient {
 
     public MercadoPagoClient(RestClient.Builder builder) {
         this.client = builder.baseUrl("https://api.mercadopago.com").build();
+    }
+
+    public JsonNode exchangeAuthorizationCode(String clientId, String clientSecret, String code,
+                                              String redirectUri, String codeVerifier) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_id", clientId);
+        form.add("client_secret", clientSecret);
+        form.add("grant_type", "authorization_code");
+        form.add("code", code);
+        form.add("redirect_uri", redirectUri);
+        form.add("code_verifier", codeVerifier);
+        return oauthToken(form, "No pudimos completar la autorización con Mercado Pago.");
+    }
+
+    public JsonNode refreshToken(String clientId, String clientSecret, String refreshToken) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_id", clientId);
+        form.add("client_secret", clientSecret);
+        form.add("grant_type", "refresh_token");
+        form.add("refresh_token", refreshToken);
+        return oauthToken(form, "No pudimos renovar la conexión con Mercado Pago.");
+    }
+
+    private JsonNode oauthToken(MultiValueMap<String, String> form, String message) {
+        try {
+            return client.post()
+                    .uri("/oauth/token")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(form)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RestClientResponseException e) {
+            throw new BusinessException(message + " " + readable(e));
+        } catch (Exception e) {
+            throw new BusinessException(message);
+        }
     }
 
     public JsonNode createOrder(String accessToken, String idempotencyKey, Map<String, Object> body) {

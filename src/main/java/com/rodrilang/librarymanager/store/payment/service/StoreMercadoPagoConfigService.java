@@ -6,7 +6,6 @@ import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.store.payment.crypto.StoreSecretCipher;
 import com.rodrilang.librarymanager.store.payment.dto.MercadoPagoConfigResponse;
-import com.rodrilang.librarymanager.store.payment.dto.UpdateMercadoPagoConfigRequest;
 import com.rodrilang.librarymanager.store.payment.model.StoreMercadoPagoConfig;
 import com.rodrilang.librarymanager.store.payment.repository.StoreMercadoPagoConfigRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +24,15 @@ public class StoreMercadoPagoConfigService {
     @Value("${app.public-api-base-url:https://api.anaquel.com.ar}")
     private String publicApiBaseUrl;
 
+    @Value("${app.store.payments.mercado-pago.client-id:}")
+    private String clientId;
+
+    @Value("${app.store.payments.mercado-pago.client-secret:}")
+    private String clientSecret;
+
+    @Value("${app.store.payments.mercado-pago.webhook-secret:}")
+    private String webhookSecret;
+
     @Transactional(readOnly = true)
     public MercadoPagoConfigResponse current() {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
@@ -32,52 +40,84 @@ public class StoreMercadoPagoConfigService {
     }
 
     @Transactional
-    public MercadoPagoConfigResponse update(UpdateMercadoPagoConfigRequest request) {
+    public MercadoPagoConfigResponse setEnabled(boolean enabled) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-        StoreMercadoPagoConfig config = repository.findByBookstoreId(bookstoreId).orElseGet(() -> {
-            Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
-                    .orElseThrow(() -> new BusinessException("No se encontró la librería."));
-            return StoreMercadoPagoConfig.builder().bookstore(bookstore).enabled(false).build();
-        });
-
-        if (hasText(request.accessToken())) config.setAccessTokenEncrypted(cipher.encrypt(request.accessToken().trim()));
-        if (hasText(request.webhookSecret())) config.setWebhookSecretEncrypted(cipher.encrypt(request.webhookSecret().trim()));
-
-        boolean configured = hasText(config.getAccessTokenEncrypted()) && hasText(config.getWebhookSecretEncrypted());
-        if (Boolean.TRUE.equals(request.enabled()) && !configured) {
-            throw new BusinessException("Para activar Mercado Pago cargá el Access Token y la clave secreta del webhook.");
+        StoreMercadoPagoConfig config = repository.findByBookstoreId(bookstoreId).orElseGet(() -> newConfig(bookstoreId));
+        if (enabled && !applicationConfigured()) {
+            throw new BusinessException("Mercado Pago no está completamente configurado en Anaquel API.");
         }
-        config.setEnabled(request.enabled());
+        if (enabled && !isConnected(config)) {
+            throw new BusinessException("Conectá una cuenta de Mercado Pago antes de habilitar pagos online.");
+        }
+        config.setEnabled(enabled);
+        return toResponse(repository.save(config));
+    }
+
+    @Transactional
+    public MercadoPagoConfigResponse disconnect() {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        StoreMercadoPagoConfig config = repository.findByBookstoreId(bookstoreId).orElseGet(() -> newConfig(bookstoreId));
+        config.setEnabled(false);
+        config.setAccessTokenEncrypted(null);
+        config.setRefreshTokenEncrypted(null);
+        config.setMercadoPagoUserId(null);
+        config.setPublicKey(null);
+        config.setTokenType(null);
+        config.setScope(null);
+        config.setTokenExpiresAt(null);
+        config.setConnectedAt(null);
+        config.setDisconnectedAt(java.time.Instant.now());
+        config.setConnectionError(null);
         return toResponse(repository.save(config));
     }
 
     @Transactional(readOnly = true)
     public boolean isEnabled(Long bookstoreId) {
         return repository.findByBookstoreId(bookstoreId)
-                .map(c -> Boolean.TRUE.equals(c.getEnabled()) && hasText(c.getAccessTokenEncrypted()) && hasText(c.getWebhookSecretEncrypted()))
+                .map(c -> applicationConfigured() && Boolean.TRUE.equals(c.getEnabled()) && isConnected(c) && !hasText(c.getConnectionError()))
                 .orElse(false);
     }
 
-    @Transactional(readOnly = true)
-    public Credentials requireCredentials(Long bookstoreId) {
-        StoreMercadoPagoConfig config = repository.findByBookstoreId(bookstoreId)
-                .filter(c -> Boolean.TRUE.equals(c.getEnabled()))
-                .orElseThrow(() -> new BusinessException("Mercado Pago no está habilitado para esta librería."));
-        if (!hasText(config.getAccessTokenEncrypted()) || !hasText(config.getWebhookSecretEncrypted())) {
-            throw new BusinessException("La configuración de Mercado Pago está incompleta.");
+    public boolean applicationConfigured() {
+        return hasText(clientId) && hasText(clientSecret) && hasText(webhookSecret) && cipher.isConfigured();
+    }
+
+    public String webhookSecret() {
+        if (!hasText(webhookSecret)) {
+            throw new BusinessException("Falta configurar MERCADO_PAGO_WEBHOOK_SECRET en Anaquel API.");
         }
-        return new Credentials(cipher.decrypt(config.getAccessTokenEncrypted()), cipher.decrypt(config.getWebhookSecretEncrypted()));
+        return webhookSecret;
+    }
+
+    public String webhookUrl() {
+        return normalizeBase(publicApiBaseUrl) + "/api/storefront/payments/mercado-pago/webhook";
+    }
+
+    private StoreMercadoPagoConfig newConfig(Long bookstoreId) {
+        Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
+                .orElseThrow(() -> new BusinessException("No se encontró la librería."));
+        return StoreMercadoPagoConfig.builder().bookstore(bookstore).enabled(false).build();
     }
 
     private MercadoPagoConfigResponse toResponse(StoreMercadoPagoConfig config) {
-        boolean configured = config != null && hasText(config.getAccessTokenEncrypted()) && hasText(config.getWebhookSecretEncrypted());
+        boolean connected = config != null && isConnected(config);
         return new MercadoPagoConfigResponse(
-                config != null && Boolean.TRUE.equals(config.getEnabled()),
-                configured,
-                configured ? "••••••••••••" : null,
-                config != null && hasText(config.getWebhookSecretEncrypted()),
-                normalizeBase(publicApiBaseUrl) + "/api/storefront/payments/mercado-pago/webhook"
+                applicationConfigured(),
+                connected,
+                connected && applicationConfigured() && Boolean.TRUE.equals(config.getEnabled()) && !hasText(config.getConnectionError()),
+                config != null && hasText(config.getConnectionError()),
+                connected ? config.getMercadoPagoUserId() : null,
+                connected ? config.getConnectedAt() : null,
+                connected ? config.getTokenExpiresAt() : null,
+                config == null ? null : config.getConnectionError(),
+                webhookUrl()
         );
+    }
+
+    private boolean isConnected(StoreMercadoPagoConfig config) {
+        return hasText(config.getAccessTokenEncrypted())
+                && hasText(config.getRefreshTokenEncrypted())
+                && config.getMercadoPagoUserId() != null;
     }
 
     private String normalizeBase(String value) {
@@ -86,7 +126,7 @@ public class StoreMercadoPagoConfigService {
         return v;
     }
 
-    private boolean hasText(String value) { return value != null && !value.isBlank(); }
-
-    public record Credentials(String accessToken, String webhookSecret) {}
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
 }

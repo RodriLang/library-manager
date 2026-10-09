@@ -1,9 +1,15 @@
 package com.rodrilang.librarymanager.store.payment.dto;
 
+import java.time.Instant;
+
 public record MercadoPagoConfigResponse(
+        boolean applicationConfigured,
+        boolean connected,
         boolean enabled,
-        boolean configured,
-        String accessTokenMasked,
-        boolean webhookSecretConfigured,
+        boolean requiresReconnect,
+        Long mercadoPagoUserId,
+        Instant connectedAt,
+        Instant tokenExpiresAt,
+        String connectionError,
         String webhookUrl
 ) {}

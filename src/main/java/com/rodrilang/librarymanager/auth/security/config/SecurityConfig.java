@@ -58,7 +58,8 @@ public class SecurityConfig {
                                 "/api/auth/refresh",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
-                                "/api/integrations/tiendanube/oauth/callback"
+                                "/api/integrations/tiendanube/oauth/callback",
+                                "/api/store/payments/mercado-pago/oauth/callback"
                         ).permitAll()
 
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

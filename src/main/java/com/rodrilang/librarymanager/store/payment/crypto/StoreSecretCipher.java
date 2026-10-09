@@ -59,6 +59,10 @@ public class StoreSecretCipher {
         return new SecretKeySpec(digest, "AES");
     }
 
+    public boolean isConfigured() {
+        return masterKey != null && !masterKey.isBlank();
+    }
+
     private void requireKey() {
         if (masterKey == null || masterKey.isBlank()) {
             throw new BusinessException("Configurá STORE_PAYMENT_ENCRYPTION_KEY antes de guardar credenciales de pago.");

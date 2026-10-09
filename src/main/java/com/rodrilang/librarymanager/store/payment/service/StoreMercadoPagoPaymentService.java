@@ -25,6 +25,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class StoreMercadoPagoPaymentService {
     private final StoreMercadoPagoConfigService configService;
+    private final StoreMercadoPagoOAuthService oauthService;
     private final MercadoPagoClient client;
     private final StoreOrderRepository orderRepository;
     private final StoreOrderItemRepository itemRepository;
@@ -38,7 +39,7 @@ public class StoreMercadoPagoPaymentService {
     @Transactional
     public void createCheckout(StoreOrder order, List<StoreOrderItem> items) {
         if (order.getPaymentMethod() != StorePaymentMethod.MERCADO_PAGO) return;
-        var credentials = configService.requireCredentials(order.getBookstore().getId());
+        String accessToken = oauthService.requireAccessToken(order.getBookstore().getId());
         Map<String,Object> body = new LinkedHashMap<>();
         body.put("type", "online");
         body.put("processing_mode", "manual");
@@ -66,7 +67,7 @@ public class StoreMercadoPagoPaymentService {
                 "auto_return", "approved"
         )));
 
-        JsonNode response = client.createOrder(credentials.accessToken(), order.getClientRequestId().toString(), body);
+        JsonNode response = client.createOrder(accessToken, order.getClientRequestId().toString(), body);
         if (response == null || response.path("id").asText().isBlank() || response.path("checkout_url").asText().isBlank()) {
             throw new BusinessException("Mercado Pago no devolvió una URL válida para iniciar el pago.");
         }
@@ -81,8 +82,8 @@ public class StoreMercadoPagoPaymentService {
     public void synchronizeFromWebhook(String externalOrderId) {
         StoreOrder order = orderRepository.findByPaymentExternalIdForUpdate(externalOrderId)
                 .orElseThrow(() -> new BusinessException("No se encontró el pago de Mercado Pago asociado."));
-        var credentials = configService.requireCredentials(order.getBookstore().getId());
-        JsonNode remote = client.getOrder(credentials.accessToken(), externalOrderId);
+        String accessToken = oauthService.requireAccessToken(order.getBookstore().getId());
+        JsonNode remote = client.getOrder(accessToken, externalOrderId);
         applyRemoteStatus(order, remote);
     }
 
@@ -90,9 +91,9 @@ public class StoreMercadoPagoPaymentService {
     public boolean processWebhook(String externalOrderId, String xRequestId, String xSignature) {
         StoreOrder order = orderRepository.findByPaymentExternalIdForUpdate(externalOrderId).orElse(null);
         if (order == null) return true;
-        var credentials = configService.requireCredentials(order.getBookstore().getId());
-        if (!verifySignature(externalOrderId, xRequestId, xSignature, credentials.webhookSecret())) return false;
-        JsonNode remote = client.getOrder(credentials.accessToken(), externalOrderId);
+        if (!verifySignature(externalOrderId, xRequestId, xSignature, configService.webhookSecret())) return false;
+        String accessToken = oauthService.requireAccessToken(order.getBookstore().getId());
+        JsonNode remote = client.getOrder(accessToken, externalOrderId);
         applyRemoteStatus(order, remote);
         return true;
     }
