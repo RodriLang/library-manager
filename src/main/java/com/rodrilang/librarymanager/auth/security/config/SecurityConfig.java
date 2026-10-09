@@ -58,7 +58,8 @@ public class SecurityConfig {
                                 "/api/auth/refresh",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
-                                "/api/integrations/tiendanube/oauth/callback"
+                                "/api/integrations/tiendanube/oauth/callback",
+                                "/api/store/payments/mercado-pago/oauth/callback"
                         ).permitAll()
 
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
@@ -66,6 +67,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/invitations/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/invitations/*/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/integrations/tiendanube/webhooks").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/storefront/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/storefront/*/checkout").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/storefront/payments/mercado-pago/webhook").permitAll()
                         .anyRequest().authenticated()
                 )
 

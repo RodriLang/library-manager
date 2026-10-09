@@ -1,0 +1,19 @@
+package com.rodrilang.librarymanager.store.dto;
+import com.rodrilang.librarymanager.store.model.StoreTitleFormat;
+import java.util.UUID;
+public record StorefrontResponse(
+        UUID publicId,
+        String slug,
+        String displayName,
+        String description,
+        String logoUrl,
+        String faviconUrl,
+        String primaryColor,
+        String secondaryColor,
+        StoreTitleFormat titleFormat,
+        boolean showIsbn,
+        boolean showAuthor,
+        boolean showPublisher,
+        boolean showStock,
+        boolean mercadoPagoEnabled
+) {}
