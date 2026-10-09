@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.store.payment.controller;
 
+import com.rodrilang.librarymanager.admin.integration.mercadopago.service.MercadoPagoPlatformConfigService;
 import com.rodrilang.librarymanager.store.payment.dto.MercadoPagoAuthorizationResponse;
 import com.rodrilang.librarymanager.store.payment.dto.MercadoPagoConfigResponse;
 import com.rodrilang.librarymanager.store.payment.dto.UpdateMercadoPagoEnabledRequest;
@@ -7,7 +8,6 @@ import com.rodrilang.librarymanager.store.payment.service.StoreMercadoPagoConfig
 import com.rodrilang.librarymanager.store.payment.service.StoreMercadoPagoOAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,9 +21,7 @@ import java.net.URI;
 public class StoreMercadoPagoConfigController {
     private final StoreMercadoPagoConfigService configService;
     private final StoreMercadoPagoOAuthService oauthService;
-
-    @Value("${app.frontend-url:https://anaquel.com.ar}")
-    private String frontendUrl;
+    private final MercadoPagoPlatformConfigService platformConfigService;
 
     @GetMapping
     public MercadoPagoConfigResponse get() {
@@ -66,7 +64,7 @@ public class StoreMercadoPagoConfigController {
         }
 
         UriComponentsBuilder redirect = UriComponentsBuilder
-                .fromUriString(normalizeFrontend())
+                .fromUriString(normalizeFrontend(platformConfigService.frontendUrl()))
                 .path("/store/payments")
                 .queryParam("mercadoPago", connected ? "connected" : "error");
         if (!connected && message != null && !message.isBlank()) {
@@ -76,7 +74,7 @@ public class StoreMercadoPagoConfigController {
         return ResponseEntity.status(HttpStatus.FOUND).location(uri).build();
     }
 
-    private String normalizeFrontend() {
+    private String normalizeFrontend(String frontendUrl) {
         String value = frontendUrl == null || frontendUrl.isBlank() ? "https://anaquel.com.ar" : frontendUrl.trim();
         while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
         return value;

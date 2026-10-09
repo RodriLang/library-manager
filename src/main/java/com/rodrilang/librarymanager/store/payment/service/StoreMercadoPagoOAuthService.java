@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.store.payment.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.rodrilang.librarymanager.admin.integration.mercadopago.service.MercadoPagoPlatformConfigService;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.model.Bookstore;
@@ -11,7 +12,6 @@ import com.rodrilang.librarymanager.store.payment.dto.MercadoPagoAuthorizationRe
 import com.rodrilang.librarymanager.store.payment.model.StoreMercadoPagoConfig;
 import com.rodrilang.librarymanager.store.payment.repository.StoreMercadoPagoConfigRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -30,25 +30,14 @@ public class StoreMercadoPagoOAuthService {
     private final BookstoreContext bookstoreContext;
     private final StoreSecretCipher cipher;
     private final MercadoPagoClient client;
-
-    @Value("${app.store.payments.mercado-pago.client-id:}")
-    private String clientId;
-
-    @Value("${app.store.payments.mercado-pago.client-secret:}")
-    private String clientSecret;
-
-    @Value("${app.store.payments.mercado-pago.oauth-redirect-uri:}")
-    private String configuredRedirectUri;
-
-    @Value("${app.public-api-base-url:https://api.anaquel.com.ar}")
-    private String publicApiBaseUrl;
+    private final MercadoPagoPlatformConfigService platformConfigService;
 
     public MercadoPagoAuthorizationResponse createAuthorizationUrl() {
         requireApplicationCredentials();
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         var authState = stateService.create(bookstoreId);
         String url = UriComponentsBuilder.fromUriString("https://auth.mercadopago.com/authorization")
-                .queryParam("client_id", clientId)
+                .queryParam("client_id", platformConfigService.requireClientId())
                 .queryParam("response_type", "code")
                 .queryParam("platform_id", "mp")
                 .queryParam("redirect_uri", redirectUri())
@@ -66,7 +55,13 @@ public class StoreMercadoPagoOAuthService {
         requireApplicationCredentials();
         if (code == null || code.isBlank()) throw new BusinessException("Mercado Pago no devolvió el código de autorización.");
         var consumed = stateService.validateAndConsume(state);
-        JsonNode token = client.exchangeAuthorizationCode(clientId, clientSecret, code, redirectUri(), consumed.codeVerifier());
+        JsonNode token = client.exchangeAuthorizationCode(
+                platformConfigService.requireClientId(),
+                platformConfigService.requireClientSecret(),
+                code,
+                redirectUri(),
+                consumed.codeVerifier()
+        );
         saveToken(consumed.bookstoreId(), token, true);
     }
 
@@ -84,7 +79,11 @@ public class StoreMercadoPagoOAuthService {
         Instant expiresAt = config.getTokenExpiresAt();
         if (expiresAt != null && !expiresAt.isAfter(Instant.now().plus(REFRESH_MARGIN))) {
             try {
-                JsonNode refreshed = client.refreshToken(clientId, clientSecret, cipher.decrypt(config.getRefreshTokenEncrypted()));
+                JsonNode refreshed = client.refreshToken(
+                        platformConfigService.requireClientId(),
+                        platformConfigService.requireClientSecret(),
+                        cipher.decrypt(config.getRefreshTokenEncrypted())
+                );
                 applyToken(config, refreshed, false);
                 configRepository.save(config);
             } catch (BusinessException ex) {
@@ -128,15 +127,12 @@ public class StoreMercadoPagoOAuthService {
     }
 
     public String redirectUri() {
-        if (hasText(configuredRedirectUri)) return configuredRedirectUri.trim();
-        String base = publicApiBaseUrl == null ? "https://api.anaquel.com.ar" : publicApiBaseUrl.trim();
-        while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-        return base + "/api/store/payments/mercado-pago/oauth/callback";
+        return platformConfigService.redirectUri();
     }
 
     private void requireApplicationCredentials() {
-        if (!hasText(clientId) || !hasText(clientSecret)) {
-            throw new BusinessException("Mercado Pago OAuth no está configurado en Anaquel. Definí MERCADO_PAGO_CLIENT_ID y MERCADO_PAGO_CLIENT_SECRET.");
+        if (!platformConfigService.isConfiguredAndEnabled()) {
+            throw new BusinessException("Mercado Pago OAuth no está habilitado o completamente configurado por el administrador de Anaquel.");
         }
     }
 
