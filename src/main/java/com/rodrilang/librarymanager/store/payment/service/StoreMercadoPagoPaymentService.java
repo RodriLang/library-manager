@@ -48,16 +48,18 @@ public class StoreMercadoPagoPaymentService {
         body.put("description", "Pedido " + order.getOrderNumber() + " · " + order.getStore().getDisplayName());
         body.put("total_amount", order.getTotal().toPlainString());
         if (order.getReservationExpiresAt() != null) {
-            java.time.Duration ttl = java.time.Duration.between(java.time.Instant.now(), order.getReservationExpiresAt());
-            if (!ttl.isNegative() && !ttl.isZero()) body.put("expiration_time", ttl.toString());
+            long ttlSeconds = java.time.Duration
+                    .between(java.time.Instant.now(), order.getReservationExpiresAt())
+                    .getSeconds();
+            if (ttlSeconds > 0) {
+                body.put("expiration_time", java.time.Duration.ofSeconds(ttlSeconds).toString());
+            }
         }
         body.put("payer", Map.of("email", order.getCustomerEmail()));
         body.put("items", items.stream().map(item -> Map.<String,Object>of(
                 "title", item.getTitle(),
                 "quantity", item.getQuantity(),
-                "unit_price", item.getUnitPrice().toPlainString(),
-                "unit_measure", "unit",
-                "total_amount", item.getSubtotal().toPlainString()
+                "unit_price", item.getUnitPrice().toPlainString()
         )).toList());
         String tracking = trackingUrl(order);
         body.put("config", Map.of("online", Map.of(
