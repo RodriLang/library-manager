@@ -175,6 +175,7 @@ public class StoreMercadoPagoOAuthService {
         config.setAccountFirstName(text(account, "first_name"));
         config.setAccountLastName(text(account, "last_name"));
         config.setAccountCountryId(text(account, "country_id"));
+        config.setTestAccount(testAccount(account));
     }
 
     private void clearAccount(StoreMercadoPagoConfig config) {
@@ -183,6 +184,17 @@ public class StoreMercadoPagoOAuthService {
         config.setAccountFirstName(null);
         config.setAccountLastName(null);
         config.setAccountCountryId(null);
+        config.setTestAccount(null);
+    }
+
+
+    private Boolean testAccount(JsonNode account) {
+        JsonNode tags = account == null ? null : account.get("tags");
+        if (tags == null || !tags.isArray()) return null;
+        for (JsonNode tag : tags) {
+            if ("test_user".equalsIgnoreCase(tag.asText())) return true;
+        }
+        return false;
     }
 
     private void validateAccountIdentity(JsonNode token, JsonNode account) {

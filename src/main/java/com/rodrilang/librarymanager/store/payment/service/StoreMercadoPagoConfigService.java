@@ -53,6 +53,7 @@ public class StoreMercadoPagoConfigService {
         config.setAccountFirstName(null);
         config.setAccountLastName(null);
         config.setAccountCountryId(null);
+        config.setTestAccount(null);
         config.setPublicKey(null);
         config.setTokenType(null);
         config.setScope(null);
@@ -108,6 +109,7 @@ public class StoreMercadoPagoConfigService {
                 connected ? config.getAccountFirstName() : null,
                 connected ? config.getAccountLastName() : null,
                 connected ? config.getAccountCountryId() : null,
+                connected ? config.getTestAccount() : null,
                 connected ? config.getConnectedAt() : null,
                 connected ? config.getTokenExpiresAt() : null,
                 config == null ? null : config.getConnectionError(),

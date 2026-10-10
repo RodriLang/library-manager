@@ -51,6 +51,9 @@ public class StoreMercadoPagoConfig extends AuditableEntity {
     @Column(name = "account_country_id", length = 10)
     private String accountCountryId;
 
+    @Column(name = "test_account")
+    private Boolean testAccount;
+
     @Column(name = "public_key")
     private String publicKey;
 

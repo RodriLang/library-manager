@@ -13,6 +13,7 @@ public record MercadoPagoConfigResponse(
         String accountFirstName,
         String accountLastName,
         String accountCountryId,
+        Boolean testAccount,
         Instant connectedAt,
         Instant tokenExpiresAt,
         String connectionError,
