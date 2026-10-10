@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
+import com.rodrilang.librarymanager.store.payment.client.MercadoPagoAccountClient;
 import com.rodrilang.librarymanager.store.payment.client.MercadoPagoClient;
 import com.rodrilang.librarymanager.store.payment.crypto.StoreSecretCipher;
 import com.rodrilang.librarymanager.store.payment.dto.MercadoPagoAuthorizationResponse;
@@ -30,6 +31,7 @@ public class StoreMercadoPagoOAuthService {
     private final BookstoreContext bookstoreContext;
     private final StoreSecretCipher cipher;
     private final MercadoPagoClient client;
+    private final MercadoPagoAccountClient accountClient;
     private final MercadoPagoPlatformConfigService platformConfigService;
 
     public MercadoPagoAuthorizationResponse createAuthorizationUrl() {
@@ -53,7 +55,10 @@ public class StoreMercadoPagoOAuthService {
     @Transactional
     public void handleCallback(String code, String state) {
         requireApplicationCredentials();
-        if (code == null || code.isBlank()) throw new BusinessException("Mercado Pago no devolvió el código de autorización.");
+        if (code == null || code.isBlank()) {
+            throw new BusinessException("Mercado Pago no devolvió el código de autorización.");
+        }
+
         var consumed = stateService.validateAndConsume(state);
         JsonNode token = client.exchangeAuthorizationCode(
                 platformConfigService.requireClientId(),
@@ -62,7 +67,20 @@ public class StoreMercadoPagoOAuthService {
                 redirectUri(),
                 consumed.codeVerifier()
         );
-        saveToken(consumed.bookstoreId(), token, true);
+
+        String accessToken = text(token, "access_token");
+        JsonNode account = null;
+        if (hasText(accessToken)) {
+            try {
+                account = accountClient.getCurrentUser(accessToken);
+            } catch (BusinessException ignored) {
+                // La vinculación OAuth sigue siendo válida aunque Mercado Pago no permita
+                // recuperar temporalmente el perfil. El librero puede sincronizarlo luego.
+            }
+        }
+        if (account != null) validateAccountIdentity(token, account);
+
+        saveConnection(consumed.bookstoreId(), token, account, true);
     }
 
     @Transactional(noRollbackFor = BusinessException.class)
@@ -73,9 +91,28 @@ public class StoreMercadoPagoOAuthService {
         if (!Boolean.TRUE.equals(config.getEnabled())) {
             throw new BusinessException("Mercado Pago no está habilitado para esta librería.");
         }
+        return validAccessToken(config);
+    }
+
+    @Transactional(noRollbackFor = BusinessException.class)
+    public void syncCurrentAccount() {
+        requireApplicationCredentials();
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        StoreMercadoPagoConfig config = configRepository.findByBookstoreIdForUpdate(bookstoreId)
+                .orElseThrow(() -> new BusinessException("La librería no tiene una cuenta de Mercado Pago conectada."));
+
+        String accessToken = validAccessToken(config);
+        JsonNode account = accountClient.getCurrentUser(accessToken);
+        validateAccountIdentity(config.getMercadoPagoUserId(), account);
+        applyAccount(config, account);
+        configRepository.save(config);
+    }
+
+    private String validAccessToken(StoreMercadoPagoConfig config) {
         if (!hasText(config.getAccessTokenEncrypted()) || !hasText(config.getRefreshTokenEncrypted())) {
             throw new BusinessException("La conexión con Mercado Pago necesita volver a autorizarse.");
         }
+
         Instant expiresAt = config.getTokenExpiresAt();
         if (expiresAt != null && !expiresAt.isAfter(Instant.now().plus(REFRESH_MARGIN))) {
             try {
@@ -93,16 +130,20 @@ public class StoreMercadoPagoOAuthService {
                 throw ex;
             }
         }
+
         return cipher.decrypt(config.getAccessTokenEncrypted());
     }
 
-    private void saveToken(Long bookstoreId, JsonNode token, boolean newConnection) {
+    private void saveConnection(Long bookstoreId, JsonNode token, JsonNode account, boolean newConnection) {
         StoreMercadoPagoConfig config = configRepository.findByBookstoreIdForUpdate(bookstoreId).orElseGet(() -> {
             Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
                     .orElseThrow(() -> new BusinessException("No se encontró la librería."));
             return StoreMercadoPagoConfig.builder().bookstore(bookstore).enabled(false).build();
         });
+
         applyToken(config, token, newConnection);
+        if (newConnection) clearAccount(config);
+        if (account != null) applyAccount(config, account);
         config.setEnabled(true);
         configRepository.save(config);
     }
@@ -124,6 +165,37 @@ public class StoreMercadoPagoOAuthService {
         if (newConnection || config.getConnectedAt() == null) config.setConnectedAt(Instant.now());
         config.setDisconnectedAt(null);
         config.setConnectionError(null);
+    }
+
+    private void applyAccount(StoreMercadoPagoConfig config, JsonNode account) {
+        if (account == null || account.isNull()) return;
+        if (account.hasNonNull("id")) config.setMercadoPagoUserId(account.path("id").asLong());
+        config.setAccountNickname(text(account, "nickname"));
+        config.setAccountEmail(text(account, "email"));
+        config.setAccountFirstName(text(account, "first_name"));
+        config.setAccountLastName(text(account, "last_name"));
+        config.setAccountCountryId(text(account, "country_id"));
+    }
+
+    private void clearAccount(StoreMercadoPagoConfig config) {
+        config.setAccountNickname(null);
+        config.setAccountEmail(null);
+        config.setAccountFirstName(null);
+        config.setAccountLastName(null);
+        config.setAccountCountryId(null);
+    }
+
+    private void validateAccountIdentity(JsonNode token, JsonNode account) {
+        Long tokenUserId = token != null && token.hasNonNull("user_id") ? token.path("user_id").asLong() : null;
+        validateAccountIdentity(tokenUserId, account);
+    }
+
+    private void validateAccountIdentity(Long expectedUserId, JsonNode account) {
+        if (expectedUserId == null || account == null || !account.hasNonNull("id")) return;
+        long actualUserId = account.path("id").asLong();
+        if (actualUserId != expectedUserId) {
+            throw new BusinessException("La cuenta devuelta por Mercado Pago no coincide con la cuenta autorizada.");
+        }
     }
 
     public String redirectUri() {

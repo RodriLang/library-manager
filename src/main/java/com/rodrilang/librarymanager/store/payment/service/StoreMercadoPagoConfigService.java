@@ -48,6 +48,11 @@ public class StoreMercadoPagoConfigService {
         config.setAccessTokenEncrypted(null);
         config.setRefreshTokenEncrypted(null);
         config.setMercadoPagoUserId(null);
+        config.setAccountNickname(null);
+        config.setAccountEmail(null);
+        config.setAccountFirstName(null);
+        config.setAccountLastName(null);
+        config.setAccountCountryId(null);
         config.setPublicKey(null);
         config.setTokenType(null);
         config.setScope(null);
@@ -98,6 +103,11 @@ public class StoreMercadoPagoConfigService {
                 connected && applicationConfigured && Boolean.TRUE.equals(config.getEnabled()) && !hasText(config.getConnectionError()),
                 config != null && hasText(config.getConnectionError()),
                 connected ? config.getMercadoPagoUserId() : null,
+                connected ? config.getAccountNickname() : null,
+                connected ? config.getAccountEmail() : null,
+                connected ? config.getAccountFirstName() : null,
+                connected ? config.getAccountLastName() : null,
+                connected ? config.getAccountCountryId() : null,
                 connected ? config.getConnectedAt() : null,
                 connected ? config.getTokenExpiresAt() : null,
                 config == null ? null : config.getConnectionError(),

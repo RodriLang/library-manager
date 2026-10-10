@@ -36,6 +36,21 @@ public class StoreMercadoPagoConfig extends AuditableEntity {
     @Column(name = "mercado_pago_user_id")
     private Long mercadoPagoUserId;
 
+    @Column(name = "account_email")
+    private String accountEmail;
+
+    @Column(name = "account_nickname")
+    private String accountNickname;
+
+    @Column(name = "account_first_name")
+    private String accountFirstName;
+
+    @Column(name = "account_last_name")
+    private String accountLastName;
+
+    @Column(name = "account_country_id", length = 10)
+    private String accountCountryId;
+
     @Column(name = "public_key")
     private String publicKey;
 

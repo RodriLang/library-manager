@@ -38,6 +38,12 @@ public class StoreMercadoPagoConfigController {
         return configService.setEnabled(Boolean.TRUE.equals(request.enabled()));
     }
 
+    @PostMapping("/account/sync")
+    public MercadoPagoConfigResponse syncAccount() {
+        oauthService.syncCurrentAccount();
+        return configService.current();
+    }
+
     @DeleteMapping("/disconnect")
     public MercadoPagoConfigResponse disconnect() {
         return configService.disconnect();
