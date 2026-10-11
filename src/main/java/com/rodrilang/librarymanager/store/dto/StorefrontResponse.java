@@ -15,5 +15,6 @@ public record StorefrontResponse(
         boolean showAuthor,
         boolean showPublisher,
         boolean showStock,
+        String whatsappPhone,
         boolean mercadoPagoEnabled
 ) {}

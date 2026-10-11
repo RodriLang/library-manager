@@ -12,5 +12,6 @@ public record StoreSettingsRequest(
         @Size(max=1000) String faviconUrl,
         @Size(max=20) String primaryColor,
         @Size(max=20) String secondaryColor,
+        @Size(max=50) String phone,
         String description
 ) {}

@@ -16,6 +16,7 @@ public record StoreSettingsResponse(
         String faviconUrl,
         String primaryColor,
         String secondaryColor,
+        String phone,
         String description,
         List<StoreDomainResponse> domains
 ) {}

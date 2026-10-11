@@ -107,7 +107,7 @@ public class StorefrontService {
     private StorefrontResponse toStorefront(BookstoreStore s) {
         return new StorefrontResponse(s.getPublicId(), s.getSlug(), s.getDisplayName(), s.getDescription(), s.getLogoUrl(), s.getFaviconUrl(),
                 s.getPrimaryColor(), s.getSecondaryColor(), s.getTitleFormat(), s.getShowIsbn(), s.getShowAuthor(), s.getShowPublisher(), s.getShowStock(),
-                mercadoPagoConfigService.isEnabled(s.getBookstore().getId()));
+                s.getBookstore().getPhone(), mercadoPagoConfigService.isEnabled(s.getBookstore().getId()));
     }
     private StorefrontProductResponse toProduct(BookstoreStore store, StorePublication p, InventoryPrice price, int reserved) {
         Inventory i = p.getInventory(); Book b = i.getBook();

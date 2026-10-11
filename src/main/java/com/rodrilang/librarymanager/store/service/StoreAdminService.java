@@ -55,6 +55,10 @@ public class StoreAdminService {
         store.setFaviconUrl(blankToNull(request.faviconUrl()));
         store.setPrimaryColor(blankToNull(request.primaryColor()));
         store.setSecondaryColor(blankToNull(request.secondaryColor()));
+        if (request.phone() != null) {
+            store.getBookstore().setPhone(blankToNull(request.phone()));
+            bookstoreRepository.save(store.getBookstore());
+        }
         store.setDescription(blankToNull(request.description()));
         return toSettings(storeRepository.save(store));
     }
@@ -373,7 +377,7 @@ public class StoreAdminService {
                 .map(d -> toDomain(d)).toList();
         return new StoreSettingsResponse(store.getPublicId(), store.getSlug(), store.getDisplayName(), enabled, store.getTitleFormat(),
                 store.getShowIsbn(), store.getShowAuthor(), store.getShowPublisher(), store.getShowStock(), store.getLogoUrl(), store.getFaviconUrl(),
-                store.getPrimaryColor(), store.getSecondaryColor(), store.getDescription(), domains);
+                store.getPrimaryColor(), store.getSecondaryColor(), store.getBookstore().getPhone(), store.getDescription(), domains);
     }
     private StoreDomainResponse toDomain(StoreDomain d) {
         return new StoreDomainResponse(d.getId(), d.getHostname(), d.getType(), d.getStatus(), d.getVerificationToken());
