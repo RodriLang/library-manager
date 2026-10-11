@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.auth.security.config;
 
+import jakarta.servlet.DispatcherType;
 import com.rodrilang.librarymanager.auth.security.filter.JwtAuthenticationFilter;
 import com.rodrilang.librarymanager.admin.audit.filter.AdminAuditFilter;
 import com.rodrilang.librarymanager.auth.security.handler.JwtAuthenticationEntryPoint;
@@ -53,6 +54,11 @@ public class SecurityConfig {
                 .authenticationProvider(daoAuthenticationProvider)
 
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(
+                                DispatcherType.ASYNC,
+                                DispatcherType.ERROR
+                        ).permitAll()
+
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/refresh",
