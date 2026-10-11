@@ -11,11 +11,11 @@ import java.util.Optional;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
-    Page<Notification> findAllByBookstoreId(Long bookstoreId, Pageable pageable);
+    Page<Notification> findAllByBookstoreIdAndInAppVisibleTrue(Long bookstoreId, Pageable pageable);
 
-    long countByBookstoreIdAndReadAtIsNull(Long bookstoreId);
+    long countByBookstoreIdAndInAppVisibleTrueAndReadAtIsNull(Long bookstoreId);
 
-    Optional<Notification> findByIdAndBookstoreId(Long id, Long bookstoreId);
+    Optional<Notification> findByIdAndBookstoreIdAndInAppVisibleTrue(Long id, Long bookstoreId);
 
     Optional<Notification> findByBookstoreIdAndTypeAndSourceAndEntityTypeAndEntityId(
             Long bookstoreId,
@@ -30,6 +30,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             UPDATE Notification n
                SET n.readAt = :readAt
              WHERE n.bookstore.id = :bookstoreId
+               AND n.inAppVisible = true
                AND n.readAt IS NULL
             """)
     int markAllRead(@Param("bookstoreId") Long bookstoreId, @Param("readAt") Instant readAt);

@@ -3,6 +3,10 @@ package com.rodrilang.librarymanager.notification.controller;
 import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.notification.dto.NotificationResponse;
 import com.rodrilang.librarymanager.notification.dto.UnreadNotificationCountResponse;
+import com.rodrilang.librarymanager.notification.dto.NotificationPreferencesResponse;
+import com.rodrilang.librarymanager.notification.dto.UpdateNotificationPreferencesRequest;
+import com.rodrilang.librarymanager.notification.service.NotificationPreferenceService;
+import jakarta.validation.Valid;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.notification.service.NotificationService;
 import com.rodrilang.librarymanager.notification.service.NotificationSseService;
@@ -21,6 +25,7 @@ public class NotificationController {
     private final NotificationService service;
     private final NotificationSseService sseService;
     private final BookstoreContext bookstoreContext;
+    private final NotificationPreferenceService preferenceService;
 
     @GetMapping
     public PageResponse<NotificationResponse> list(Pageable pageable) {
@@ -32,6 +37,16 @@ public class NotificationController {
         response.setHeader("Cache-Control", "no-cache, no-transform");
         response.setHeader("X-Accel-Buffering", "no");
         return sseService.subscribe(bookstoreContext.getCurrentBookstoreId());
+    }
+
+    @GetMapping("/preferences")
+    public NotificationPreferencesResponse preferences() {
+        return preferenceService.getCurrent();
+    }
+
+    @PutMapping("/preferences")
+    public NotificationPreferencesResponse updatePreferences(@Valid @RequestBody UpdateNotificationPreferencesRequest request) {
+        return preferenceService.update(request);
     }
 
     @GetMapping("/unread-count")

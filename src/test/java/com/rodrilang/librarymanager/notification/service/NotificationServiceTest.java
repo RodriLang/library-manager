@@ -35,6 +35,8 @@ class NotificationServiceTest {
     @Mock TiendanubeStoreRepository tiendanubeStoreRepository;
     @Mock BookstoreContext bookstoreContext;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock NotificationPreferenceService preferenceService;
+    @Mock NotificationDeliveryOutboxService outboxService;
 
     @Test
     void storeOrderCreatesNotificationOnce() {
@@ -55,6 +57,9 @@ class NotificationServiceTest {
             return n;
         });
 
+        when(preferenceService.resolve(7L, NotificationType.STORE_ORDER_CREATED))
+                .thenReturn(new NotificationPreferenceService.ResolvedPreference(true, false, null));
+
         service().notifyStoreOrderCreated(order);
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
@@ -63,6 +68,37 @@ class NotificationServiceTest {
         assertThat(captor.getValue().getSource()).isEqualTo(NotificationSource.ANAQUEL_STORE);
         assertThat(captor.getValue().getEntityId()).isEqualTo(44L);
         verify(eventPublisher).publishEvent(new NotificationCreatedEvent(99L, 7L));
+    }
+
+
+    @Test
+    void emailOnlyPreferenceQueuesEmailWithoutPublishingSseEvent() {
+        Bookstore bookstore = mock(Bookstore.class);
+        when(bookstore.getId()).thenReturn(7L);
+        StoreOrder order = mock(StoreOrder.class);
+        when(order.getId()).thenReturn(45L);
+        when(order.getBookstore()).thenReturn(bookstore);
+        when(order.getOrderNumber()).thenReturn("AQL-45");
+        when(order.getTotal()).thenReturn(new BigDecimal("12000"));
+        when(repository.findByBookstoreIdAndTypeAndSourceAndEntityTypeAndEntityId(
+                7L, NotificationType.STORE_ORDER_CREATED, NotificationSource.ANAQUEL_STORE,
+                NotificationEntityType.STORE_ORDER, 45L)).thenReturn(Optional.empty());
+        when(bookstoreRepository.getReferenceById(7L)).thenReturn(bookstore);
+        when(preferenceService.resolve(7L, NotificationType.STORE_ORDER_CREATED))
+                .thenReturn(new NotificationPreferenceService.ResolvedPreference(false, true, "ventas@libreria.com"));
+        when(repository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification n = invocation.getArgument(0);
+            n.setId(100L);
+            return n;
+        });
+
+        service().notifyStoreOrderCreated(order);
+
+        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().isInAppVisible()).isFalse();
+        verify(eventPublisher, never()).publishEvent(any(NotificationCreatedEvent.class));
+        verify(outboxService).enqueueEmail(captor.getValue(), "ventas@libreria.com");
     }
 
     @Test
@@ -86,29 +122,29 @@ class NotificationServiceTest {
     @Test
     void listIsScopedToCurrentBookstore() {
         when(bookstoreContext.getCurrentBookstoreId()).thenReturn(8L);
-        when(repository.findAllByBookstoreId(eq(8L), any())).thenReturn(new PageImpl<>(List.of()));
+        when(repository.findAllByBookstoreIdAndInAppVisibleTrue(eq(8L), any())).thenReturn(new PageImpl<>(List.of()));
 
         service().list(PageRequest.of(0, 20));
 
-        verify(repository).findAllByBookstoreId(eq(8L), any());
-        verify(repository, never()).findAllByBookstoreId(eq(7L), any());
+        verify(repository).findAllByBookstoreIdAndInAppVisibleTrue(eq(8L), any());
+        verify(repository, never()).findAllByBookstoreIdAndInAppVisibleTrue(eq(7L), any());
     }
 
     @Test
     void markReadCannotLoadNotificationFromAnotherBookstore() {
         when(bookstoreContext.getCurrentBookstoreId()).thenReturn(8L);
-        when(repository.findByIdAndBookstoreId(15L, 8L)).thenReturn(Optional.empty());
+        when(repository.findByIdAndBookstoreIdAndInAppVisibleTrue(15L, 8L)).thenReturn(Optional.empty());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().markRead(15L))
                 .isInstanceOf(com.rodrilang.librarymanager.exception.ResourceNotFoundException.class);
 
-        verify(repository).findByIdAndBookstoreId(15L, 8L);
+        verify(repository).findByIdAndBookstoreIdAndInAppVisibleTrue(15L, 8L);
     }
 
     @Test
     void unreadCountAndReadAllAreScopedToCurrentBookstore() {
         when(bookstoreContext.getCurrentBookstoreId()).thenReturn(3L);
-        when(repository.countByBookstoreIdAndReadAtIsNull(3L)).thenReturn(4L);
+        when(repository.countByBookstoreIdAndInAppVisibleTrueAndReadAtIsNull(3L)).thenReturn(4L);
 
         assertThat(service().unreadCount().unreadCount()).isEqualTo(4L);
         assertThat(service().markAllRead().unreadCount()).isZero();
@@ -122,7 +158,9 @@ class NotificationServiceTest {
                 bookstoreRepository,
                 tiendanubeStoreRepository,
                 bookstoreContext,
-                eventPublisher
+                eventPublisher,
+                preferenceService,
+                outboxService
         );
     }
 }

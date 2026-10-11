@@ -45,6 +45,10 @@ public class Notification extends AuditableEntity {
     @Column(name = "entity_id")
     private Long entityId;
 
+    @Builder.Default
+    @Column(name = "in_app_visible", nullable = false)
+    private boolean inAppVisible = true;
+
     @Column(name = "read_at")
     private Instant readAt;
 }

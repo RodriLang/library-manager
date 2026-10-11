@@ -4,6 +4,8 @@ import com.rodrilang.librarymanager.email.config.EmailProperties;
 import com.rodrilang.librarymanager.email.model.EmailMessage;
 import com.rodrilang.librarymanager.email.template.EmailTemplateBuilder;
 import com.rodrilang.librarymanager.email.template.StoreOrderEmailTemplateBuilder;
+import com.rodrilang.librarymanager.email.template.NotificationEmailTemplateBuilder;
+import com.rodrilang.librarymanager.notification.service.NotificationDeliveryOutboxService.DeliveryPayload;
 import com.rodrilang.librarymanager.store.order.event.StoreOrderNotificationEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,7 @@ public class EmailService {
     private final EmailDeliveryService deliveryService;
     private final EmailTemplateBuilder templateBuilder;
     private final StoreOrderEmailTemplateBuilder storeOrderTemplateBuilder;
+    private final NotificationEmailTemplateBuilder notificationEmailTemplateBuilder;
     private final EmailProperties properties;
 
     public void sendBookstoreInvitation(
@@ -69,6 +72,19 @@ public class EmailService {
                 .plainTextBody(storeOrderTemplateBuilder.plainText(event))
                 .build();
 
+        deliveryService.send(message);
+    }
+
+    public void sendBookstoreNotification(DeliveryPayload payload) {
+        if (payload == null || payload.recipient() == null || payload.recipient().isBlank()) {
+            throw new IllegalArgumentException("La entrega de notificación por email es inválida");
+        }
+        EmailMessage message = EmailMessage.builder()
+                .to(payload.recipient())
+                .subject(notificationEmailTemplateBuilder.subject(payload))
+                .htmlBody(notificationEmailTemplateBuilder.html(payload))
+                .plainTextBody(notificationEmailTemplateBuilder.plainText(payload))
+                .build();
         deliveryService.send(message);
     }
 

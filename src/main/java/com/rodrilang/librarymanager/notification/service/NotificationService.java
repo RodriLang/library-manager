@@ -35,6 +35,8 @@ public class NotificationService {
     private final TiendanubeStoreRepository tiendanubeStoreRepository;
     private final BookstoreContext bookstoreContext;
     private final ApplicationEventPublisher eventPublisher;
+    private final NotificationPreferenceService preferenceService;
+    private final NotificationDeliveryOutboxService outboxService;
 
     @Transactional
     public Notification notifyStoreOrderCreated(StoreOrder order) {
@@ -75,25 +77,25 @@ public class NotificationService {
         Pageable safe = pageable.getSort().isUnsorted()
                 ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "createdAt"))
                 : pageable;
-        return PageResponse.of(repository.findAllByBookstoreId(bookstoreId, safe).map(this::toResponse));
+        return PageResponse.of(repository.findAllByBookstoreIdAndInAppVisibleTrue(bookstoreId, safe).map(this::toResponse));
     }
 
     @Transactional(readOnly = true)
     public Optional<NotificationResponse> findForBookstore(Long notificationId, Long bookstoreId) {
         if (notificationId == null || bookstoreId == null) return Optional.empty();
-        return repository.findByIdAndBookstoreId(notificationId, bookstoreId).map(this::toResponse);
+        return repository.findByIdAndBookstoreIdAndInAppVisibleTrue(notificationId, bookstoreId).map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
     public UnreadNotificationCountResponse unreadCount() {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-        return new UnreadNotificationCountResponse(repository.countByBookstoreIdAndReadAtIsNull(bookstoreId));
+        return new UnreadNotificationCountResponse(repository.countByBookstoreIdAndInAppVisibleTrueAndReadAtIsNull(bookstoreId));
     }
 
     @Transactional
     public NotificationResponse markRead(Long notificationId) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-        Notification notification = repository.findByIdAndBookstoreId(notificationId, bookstoreId)
+        Notification notification = repository.findByIdAndBookstoreIdAndInAppVisibleTrue(notificationId, bookstoreId)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró la notificación."));
         if (notification.getReadAt() == null) notification.setReadAt(Instant.now());
         return toResponse(notification);
@@ -118,6 +120,8 @@ public class NotificationService {
                 .orElse(null);
         if (existing != null) return existing;
 
+        NotificationPreferenceService.ResolvedPreference preference = preferenceService.resolve(bookstoreId, type);
+
         Notification saved = repository.save(Notification.builder()
                 .bookstore(bookstoreRepository.getReferenceById(bookstoreId))
                 .type(type)
@@ -126,8 +130,15 @@ public class NotificationService {
                 .message(message)
                 .entityType(entityType)
                 .entityId(entityId)
+                .inAppVisible(preference.inAppEnabled())
                 .build());
-        eventPublisher.publishEvent(new NotificationCreatedEvent(saved.getId(), bookstoreId));
+
+        if (preference.inAppEnabled()) {
+            eventPublisher.publishEvent(new NotificationCreatedEvent(saved.getId(), bookstoreId));
+        }
+        if (preference.emailEnabled()) {
+            outboxService.enqueueEmail(saved, preference.emailAddress());
+        }
         return saved;
     }
 
