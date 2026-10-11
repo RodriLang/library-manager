@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
+import com.rodrilang.librarymanager.notification.service.NotificationService;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.store.channel.SalesChannelType;
@@ -54,6 +55,7 @@ public class StoreOrderService {
     private final BookstoreBookFieldOverrideService overrideService;
     private final StoreOrderCompletionService completionService;
     private final StoreOrderNotificationPublisher notificationPublisher;
+    private final NotificationService notificationService;
     private final StoreMercadoPagoConfigService mercadoPagoConfigService;
     private final StoreMercadoPagoPaymentService mercadoPagoPaymentService;
 
@@ -168,6 +170,7 @@ public class StoreOrderService {
             mercadoPagoPaymentService.createCheckout(order, items);
         }
         notificationPublisher.publish(StoreOrderNotificationType.RECEIVED, order, items);
+        notificationService.notifyStoreOrderCreated(order);
 
         return toPublic(order, items);
     }

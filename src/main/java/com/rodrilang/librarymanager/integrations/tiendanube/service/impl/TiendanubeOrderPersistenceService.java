@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.Tiendan
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.webhook.repository.TiendanubeProcessedEventClaimRepository;
+import com.rodrilang.librarymanager.notification.service.NotificationService;
 import com.rodrilang.librarymanager.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,15 +25,20 @@ public class TiendanubeOrderPersistenceService {
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeProcessedEventClaimRepository processedEventClaimRepository;
     private final InventoryService inventoryService;
+    private final NotificationService notificationService;
 
     @Transactional
     public void applyCreated(TiendanubeWebhookRequest request, TiendanubeOrderResponse order) {
-        applyStockDeduction(request, order, "creada");
+        if (applyStockDeduction(request, order, "creada")) {
+            notificationService.notifyTiendanubeSaleCreated(request.storeId(), request.id());
+        }
     }
 
     @Transactional
     public void applyPaidFallback(TiendanubeWebhookRequest request, TiendanubeOrderResponse order) {
-        applyStockDeduction(request, order, "pagada-fallback");
+        if (applyStockDeduction(request, order, "pagada-fallback")) {
+            notificationService.notifyTiendanubeSaleCreated(request.storeId(), request.id());
+        }
     }
 
     @Transactional
@@ -61,8 +67,8 @@ public class TiendanubeOrderPersistenceService {
         );
     }
 
-    private void applyStockDeduction(TiendanubeWebhookRequest request, TiendanubeOrderResponse order,
-                                     String eventDescription) {
+    private boolean applyStockDeduction(TiendanubeWebhookRequest request, TiendanubeOrderResponse order,
+                                        String eventDescription) {
         boolean claimed = processedEventClaimRepository.tryClaimOrderStockDeduction(
                 request.storeId(),
                 request.id(),
@@ -74,7 +80,7 @@ public class TiendanubeOrderPersistenceService {
                     "Stock Tiendanube order already deducted. storeId={} orderId={} sourceEvent={}",
                     request.storeId(), request.id(), request.event()
             );
-            return;
+            return false;
         }
 
         applyProducts(
@@ -87,6 +93,7 @@ public class TiendanubeOrderPersistenceService {
                         String.valueOf(request.id())
                 )
         );
+        return true;
     }
 
     private void applyProducts(TiendanubeWebhookRequest request, TiendanubeOrderResponse order, String eventDescription,
