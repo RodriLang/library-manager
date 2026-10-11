@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -75,6 +76,12 @@ public class NotificationService {
                 ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "createdAt"))
                 : pageable;
         return PageResponse.of(repository.findAllByBookstoreId(bookstoreId, safe).map(this::toResponse));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<NotificationResponse> findForBookstore(Long notificationId, Long bookstoreId) {
+        if (notificationId == null || bookstoreId == null) return Optional.empty();
+        return repository.findByIdAndBookstoreId(notificationId, bookstoreId).map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
