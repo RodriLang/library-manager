@@ -40,9 +40,9 @@ public class NotificationSseService {
                             "bookstoreId", bookstoreId,
                             "connectedAt", Instant.now().toString()
                     )));
-        } catch (IOException ex) {
+        } catch (IOException | IllegalStateException ex) {
             remove(bookstoreId, emitter);
-            emitter.completeWithError(ex);
+            log.debug("No se pudo enviar el evento inicial SSE para la librería {}", bookstoreId, ex);
         }
 
         return emitter;
@@ -61,7 +61,7 @@ public class NotificationSseService {
                         .data(notification));
             } catch (IOException | IllegalStateException ex) {
                 remove(bookstoreId, emitter);
-                safeComplete(emitter);
+                log.debug("Se eliminó un stream SSE cerrado para la librería {}", bookstoreId, ex);
             }
         }
     }
@@ -78,7 +78,7 @@ public class NotificationSseService {
                             .data(Map.of("at", Instant.now().toString())));
                 } catch (IOException | IllegalStateException ex) {
                     remove(bookstoreId, emitter);
-                    safeComplete(emitter);
+                    log.debug("Heartbeat SSE descartó una conexión cerrada para la librería {}", bookstoreId, ex);
                 }
             }
         });
@@ -96,11 +96,4 @@ public class NotificationSseService {
         if (emitters.isEmpty()) emittersByBookstore.remove(bookstoreId, emitters);
     }
 
-    private void safeComplete(SseEmitter emitter) {
-        try {
-            emitter.complete();
-        } catch (RuntimeException ex) {
-            log.debug("No se pudo completar un stream SSE de notificaciones ya cerrado", ex);
-        }
-    }
 }
