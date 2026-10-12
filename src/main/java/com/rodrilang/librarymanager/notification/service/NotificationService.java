@@ -12,6 +12,8 @@ import com.rodrilang.librarymanager.notification.model.*;
 import com.rodrilang.librarymanager.notification.repository.NotificationRepository;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.store.order.model.StoreOrder;
+import com.rodrilang.librarymanager.shipping.shipment.model.ShipmentStatus;
+import com.rodrilang.librarymanager.shipping.shipment.model.StoreShipment;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.*;
@@ -53,6 +55,51 @@ public class NotificationService {
                 NotificationEntityType.STORE_ORDER,
                 order.getId()
         );
+    }
+
+    @Transactional
+    public Notification notifyShipmentDispatched(StoreShipment shipment) {
+        if (shipment == null || shipment.getId() == null || shipment.getOrder() == null || shipment.getBookstore() == null) return null;
+        return createIfAbsent(
+                shipment.getBookstore().getId(),
+                NotificationType.SHIPMENT_DISPATCHED,
+                NotificationSource.ANAQUEL_STORE,
+                "Pedido despachado",
+                "El pedido #" + shipment.getOrder().getOrderNumber() + " fue despachado.",
+                NotificationEntityType.STORE_ORDER,
+                shipment.getOrder().getId()
+        );
+    }
+
+    @Transactional
+    public Notification notifyShipmentStatus(StoreShipment shipment, ShipmentStatus status) {
+        if (shipment == null || shipment.getId() == null || shipment.getOrder() == null || shipment.getBookstore() == null) return null;
+        NotificationType type = switch (status) {
+            case IN_TRANSIT -> NotificationType.SHIPMENT_IN_TRANSIT;
+            case OUT_FOR_DELIVERY -> NotificationType.SHIPMENT_OUT_FOR_DELIVERY;
+            case DELIVERED -> NotificationType.SHIPMENT_DELIVERED;
+            case EXCEPTION -> NotificationType.SHIPMENT_EXCEPTION;
+            default -> null;
+        };
+        if (type == null) return null;
+
+        String orderNumber = shipment.getOrder().getOrderNumber();
+        String title = switch (status) {
+            case IN_TRANSIT -> "Pedido despachado";
+            case OUT_FOR_DELIVERY -> "Pedido en distribución";
+            case DELIVERED -> "Pedido entregado";
+            case EXCEPTION -> "Incidencia en un envío";
+            default -> "Actualización de envío";
+        };
+        String message = switch (status) {
+            case IN_TRANSIT -> "El pedido #" + orderNumber + " está en tránsito.";
+            case OUT_FOR_DELIVERY -> "El pedido #" + orderNumber + " salió a reparto.";
+            case DELIVERED -> "El pedido #" + orderNumber + " fue entregado.";
+            case EXCEPTION -> "El pedido #" + orderNumber + " tiene una incidencia de transporte.";
+            default -> "El envío del pedido #" + orderNumber + " cambió de estado.";
+        };
+        return createIfAbsent(shipment.getBookstore().getId(), type, NotificationSource.ANAQUEL_STORE, title, message,
+                NotificationEntityType.STORE_ORDER, shipment.getOrder().getId());
     }
 
     @Transactional

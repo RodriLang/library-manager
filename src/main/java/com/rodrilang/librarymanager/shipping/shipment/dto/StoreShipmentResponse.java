@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.shipping.shipment.model.ShipmentStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 public record StoreShipmentResponse(
         Long id,
@@ -27,5 +28,6 @@ public record StoreShipmentResponse(
         Instant createdAtProvider,
         Instant dispatchedAt,
         Instant deliveredAt,
-        Instant cancelledAt
+        Instant cancelledAt,
+        List<StoreShipmentTrackingEventResponse> events
 ) {}

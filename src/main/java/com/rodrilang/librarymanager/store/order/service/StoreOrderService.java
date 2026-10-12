@@ -10,6 +10,11 @@ import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceServ
 import com.rodrilang.librarymanager.notification.service.NotificationService;
 import com.rodrilang.librarymanager.shipping.quote.model.StoreShippingQuote;
 import com.rodrilang.librarymanager.shipping.quote.service.StorefrontShippingQuoteService;
+import com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentPublicResponse;
+import com.rodrilang.librarymanager.shipping.shipment.model.ShipmentStatus;
+import com.rodrilang.librarymanager.shipping.shipment.model.StoreShipment;
+import com.rodrilang.librarymanager.shipping.shipment.repository.StoreShipmentRepository;
+import com.rodrilang.librarymanager.shipping.shipment.service.ShipmentTrackingService;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.store.channel.SalesChannelType;
@@ -61,6 +66,8 @@ public class StoreOrderService {
     private final StoreMercadoPagoConfigService mercadoPagoConfigService;
     private final StoreMercadoPagoPaymentService mercadoPagoPaymentService;
     private final StorefrontShippingQuoteService shippingQuoteService;
+    private final StoreShipmentRepository shipmentRepository;
+    private final ShipmentTrackingService shipmentTrackingService;
 
     @Value("${app.store.order-reservation-minutes:1440}")
     private long reservationMinutes;
@@ -454,8 +461,23 @@ public class StoreOrderService {
                 o.getReservationExpiresAt(), o.getCreatedAt(), o.getPaymentCheckoutUrl(), o.getPaymentStatusDetail(),
                 o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDestinationPostalCode(),
                 o.getShippingDestinationCity(), o.getShippingDestinationState(), o.getShippingDestinationStreet(), o.getShippingDestinationStreetNumber(),
-                o.getShippingDestinationFloorApartment(), itemResponses(items));
+                o.getShippingDestinationFloorApartment(), publicShipment(o), itemResponses(items));
     }
+
+    private StoreShipmentPublicResponse publicShipment(StoreOrder order) {
+        if (order.getDeliveryMethod() != StoreDeliveryMethod.SHIPPING || order.getBookstore() == null) return null;
+        StoreShipment shipment = shipmentRepository
+                .findFirstByOrderIdAndBookstoreIdAndStatusNotOrderByCreatedAtDesc(order.getId(), order.getBookstore().getId(), ShipmentStatus.CANCELLED)
+                .orElseGet(() -> shipmentRepository.findAllByOrderIdAndBookstoreIdOrderByCreatedAtDesc(order.getId(), order.getBookstore().getId())
+                        .stream().findFirst().orElse(null));
+        if (shipment == null) return null;
+        return new StoreShipmentPublicResponse(
+                shipment.getProvider(), shipment.getServiceName(), shipment.getStatus(), shipment.getTrackingNumber(), shipment.getTrackingUrl(),
+                shipment.getProviderStatus(), shipment.getProviderStatusDetail(), shipment.getDispatchedAt(), shipment.getDeliveredAt(),
+                shipmentTrackingService.events(shipment.getId())
+        );
+    }
+
     private StoreOrderResponse toAdmin(StoreOrder o, List<StoreOrderItem> items) {
         return new StoreOrderResponse(o.getId(), o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getCustomerPhone(), o.getNotes(), o.getSubtotal(),

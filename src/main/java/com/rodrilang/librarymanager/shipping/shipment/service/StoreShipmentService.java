@@ -6,13 +6,14 @@ import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.shipping.model.ShippingProviderType;
 import com.rodrilang.librarymanager.shipping.quote.model.StoreShippingQuote;
 import com.rodrilang.librarymanager.shipping.quote.repository.StoreShippingQuoteRepository;
+import com.rodrilang.librarymanager.shipping.shipment.dto.CreateShipmentTrackingEventRequest;
 import com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentResponse;
+import com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentTrackingEventResponse;
 import com.rodrilang.librarymanager.shipping.shipment.dto.UpdateShipmentMetadataRequest;
 import com.rodrilang.librarymanager.shipping.shipment.model.ShipmentStatus;
 import com.rodrilang.librarymanager.shipping.shipment.model.StoreShipment;
 import com.rodrilang.librarymanager.shipping.shipment.repository.StoreShipmentRepository;
 import com.rodrilang.librarymanager.store.order.model.StoreDeliveryMethod;
-import com.rodrilang.librarymanager.store.order.model.StoreFulfillmentStatus;
 import com.rodrilang.librarymanager.store.order.model.StoreOrder;
 import com.rodrilang.librarymanager.store.order.model.StoreOrderStatus;
 import com.rodrilang.librarymanager.store.order.repository.StoreOrderRepository;
@@ -31,6 +32,7 @@ public class StoreShipmentService {
     private final StoreOrderRepository orderRepository;
     private final StoreShipmentRepository shipmentRepository;
     private final StoreShippingQuoteRepository quoteRepository;
+    private final ShipmentTrackingService trackingService;
 
     @Transactional(readOnly = true)
     public List<StoreShipmentResponse> list(Long orderId) {
@@ -51,9 +53,7 @@ public class StoreShipmentService {
             throw new BusinessException("Confirmá el pedido antes de preparar el envío.");
         }
         List<StoreShipment> existing = shipmentRepository.findAllByOrderIdAndBookstoreIdOrderByCreatedAtDesc(orderId, bookstoreId);
-        StoreShipment active = existing.stream()
-                .filter(s -> s.getStatus() != ShipmentStatus.CANCELLED)
-                .findFirst().orElse(null);
+        StoreShipment active = existing.stream().filter(s -> s.getStatus() != ShipmentStatus.CANCELLED).findFirst().orElse(null);
         if (active != null) return toResponse(active);
 
         StoreShippingQuote quote = findQuote(order.getShippingQuoteId());
@@ -70,7 +70,9 @@ public class StoreShipmentService {
                 .depthCm(quote != null ? quote.getDepthCm() : null)
                 .declaredValue(order.getSubtotal())
                 .build();
-        return toResponse(shipmentRepository.save(shipment));
+        shipment = shipmentRepository.save(shipment);
+        trackingService.recordLocalEvent(shipment, ShipmentStatus.DRAFT, "Envío preparado en Anaquel.");
+        return toResponse(shipment);
     }
 
     @Transactional
@@ -82,47 +84,51 @@ public class StoreShipmentService {
         shipment.setLabelUrl(normalize(request.labelUrl()));
         shipment.setProviderStatus(normalize(request.providerStatus()));
         shipment.setProviderStatusDetail(normalize(request.providerStatusDetail()));
-        if (shipment.getProviderShipmentId() != null && shipment.getCreatedAtProvider() == null) {
-            shipment.setCreatedAtProvider(Instant.now());
-        }
+        if (shipment.getProviderShipmentId() != null && shipment.getCreatedAtProvider() == null) shipment.setCreatedAtProvider(Instant.now());
         if (shipment.getStatus() == ShipmentStatus.DRAFT && shipment.getTrackingNumber() != null) {
-            shipment.setStatus(ShipmentStatus.READY_TO_SHIP);
+            trackingService.recordLocalEvent(shipment, ShipmentStatus.READY_TO_SHIP, "Seguimiento asignado. Envío listo para despachar.");
         }
+        return toResponse(shipment);
+    }
+
+    @Transactional
+    public StoreShipmentResponse refreshTracking(Long orderId, Long shipmentId) {
+        StoreShipment shipment = requireShipment(orderId, shipmentId);
+        if (shipment.getStatus() == ShipmentStatus.CANCELLED || shipment.getStatus() == ShipmentStatus.DELIVERED) return toResponse(shipment);
+        trackingService.refresh(shipment);
+        return toResponse(shipment);
+    }
+
+    @Transactional
+    public StoreShipmentResponse addTrackingEvent(Long orderId, Long shipmentId, CreateShipmentTrackingEventRequest request) {
+        StoreShipment shipment = requireShipment(orderId, shipmentId);
+        trackingService.addManualEvent(shipment, request);
         return toResponse(shipment);
     }
 
     @Transactional
     public StoreShipmentResponse markDispatched(Long orderId, Long shipmentId) {
         StoreShipment shipment = requireShipment(orderId, shipmentId);
-        if (shipment.getStatus() == ShipmentStatus.CANCELLED || shipment.getStatus() == ShipmentStatus.DELIVERED) {
-            throw new BusinessException("El envío ya no puede marcarse como despachado.");
+        if (shipment.getStatus() != ShipmentStatus.DRAFT && shipment.getStatus() != ShipmentStatus.READY_TO_SHIP) {
+            throw new BusinessException("El envío no está en un estado que permita despacharlo.");
         }
-        shipment.setStatus(ShipmentStatus.IN_TRANSIT);
-        shipment.setDispatchedAt(Instant.now());
-        shipment.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.SHIPPED);
+        trackingService.recordDispatched(shipment);
         return toResponse(shipment);
     }
 
     @Transactional
     public StoreShipmentResponse markDelivered(Long orderId, Long shipmentId) {
         StoreShipment shipment = requireShipment(orderId, shipmentId);
-        if (shipment.getStatus() == ShipmentStatus.CANCELLED) {
-            throw new BusinessException("Un envío cancelado no puede marcarse como entregado.");
-        }
-        shipment.setStatus(ShipmentStatus.DELIVERED);
-        shipment.setDeliveredAt(Instant.now());
-        shipment.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.DELIVERED);
+        if (shipment.getStatus() == ShipmentStatus.CANCELLED) throw new BusinessException("Un envío cancelado no puede marcarse como entregado.");
+        trackingService.recordLocalEvent(shipment, ShipmentStatus.DELIVERED, "Pedido entregado.");
         return toResponse(shipment);
     }
 
     @Transactional
     public StoreShipmentResponse cancel(Long orderId, Long shipmentId) {
         StoreShipment shipment = requireShipment(orderId, shipmentId);
-        if (shipment.getStatus() == ShipmentStatus.DELIVERED) {
-            throw new BusinessException("Un envío entregado no puede cancelarse.");
-        }
-        shipment.setStatus(ShipmentStatus.CANCELLED);
-        shipment.setCancelledAt(Instant.now());
+        if (shipment.getStatus() == ShipmentStatus.DELIVERED) throw new BusinessException("Un envío entregado no puede cancelarse.");
+        trackingService.recordLocalEvent(shipment, ShipmentStatus.CANCELLED, "Envío cancelado.");
         return toResponse(shipment);
     }
 
@@ -148,11 +154,12 @@ public class StoreShipmentService {
         }
     }
 
-    private StoreShipmentResponse toResponse(StoreShipment s) {
+    public StoreShipmentResponse toResponse(StoreShipment s) {
+        List<StoreShipmentTrackingEventResponse> events = trackingService.events(s.getId());
         return new StoreShipmentResponse(s.getId(), s.getProvider(), s.getServiceCode(), s.getServiceName(), s.getStatus(),
                 s.getProviderShipmentId(), s.getTrackingNumber(), s.getTrackingUrl(), s.getLabelUrl(), s.getProviderStatus(),
                 s.getProviderStatusDetail(), s.getWeightGrams(), s.getWidthCm(), s.getHeightCm(), s.getDepthCm(), s.getDeclaredValue(),
-                s.getCreatedAt(), s.getCreatedAtProvider(), s.getDispatchedAt(), s.getDeliveredAt(), s.getCancelledAt());
+                s.getCreatedAt(), s.getCreatedAtProvider(), s.getDispatchedAt(), s.getDeliveredAt(), s.getCancelledAt(), events);
     }
 
     private String normalize(String value) {

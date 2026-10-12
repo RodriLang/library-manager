@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentPublicResponse;
 
 public record StoreOrderPublicResponse(
         UUID publicId,
@@ -33,5 +34,6 @@ public record StoreOrderPublicResponse(
         String shippingDestinationStreet,
         String shippingDestinationStreetNumber,
         String shippingDestinationFloorApartment,
+        StoreShipmentPublicResponse shipment,
         List<StoreOrderItemResponse> items
 ) {}
