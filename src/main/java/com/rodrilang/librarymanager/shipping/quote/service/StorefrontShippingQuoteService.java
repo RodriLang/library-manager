@@ -29,6 +29,7 @@ import com.rodrilang.librarymanager.store.repository.BookstoreStoreRepository;
 import com.rodrilang.librarymanager.store.repository.StorePublicationRepository;
 import com.rodrilang.librarymanager.store.service.SalesChannelService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class StorefrontShippingQuoteService {
     private static final BigDecimal ZERO = new BigDecimal("0.00");
     private static final BigDecimal DEFAULT_WEIGHT_GRAMS = new BigDecimal("400");
@@ -215,12 +217,25 @@ public class StorefrontShippingQuoteService {
                     ShippingProviderQuote branch = ocaQuoteClient.quoteBranch(shippingSettings.getOriginPostalCode(), postalCode, pack, credentials, integrationSettings);
                     addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, branch, integrationSettings));
                 } catch (RuntimeException branchError) {
-                    warnings.add("OCA no pudo cotizar retiro en sucursal en este momento.");
+                    log.warn("OCA branch quote failed bookstoreId={} originCp={} destinationCp={} weightGrams={} volumeCm3={} message={}",
+                            bookstoreId, shippingSettings.getOriginPostalCode(), postalCode, pack.weightGrams(), pack.volumeCm3(), branchError.getMessage(), branchError);
+                    warnings.add(providerWarning("OCA retiro en sucursal", branchError));
                 }
             }
         } catch (RuntimeException ex) {
-            warnings.add("OCA no pudo cotizar en este momento.");
+            log.warn("OCA home quote failed bookstoreId={} originCp={} destinationCp={} weightGrams={} dimensions={}x{}x{}cm volumeCm3={} message={}",
+                    bookstoreId, shippingSettings.getOriginPostalCode(), postalCode, pack.weightGrams(), pack.widthCm(), pack.heightCm(), pack.depthCm(),
+                    pack.volumeCm3(), ex.getMessage(), ex);
+            warnings.add(providerWarning("OCA", ex));
         }
+    }
+
+    private String providerWarning(String provider, RuntimeException ex) {
+        String message = ex.getMessage();
+        if (message == null || message.isBlank()) return provider + " no pudo cotizar en este momento.";
+        String compact = message.replaceAll("[\r\n\t]+", " ").replaceAll("\\s{2,}", " ").trim();
+        if (compact.length() > 300) compact = compact.substring(0, 300) + "…";
+        return provider + ": " + compact;
     }
 
     private void addPickupQuotes(BookstoreStore store, Long bookstoreId, String postalCode, String itemHash, ShippingPackage pack,

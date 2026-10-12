@@ -25,7 +25,7 @@ public class OcaConnectionService {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         Map<String,String> credentials = configurationService.configuredCredentials(bookstoreId, ShippingProviderType.OCA);
         Map<String,Object> settings = settingsReader.settings(bookstoreId);
-        String cuit = support.require(credentials, "cuit", "CUIT");
+        String cuit = support.requireSetting(settings, credentials, "cuit", "CUIT");
         int operativa = support.requireInt(credentials, settings, "operativa", "operativa");
         String cp = settingsRepository.findByBookstoreId(bookstoreId).map(s -> s.getOriginPostalCode()).filter(v -> v!=null&&!v.isBlank())
                 .orElseThrow(() -> new BusinessException("Configurá el código postal de origen antes de probar OCA."));
@@ -36,8 +36,11 @@ public class OcaConnectionService {
         ));
         Document doc = OcaXmlSupport.parse(xml);
         if (OcaXmlSupport.elements(doc, "Table").isEmpty()) throw new BusinessException("OCA respondió, pero no devolvió una tarifa de prueba.");
-        List<String> validated = new ArrayList<>(List.of("CUIT", "OPERATIVA", "COTIZADOR"));
-        if (credentials.containsKey("usuario") && credentials.containsKey("password") && credentials.containsKey("nroCuenta")) validated.add("EPAK");
-        return new ShippingConnectionTestResponse(true, "Conexión con OCA validada en el cotizador e-Pak.", List.copyOf(validated));
+        List<String> validated = List.of("CUIT", "OPERATIVA", "COTIZADOR");
+        boolean epakConfigured = credentials.containsKey("usuario") && credentials.containsKey("password");
+        String message = epakConfigured
+                ? "Cotizador OCA validado. Las credenciales e-Pak están configuradas, pero este test no valida usuario ni contraseña."
+                : "Cotizador OCA validado. Todavía faltan configurar las credenciales e-Pak para crear y anular envíos.";
+        return new ShippingConnectionTestResponse(true, message, validated);
     }
 }

@@ -57,6 +57,27 @@ final class OcaXmlSupport {
         return null;
     }
 
+
+    static String providerMessage(Document document) {
+        String message = first(document,
+                "Error", "error", "Mensaje", "mensaje", "Message", "message",
+                "Descripcion", "Descripción", "descripcion", "description",
+                "Observaciones", "observaciones", "Resultado", "resultado");
+        if (message != null && !message.isBlank()) return compact(message);
+
+        Element root = document.getDocumentElement();
+        if (root != null) {
+            String rootText = root.getTextContent();
+            if (rootText != null && !rootText.isBlank()) return compact(rootText);
+        }
+        return null;
+    }
+
+    private static String compact(String value) {
+        String result = value.replaceAll("[\r\n\t]+", " ").replaceAll("\\s{2,}", " ").trim();
+        return result.length() <= 500 ? result : result.substring(0, 500) + "…";
+    }
+
     static String attribute(Element element, String... names) {
         for (String name : names) {
             if (element.hasAttribute(name)) {

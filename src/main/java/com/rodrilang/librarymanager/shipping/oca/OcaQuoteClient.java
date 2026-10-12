@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.shipping.model.ShippingProviderType;
 import com.rodrilang.librarymanager.shipping.quote.provider.ShippingPackage;
 import com.rodrilang.librarymanager.shipping.quote.provider.ShippingProviderQuote;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -16,6 +17,7 @@ import java.util.*;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class OcaQuoteClient {
     private final OcaClientSupport support;
 
@@ -40,22 +42,41 @@ public class OcaQuoteClient {
 
     private ShippingProviderQuote quote(String originPostalCode, String destinationPostalCode, ShippingPackage pack,
                                         Map<String, String> credentials, Map<String, Object> settings, int operativa, ShippingDeliveryType deliveryType, String displayName) {
-        String cuit = support.require(credentials, "cuit", "CUIT");
+        String cuit = support.requireSetting(settings, credentials, "cuit", "CUIT");
         BigDecimal weightKg = BigDecimal.valueOf(pack.weightGrams()).divide(BigDecimal.valueOf(1000), 3, RoundingMode.CEILING);
         BigDecimal volumeM3 = pack.volumeCm3().divide(BigDecimal.valueOf(1_000_000), 6, RoundingMode.CEILING);
+        int origin = numericPostal(originPostalCode);
+        int destination = numericPostal(destinationPostalCode);
+        String declaredValue = pack.declaredValue().setScale(0, RoundingMode.HALF_UP).toPlainString();
+
+        log.info("OCA quote request environment={} operativa={} originCp={} destinationCp={} weightKg={} volumeM3={} declaredValue={} deliveryType={}",
+                support.environment(settings), operativa, origin, destination, weightKg, volumeM3, declaredValue, deliveryType);
+
         String xml = support.post(settings, "Tarifar_Envio_Corporativo", Map.of(
                 "Cuit", cuit,
                 "Operativa", operativa,
                 "PesoTotal", weightKg.toPlainString(),
                 "VolumenTotal", volumeM3.toPlainString(),
-                "CodigoPostalOrigen", numericPostal(originPostalCode),
-                "CodigoPostalDestino", numericPostal(destinationPostalCode),
+                "CodigoPostalOrigen", origin,
+                "CodigoPostalDestino", destination,
                 "CantidadPaquetes", 1,
-                "ValorDeclarado", pack.declaredValue().setScale(0, RoundingMode.HALF_UP).toPlainString()
+                "ValorDeclarado", declaredValue
         ));
+
+        log.debug("OCA quote raw response operativa={} originCp={} destinationCp={} body={}",
+                operativa, origin, destination, support.responsePreview(xml));
+
         Document doc = OcaXmlSupport.parse(xml);
         List<Element> tables = OcaXmlSupport.elements(doc, "Table");
-        if (tables.isEmpty()) throw new BusinessException("OCA no devolvió una tarifa para ese destino.");
+        if (tables.isEmpty()) {
+            String providerMessage = OcaXmlSupport.providerMessage(doc);
+            log.warn("OCA quote returned no tariff environment={} operativa={} originCp={} destinationCp={} weightKg={} volumeM3={} providerMessage={} body={}",
+                    support.environment(settings), operativa, origin, destination, weightKg, volumeM3, providerMessage, support.responsePreview(xml));
+            if (providerMessage != null && !providerMessage.isBlank()) {
+                throw new BusinessException("OCA no devolvió una tarifa: " + providerMessage);
+            }
+            throw new BusinessException("OCA no devolvió una tarifa para el CP " + destination + " con la operativa " + operativa + ".");
+        }
         Element table = tables.get(0);
         BigDecimal amount = decimal(OcaXmlSupport.text(table, "Total", "Precio"));
         String plazo = OcaXmlSupport.text(table, "PlazoEntrega");
@@ -63,6 +84,8 @@ public class OcaQuoteClient {
         String tarifador = OcaXmlSupport.text(table, "Tarifador");
         String ambito = OcaXmlSupport.text(table, "Ambito");
         String metadata = "{\"operativa\":" + operativa + ",\"tarifador\":\"" + json(tarifador) + "\",\"ambito\":\"" + json(ambito) + "\"}";
+        log.info("OCA quote success operativa={} originCp={} destinationCp={} amount={} plazo={} tarifador={} ambito={} deliveryType={}",
+                operativa, origin, destination, amount, plazo, tarifador, ambito, deliveryType);
         return new ShippingProviderQuote(ShippingProviderType.OCA, "OCA-" + operativa + (deliveryType == ShippingDeliveryType.BRANCH ? "-BRANCH" : "-HOME"), displayName,
                 deliveryType, amount, days, days, days == null ? plazo : days + " días hábiles", null, metadata);
     }

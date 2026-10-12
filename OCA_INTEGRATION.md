@@ -4,16 +4,21 @@ Implementación sobre el núcleo genérico de Shipping de Anaquel.
 
 ## Credenciales/configuración esperada
 
-Credenciales cifradas de la integración `OCA`:
+Credenciales cifradas de la integración `OCA` (sólo secretos):
 
-- `cuit`: CUIT registrado en OCA, con guiones.
 - `usuario`: usuario e-Pak.
 - `password`: contraseña e-Pak.
+
+Settings de cuenta/configuración comercial:
+
+- `cuit`: CUIT registrado en OCA, con guiones.
 - `nroCuenta`: número de cuenta corriente OCA, por ejemplo `111757/001`.
-- `operativa`: número de operativa contratada (Puerta a Puerta para el checkout HOME actual).
+- `operativa`: número de operativa contratada para entrega a domicilio.
+- `operativaSucursal`: operativa Puerta a Sucursal cuando corresponda.
+- `operativaDevolucion`: operativa de logística inversa cuando corresponda.
 - `centroCosto`: centro de costo habilitado para la operativa.
 
-Settings opcionales de la integración:
+Settings técnicos opcionales de la integración:
 
 - `environment`: `QA` (default) o `PRODUCTION`.
 - `baseUrl`: override explícito de la URL e-Pak.
@@ -31,7 +36,7 @@ Settings opcionales de la integración:
 - Tracking: `Tracking_Pieza`.
 - Etiqueta PDF: `GetPdfDeEtiquetasPorOrdenOrNumeroEnvioParaEtiquetadora` / A4.
 - Cancelación: `AnularOrdenGenerada`.
-- Prueba de conexión: cotización mínima contra el ambiente configurado.
+- Prueba de conexión: cotización mínima contra el ambiente configurado. Este test valida CUIT, operativa y acceso al cotizador; no valida el usuario/password e-Pak porque la API documentada no expone un login inocuo independiente de operaciones que crean o anulan envíos.
 
 ## Nota sobre operativas
 
@@ -47,3 +52,17 @@ Además de cotización, alta, tracking, cancelación y rótulos, Anaquel soporta
 - Reglas comerciales por integración: CP incluidos/excluidos, compra mínima/máxima, umbral propio de envío gratis, ajuste de precio, recomendación y prioridad.
 
 No se deben copiar operativas de ejemplo de la documentación oficial a producción: cada librería debe usar las operativas asignadas por OCA a su cuenta.
+
+## Compatibilidad y migración de configuración
+
+Anaquel guarda como secretos únicamente `usuario` y `password`. Si un cliente anterior todavía envía `cuit`, `nroCuenta`, `operativa`, `operativaSucursal`, `operativaDevolucion`, `operativaLogisticaInversa` o `centroCosto` dentro de `credentials`, el backend los mueve automáticamente a `settings`. Los clientes OCA mantienen lectura legacy como fallback para no romper integraciones ya persistidas.
+
+## Datos públicos de QA de la documentación OCA
+
+La documentación oficial publica una cuenta genérica de pruebas (`test@oca.com.ar`, cuenta `111757/001`, CUIT `30-53625919-4`) y operativas de ejemplo. Son exclusivamente para QA y no deben persistirse automáticamente ni reutilizarse en producción.
+
+## Diagnóstico de cotizaciones
+
+Las cotizaciones OCA registran en backend los datos operativos necesarios para reproducir un fallo sin exponer `usuario` ni `password`: ambiente, operativa, CP de origen/destino, peso, volumen, valor declarado y tipo de entrega.
+
+Si OCA responde sin una tabla de tarifa, el cliente intenta extraer el mensaje del proveedor y registra también una vista acotada de la respuesta XML. El warning devuelto por `/shipping/quotes` conserva el mensaje funcional de OCA cuando está disponible.

@@ -28,6 +28,10 @@ import java.util.*;
 public class BookstoreShippingConfigurationService {
     private static final TypeReference<Map<String, String>> STRING_MAP = new TypeReference<>() {};
     private static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {};
+    private static final Set<String> OCA_NON_SECRET_CREDENTIAL_KEYS = Set.of(
+            "cuit", "nroCuenta", "operativa", "operativaSucursal", "operativaDevolucion",
+            "operativaLogisticaInversa", "centroCosto"
+    );
 
     private final BookstoreShippingSettingsRepository settingsRepository;
     private final BookstoreShippingIntegrationRepository integrationRepository;
@@ -86,8 +90,15 @@ public class BookstoreShippingConfigurationService {
         BookstoreShippingIntegration integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, providerType)
                 .orElseGet(() -> newIntegration(bookstoreId, providerType));
 
+        Map<String, Object> migratedSettings = new LinkedHashMap<>();
         if (request.credentials() != null) {
             Map<String, String> credentials = normalizeCredentials(request.credentials());
+            if (providerType == ShippingProviderType.OCA) {
+                OCA_NON_SECRET_CREDENTIAL_KEYS.forEach(key -> {
+                    String value = credentials.remove(key);
+                    if (value != null) migratedSettings.put(key, value);
+                });
+            }
             if (credentials.isEmpty()) {
                 integration.setCredentialsEncrypted(null);
             } else {
@@ -98,8 +109,12 @@ public class BookstoreShippingConfigurationService {
             }
         }
 
-        if (request.settings() != null) {
-            integration.setSettingsJson(write(normalizeSettings(request.settings())));
+        if (request.settings() != null || !migratedSettings.isEmpty()) {
+            Map<String, Object> settings = request.settings() == null
+                    ? new LinkedHashMap<>(readSettings(integration.getSettingsJson()))
+                    : new LinkedHashMap<>(normalizeSettings(request.settings()));
+            settings.putAll(migratedSettings);
+            integration.setSettingsJson(write(settings));
         }
 
         boolean enabled = request.enabled() == null ? Boolean.TRUE.equals(integration.getEnabled()) : request.enabled();
@@ -249,13 +264,29 @@ public class BookstoreShippingConfigurationService {
                 integration == null ? ShippingIntegrationStatus.NOT_CONFIGURED : integration.getStatus(),
                 credentialsConfigured,
                 credentialsConfigured ? credentialKeys(integration) : List.of(),
-                integration == null ? Map.of() : readSettings(integration.getSettingsJson()),
+                integration == null ? Map.of() : integrationSettingsForResponse(provider.type(), integration),
                 servicesForResponse(provider.type(), services),
                 integration == null ? null : integration.getLastError(),
                 integration == null ? null : integration.getConfiguredAt()
         );
     }
 
+
+
+    private Map<String, Object> integrationSettingsForResponse(ShippingProviderType providerType, BookstoreShippingIntegration integration) {
+        Map<String, Object> settings = new LinkedHashMap<>(readSettings(integration.getSettingsJson()));
+        if (providerType != ShippingProviderType.OCA || !hasText(integration.getCredentialsEncrypted())) return settings;
+        try {
+            Map<String, String> legacyCredentials = objectMapper.readValue(cipher.decrypt(integration.getCredentialsEncrypted()), STRING_MAP);
+            OCA_NON_SECRET_CREDENTIAL_KEYS.forEach(key -> {
+                String value = legacyCredentials.get(key);
+                if (value != null && !value.isBlank()) settings.putIfAbsent(key, value);
+            });
+        } catch (RuntimeException | JsonProcessingException ignored) {
+            // El bloque de settings sigue siendo utilizable aunque una credencial legacy no pueda leerse.
+        }
+        return settings;
+    }
 
     private List<ShippingServiceResponse> servicesForResponse(ShippingProviderType provider, List<BookstoreShippingService> persisted) {
         List<ShippingServiceResponse> result = new ArrayList<>(persisted.stream().map(this::toServiceResponse).toList());

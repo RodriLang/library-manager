@@ -35,11 +35,11 @@ public class OcaShipmentClient implements ShipmentCreationClient, ShipmentCancel
         Map<String,Object> settings = settingsReader.settings(bookstoreId);
         String user = support.require(credentials, "usuario", "usuario e-Pak");
         String password = support.require(credentials, "password", "contraseña e-Pak");
-        String account = support.require(credentials, "nroCuenta", "número de cuenta");
+        String account = support.requireSetting(settings, credentials, "nroCuenta", "número de cuenta");
         boolean pickup = shipment.getOrder().getShippingDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.BRANCH
                 || shipment.getOrder().getShippingDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.PICKUP_POINT;
         int operativa = pickup ? branchOperation(credentials, settings) : support.requireInt(credentials, settings, "operativa", "operativa");
-        String costCenter = first(credentials.get("centroCosto"), Objects.toString(settings.get("centroCosto"), null));
+        String costCenter = first(Objects.toString(settings.get("centroCosto"), null), credentials.get("centroCosto"));
         if (costCenter == null || costCenter.isBlank()) throw new BusinessException("Configurá el centro de costo de OCA (centroCosto).");
 
         BookstoreShippingSettings origin = settingsRepository.findByBookstoreId(bookstoreId)

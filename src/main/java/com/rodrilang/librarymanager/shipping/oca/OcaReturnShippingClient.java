@@ -57,8 +57,8 @@ public class OcaReturnShippingClient implements ReturnShippingClient, ReturnShip
         Map<String, Object> settings = settingsReader.settings(bookstoreId);
         String user = support.require(credentials, "usuario", "usuario e-Pak");
         String password = support.require(credentials, "password", "contraseña e-Pak");
-        String account = support.require(credentials, "nroCuenta", "número de cuenta");
-        String costCenter = first(credentials.get("centroCosto"), text(settings.get("centroCosto")));
+        String account = support.requireSetting(settings, credentials, "nroCuenta", "número de cuenta");
+        String costCenter = first(text(settings.get("centroCosto")), credentials.get("centroCosto"));
         if (blank(costCenter)) throw new BusinessException("Configurá el centro de costo de OCA (centroCosto).");
         int operation = reverseOperation(credentials, settings);
 

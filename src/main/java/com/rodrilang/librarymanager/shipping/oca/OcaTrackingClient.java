@@ -30,7 +30,7 @@ public class OcaTrackingClient implements ShipmentTrackingClient {
         Long bookstoreId = shipment.getBookstore().getId();
         Map<String,String> credentials = configurationService.requireCredentials(bookstoreId, provider());
         Map<String,Object> settings = settingsReader.settings(bookstoreId);
-        String cuit = support.require(credentials, "cuit", "CUIT");
+        String cuit = support.requireSetting(settings, credentials, "cuit", "CUIT");
         String xml = support.post(settings, "Tracking_Pieza", Map.of(
                 "Pieza", shipment.getTrackingNumber(),
                 "NroDocumentoCliente", shipment.getOrder().getOrderNumber(),
