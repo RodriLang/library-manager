@@ -61,6 +61,7 @@ public class StorefrontShippingQuoteService {
     private final BookstoreShippingConfigurationService configurationService;
     private final StoreShippingQuoteRepository quoteRepository;
     private final AndreaniQuoteClient andreaniClient;
+    private final CorreoArgentinoQuoteClient correoArgentinoClient;
     private final ObjectMapper objectMapper;
 
     @Value("${app.store.shipping.quote-ttl-minutes:10}")
@@ -108,6 +109,7 @@ public class StorefrontShippingQuoteService {
         addPickupQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, expiresAt, results);
         addManualQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, results);
         addAndreaniQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
+        addCorreoArgentinoQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
 
         results.sort(Comparator.comparing(StorefrontShippingQuoteResponse::amount)
                 .thenComparing(StorefrontShippingQuoteResponse::displayName));
@@ -146,6 +148,29 @@ public class StorefrontShippingQuoteService {
             results.add(persist(store, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, providerQuote));
         } catch (RuntimeException ex) {
             warnings.add("Andreani no pudo cotizar en este momento.");
+        }
+    }
+
+    private void addCorreoArgentinoQuotes(BookstoreStore store, Long bookstoreId, String postalCode, String itemHash, ShippingPackage pack,
+                                           BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
+                                           List<StorefrontShippingQuoteResponse> results, List<String> warnings) {
+        var integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, ShippingProviderType.CORREO_ARGENTINO).orElse(null);
+        if (integration == null || !Boolean.TRUE.equals(integration.getEnabled())) return;
+        var shippingSettings = settingsRepository.findByBookstoreId(bookstoreId).orElse(null);
+        if (shippingSettings == null || shippingSettings.getOriginPostalCode() == null || shippingSettings.getOriginPostalCode().isBlank()) return;
+        boolean homeEnabled = shippingServiceRepository.findAllByBookstoreIdAndProviderOrderBySortOrderAscIdAsc(bookstoreId, ShippingProviderType.CORREO_ARGENTINO)
+                .stream().filter(s -> s.getDeliveryType() == ShippingDeliveryType.HOME).allMatch(s -> Boolean.TRUE.equals(s.getEnabled()));
+        if (!homeEnabled) return;
+        try {
+            Map<String, String> credentials = configurationService.requireCredentials(bookstoreId, ShippingProviderType.CORREO_ARGENTINO);
+            Map<String, Object> integrationSettings = readSettings(integration.getSettingsJson());
+            for (ShippingProviderQuote providerQuote : correoArgentinoClient.quote(shippingSettings.getOriginPostalCode(), postalCode, pack, credentials, integrationSettings)) {
+                // La selección de sucursal requiere agencyId; se habilitará en Store con el selector de puntos PAQ.AR.
+                if (providerQuote.deliveryType() != ShippingDeliveryType.HOME) continue;
+                results.add(persist(store, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, providerQuote));
+            }
+        } catch (RuntimeException ex) {
+            warnings.add("Correo Argentino no pudo cotizar en este momento.");
         }
     }
 

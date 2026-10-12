@@ -7,6 +7,8 @@ import com.rodrilang.librarymanager.shipping.shipment.dto.UpdateShipmentMetadata
 import com.rodrilang.librarymanager.shipping.shipment.service.StoreShipmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.*;
+import com.rodrilang.librarymanager.shipping.shipment.provider.ShipmentLabelResult;
 
 import java.util.List;
 
@@ -26,6 +28,21 @@ public class StoreShipmentAdminController {
     public StoreShipmentResponse updateMetadata(@PathVariable Long orderId, @PathVariable Long shipmentId,
                                                 @RequestBody UpdateShipmentMetadataRequest request) {
         return service.updateMetadata(orderId, shipmentId, request);
+    }
+
+
+    @PostMapping("/{shipmentId}/provider/create")
+    public StoreShipmentResponse createProviderShipment(@PathVariable Long orderId, @PathVariable Long shipmentId) {
+        return service.createProviderShipment(orderId, shipmentId);
+    }
+
+    @GetMapping("/{shipmentId}/label")
+    public ResponseEntity<byte[]> label(@PathVariable Long orderId, @PathVariable Long shipmentId) {
+        ShipmentLabelResult result = service.label(orderId, shipmentId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(result.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + result.fileName().replace("\"", "") + "\"")
+                .body(result.content());
     }
 
     @PostMapping("/{shipmentId}/tracking/refresh")

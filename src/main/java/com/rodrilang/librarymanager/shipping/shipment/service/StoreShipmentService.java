@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.shipping.model.ShippingProviderType;
 import com.rodrilang.librarymanager.shipping.shipment.dto.*;
 import com.rodrilang.librarymanager.shipping.shipment.model.*;
 import com.rodrilang.librarymanager.shipping.shipment.repository.*;
+import com.rodrilang.librarymanager.shipping.shipment.provider.*;
 import com.rodrilang.librarymanager.store.order.model.*;
 import com.rodrilang.librarymanager.store.order.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,9 @@ public class StoreShipmentService {
     private final StoreShipmentRepository shipmentRepository;
     private final StoreShipmentItemRepository shipmentItemRepository;
     private final ShipmentTrackingService trackingService;
+    private final ShipmentCreationClientRegistry creationClientRegistry;
+    private final ShipmentCancellationClientRegistry cancellationClientRegistry;
+    private final ShipmentLabelClientRegistry labelClientRegistry;
 
     @Transactional(readOnly = true)
     public List<StoreShipmentResponse> list(Long orderId) {
@@ -103,9 +107,43 @@ public class StoreShipmentService {
 
     @Transactional public StoreShipmentResponse refreshTracking(Long orderId, Long shipmentId) { StoreShipment s=requireShipment(orderId,shipmentId); if(s.getStatus()!=ShipmentStatus.CANCELLED&&s.getStatus()!=ShipmentStatus.DELIVERED) trackingService.refresh(s); return toResponse(s); }
     @Transactional public StoreShipmentResponse addTrackingEvent(Long orderId, Long shipmentId, CreateShipmentTrackingEventRequest request) { StoreShipment s=requireShipment(orderId,shipmentId); trackingService.addManualEvent(s,request); return toResponse(s); }
+    @Transactional
+    public StoreShipmentResponse createProviderShipment(Long orderId, Long shipmentId) {
+        StoreShipment s = requireShipment(orderId, shipmentId);
+        if (s.getStatus() == ShipmentStatus.CANCELLED || s.getStatus() == ShipmentStatus.DELIVERED) throw new BusinessException("El envío ya está finalizado.");
+        if (s.getTrackingNumber() != null && !s.getTrackingNumber().isBlank()) throw new BusinessException("El bulto ya tiene un envío generado en el transportista.");
+        ShipmentCreationClient client = creationClientRegistry.find(s.getProvider())
+                .orElseThrow(() -> new BusinessException("La generación automática de envíos para " + s.getProvider() + " todavía no está disponible."));
+        ShipmentCreationResult result = client.create(s);
+        s.setProviderShipmentId(normalize(result.providerShipmentId()));
+        s.setTrackingNumber(normalize(result.trackingNumber()));
+        s.setTrackingUrl(normalize(result.trackingUrl()));
+        s.setProviderStatus(normalize(result.providerStatus()));
+        s.setProviderStatusDetail(normalize(result.providerStatusDetail()));
+        s.setCreatedAtProvider(Instant.now());
+        trackingService.recordLocalEvent(s, ShipmentStatus.READY_TO_SHIP, "Envío generado en " + s.getProvider() + ".");
+        return toResponse(s);
+    }
+
+    @Transactional(readOnly = true)
+    public ShipmentLabelResult label(Long orderId, Long shipmentId) {
+        StoreShipment s = requireShipment(orderId, shipmentId);
+        ShipmentLabelClient client = labelClientRegistry.find(s.getProvider())
+                .orElseThrow(() -> new BusinessException("La generación de rótulos para " + s.getProvider() + " todavía no está disponible."));
+        return client.label(s);
+    }
+
     @Transactional public StoreShipmentResponse markDispatched(Long orderId, Long shipmentId) { StoreShipment s=requireShipment(orderId,shipmentId); if(s.getStatus()!=ShipmentStatus.DRAFT&&s.getStatus()!=ShipmentStatus.READY_TO_SHIP) throw new BusinessException("El envío no está en un estado que permita despacharlo."); trackingService.recordDispatched(s); return toResponse(s); }
     @Transactional public StoreShipmentResponse markDelivered(Long orderId, Long shipmentId) { StoreShipment s=requireShipment(orderId,shipmentId); if(s.getStatus()==ShipmentStatus.CANCELLED) throw new BusinessException("Un envío cancelado no puede marcarse como entregado."); trackingService.recordLocalEvent(s,ShipmentStatus.DELIVERED,"Pedido entregado."); return toResponse(s); }
-    @Transactional public StoreShipmentResponse cancel(Long orderId, Long shipmentId) { StoreShipment s=requireShipment(orderId,shipmentId); if(s.getStatus()==ShipmentStatus.DELIVERED) throw new BusinessException("Un envío entregado no puede cancelarse."); trackingService.recordLocalEvent(s,ShipmentStatus.CANCELLED,"Envío cancelado."); return toResponse(s); }
+    @Transactional public StoreShipmentResponse cancel(Long orderId, Long shipmentId) {
+        StoreShipment s=requireShipment(orderId,shipmentId);
+        if(s.getStatus()==ShipmentStatus.DELIVERED) throw new BusinessException("Un envío entregado no puede cancelarse.");
+        if (s.getTrackingNumber() != null && !s.getTrackingNumber().isBlank()) {
+            cancellationClientRegistry.find(s.getProvider()).ifPresent(client -> client.cancel(s));
+        }
+        trackingService.recordLocalEvent(s,ShipmentStatus.CANCELLED,"Envío cancelado.");
+        return toResponse(s);
+    }
 
     private StoreOrder requireOrder(Long orderId, Long bookstoreId) { return orderRepository.findByIdAndBookstoreId(orderId, bookstoreId).orElseThrow(() -> new ResourceNotFoundException("No se encontró el pedido.")); }
     private StoreShipment requireShipment(Long orderId, Long shipmentId) { return shipmentRepository.findByIdAndOrderIdAndBookstoreId(shipmentId, orderId, bookstoreContext.getCurrentBookstoreId()).orElseThrow(() -> new ResourceNotFoundException("No se encontró el envío.")); }

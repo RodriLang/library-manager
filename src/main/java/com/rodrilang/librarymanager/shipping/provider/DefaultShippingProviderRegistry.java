@@ -17,7 +17,7 @@ public class DefaultShippingProviderRegistry {
                 ShippingCapability.TRACKING, ShippingCapability.LABEL, ShippingCapability.BRANCHES));
         register(map, descriptor(ShippingProviderType.CORREO_ARGENTINO, "Correo Argentino", true,
                 ShippingCapability.QUOTE, ShippingCapability.CREATE_SHIPMENT, ShippingCapability.CANCEL_SHIPMENT,
-                ShippingCapability.TRACKING, ShippingCapability.LABEL, ShippingCapability.BRANCHES));
+                ShippingCapability.TRACKING, ShippingCapability.LABEL, ShippingCapability.BRANCHES, ShippingCapability.PICKUP_POINTS));
         register(map, descriptor(ShippingProviderType.OCA, "OCA", true,
                 ShippingCapability.QUOTE, ShippingCapability.CREATE_SHIPMENT, ShippingCapability.CANCEL_SHIPMENT,
                 ShippingCapability.TRACKING, ShippingCapability.LABEL, ShippingCapability.BRANCHES,
