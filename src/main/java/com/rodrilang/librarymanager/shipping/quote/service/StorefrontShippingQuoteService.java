@@ -14,6 +14,7 @@ import com.rodrilang.librarymanager.shipping.model.*;
 import com.rodrilang.librarymanager.shipping.quote.dto.*;
 import com.rodrilang.librarymanager.shipping.quote.model.StoreShippingQuote;
 import com.rodrilang.librarymanager.shipping.quote.provider.*;
+import com.rodrilang.librarymanager.shipping.oca.OcaQuoteClient;
 import com.rodrilang.librarymanager.shipping.quote.repository.StoreShippingQuoteRepository;
 import com.rodrilang.librarymanager.shipping.repository.BookstoreShippingIntegrationRepository;
 import com.rodrilang.librarymanager.shipping.repository.BookstoreShippingServiceRepository;
@@ -62,6 +63,7 @@ public class StorefrontShippingQuoteService {
     private final StoreShippingQuoteRepository quoteRepository;
     private final AndreaniQuoteClient andreaniClient;
     private final CorreoArgentinoQuoteClient correoArgentinoClient;
+    private final OcaQuoteClient ocaQuoteClient;
     private final ObjectMapper objectMapper;
 
     @Value("${app.store.shipping.quote-ttl-minutes:10}")
@@ -110,6 +112,7 @@ public class StorefrontShippingQuoteService {
         addManualQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, results);
         addAndreaniQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
         addCorreoArgentinoQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
+        addOcaQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
 
         results.sort(Comparator.comparing(StorefrontShippingQuoteResponse::amount)
                 .thenComparing(StorefrontShippingQuoteResponse::displayName));
@@ -171,6 +174,26 @@ public class StorefrontShippingQuoteService {
             }
         } catch (RuntimeException ex) {
             warnings.add("Correo Argentino no pudo cotizar en este momento.");
+        }
+    }
+
+    private void addOcaQuotes(BookstoreStore store, Long bookstoreId, String postalCode, String itemHash, ShippingPackage pack,
+                              BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
+                              List<StorefrontShippingQuoteResponse> results, List<String> warnings) {
+        var integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, ShippingProviderType.OCA).orElse(null);
+        if (integration == null || !Boolean.TRUE.equals(integration.getEnabled())) return;
+        var shippingSettings = settingsRepository.findByBookstoreId(bookstoreId).orElse(null);
+        if (shippingSettings == null || shippingSettings.getOriginPostalCode() == null || shippingSettings.getOriginPostalCode().isBlank()) return;
+        boolean homeEnabled = shippingServiceRepository.findAllByBookstoreIdAndProviderOrderBySortOrderAscIdAsc(bookstoreId, ShippingProviderType.OCA)
+                .stream().filter(s -> s.getDeliveryType() == ShippingDeliveryType.HOME).allMatch(s -> Boolean.TRUE.equals(s.getEnabled()));
+        if (!homeEnabled) return;
+        try {
+            Map<String, String> credentials = configurationService.requireCredentials(bookstoreId, ShippingProviderType.OCA);
+            Map<String, Object> integrationSettings = readSettings(integration.getSettingsJson());
+            ShippingProviderQuote providerQuote = ocaQuoteClient.quoteHome(shippingSettings.getOriginPostalCode(), postalCode, pack, credentials, integrationSettings);
+            results.add(persist(store, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, providerQuote));
+        } catch (RuntimeException ex) {
+            warnings.add("OCA no pudo cotizar en este momento.");
         }
     }
 

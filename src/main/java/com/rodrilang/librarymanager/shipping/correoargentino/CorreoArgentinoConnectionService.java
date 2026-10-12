@@ -22,7 +22,7 @@ public class CorreoArgentinoConnectionService {
 
     public ShippingConnectionTestResponse test() {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
-        Map<String,String> credentials = configurationService.requireCredentials(bookstoreId, ShippingProviderType.CORREO_ARGENTINO);
+        Map<String,String> credentials = configurationService.configuredCredentials(bookstoreId, ShippingProviderType.CORREO_ARGENTINO);
         Map<String,Object> settings = settingsReader.settings(bookstoreId);
         List<String> validated = new ArrayList<>();
         if (support.hasMiCorreoCredentials(credentials)) {

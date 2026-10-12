@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.shipping.dto.*;
 import com.rodrilang.librarymanager.shipping.model.ShippingProviderType;
 import com.rodrilang.librarymanager.shipping.service.BookstoreShippingConfigurationService;
 import com.rodrilang.librarymanager.shipping.correoargentino.CorreoArgentinoConnectionService;
+import com.rodrilang.librarymanager.shipping.oca.OcaConnectionService;
 import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPoint;
 import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPointClientRegistry;
 import jakarta.validation.Valid;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 public class BookstoreShippingConfigurationController {
     private final BookstoreShippingConfigurationService service;
     private final CorreoArgentinoConnectionService correoArgentinoConnectionService;
+    private final OcaConnectionService ocaConnectionService;
     private final ShippingPickupPointClientRegistry pickupPointClientRegistry;
 
     @GetMapping
@@ -59,6 +61,11 @@ public class BookstoreShippingConfigurationController {
     @PostMapping("/integrations/CORREO_ARGENTINO/test")
     public ShippingConnectionTestResponse testCorreoArgentino() {
         return correoArgentinoConnectionService.test();
+    }
+
+    @PostMapping("/integrations/OCA/test")
+    public ShippingConnectionTestResponse testOca() {
+        return ocaConnectionService.test();
     }
 
     @PostMapping("/integrations/{provider}/disconnect")

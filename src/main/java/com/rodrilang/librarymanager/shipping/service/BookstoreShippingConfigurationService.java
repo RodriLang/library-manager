@@ -172,6 +172,22 @@ public class BookstoreShippingConfigurationService {
     }
 
     @Transactional(readOnly = true)
+    public Map<String, String> configuredCredentials(Long bookstoreId, ShippingProviderType providerType) {
+        ShippingProvider provider = providerRegistry.get(providerType);
+        if (!provider.requiresCredentials()) return Map.of();
+        BookstoreShippingIntegration integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, providerType)
+                .orElseThrow(() -> new BusinessException("La integración de envíos no está configurada."));
+        if (!hasText(integration.getCredentialsEncrypted())) {
+            throw new BusinessException("Cargá las credenciales de " + provider.displayName() + " antes de probar la conexión.");
+        }
+        try {
+            return objectMapper.readValue(cipher.decrypt(integration.getCredentialsEncrypted()), STRING_MAP);
+        } catch (JsonProcessingException ex) {
+            throw new BusinessException("Las credenciales de envío configuradas no son válidas.");
+        }
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, String> requireCredentials(Long bookstoreId, ShippingProviderType providerType) {
         ShippingProvider provider = providerRegistry.get(providerType);
         if (!provider.requiresCredentials()) return Map.of();
