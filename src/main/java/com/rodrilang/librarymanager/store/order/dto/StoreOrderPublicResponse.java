@@ -35,5 +35,6 @@ public record StoreOrderPublicResponse(
         String shippingDestinationStreetNumber,
         String shippingDestinationFloorApartment,
         StoreShipmentPublicResponse shipment,
+        List<StoreShipmentPublicResponse> shipments,
         List<StoreOrderItemResponse> items
 ) {}

@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.shipping.shipment.controller;
 
 import com.rodrilang.librarymanager.shipping.shipment.dto.CreateShipmentTrackingEventRequest;
+import com.rodrilang.librarymanager.shipping.shipment.dto.CreateStoreShipmentRequest;
 import com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentResponse;
 import com.rodrilang.librarymanager.shipping.shipment.dto.UpdateShipmentMetadataRequest;
 import com.rodrilang.librarymanager.shipping.shipment.service.StoreShipmentService;
@@ -19,7 +20,7 @@ public class StoreShipmentAdminController {
     public List<StoreShipmentResponse> list(@PathVariable Long orderId) { return service.list(orderId); }
 
     @PostMapping
-    public StoreShipmentResponse createDraft(@PathVariable Long orderId) { return service.createDraft(orderId); }
+    public StoreShipmentResponse createDraft(@PathVariable Long orderId, @RequestBody(required = false) CreateStoreShipmentRequest request) { return service.createDraft(orderId, request); }
 
     @PatchMapping("/{shipmentId}")
     public StoreShipmentResponse updateMetadata(@PathVariable Long orderId, @PathVariable Long shipmentId,

@@ -67,6 +67,7 @@ public class StoreOrderService {
     private final StoreMercadoPagoPaymentService mercadoPagoPaymentService;
     private final StorefrontShippingQuoteService shippingQuoteService;
     private final StoreShipmentRepository shipmentRepository;
+    private final com.rodrilang.librarymanager.shipping.shipment.repository.StoreShipmentItemRepository shipmentItemRepository;
     private final ShipmentTrackingService shipmentTrackingService;
 
     @Value("${app.store.order-reservation-minutes:1440}")
@@ -461,21 +462,25 @@ public class StoreOrderService {
                 o.getReservationExpiresAt(), o.getCreatedAt(), o.getPaymentCheckoutUrl(), o.getPaymentStatusDetail(),
                 o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDestinationPostalCode(),
                 o.getShippingDestinationCity(), o.getShippingDestinationState(), o.getShippingDestinationStreet(), o.getShippingDestinationStreetNumber(),
-                o.getShippingDestinationFloorApartment(), publicShipment(o), itemResponses(items));
+                o.getShippingDestinationFloorApartment(), publicShipment(o), publicShipments(o), itemResponses(items));
     }
 
     private StoreShipmentPublicResponse publicShipment(StoreOrder order) {
-        if (order.getDeliveryMethod() != StoreDeliveryMethod.SHIPPING || order.getBookstore() == null) return null;
-        StoreShipment shipment = shipmentRepository
-                .findFirstByOrderIdAndBookstoreIdAndStatusNotOrderByCreatedAtDesc(order.getId(), order.getBookstore().getId(), ShipmentStatus.CANCELLED)
-                .orElseGet(() -> shipmentRepository.findAllByOrderIdAndBookstoreIdOrderByCreatedAtDesc(order.getId(), order.getBookstore().getId())
-                        .stream().findFirst().orElse(null));
-        if (shipment == null) return null;
-        return new StoreShipmentPublicResponse(
-                shipment.getProvider(), shipment.getServiceName(), shipment.getStatus(), shipment.getTrackingNumber(), shipment.getTrackingUrl(),
-                shipment.getProviderStatus(), shipment.getProviderStatusDetail(), shipment.getDispatchedAt(), shipment.getDeliveredAt(),
-                shipmentTrackingService.events(shipment.getId())
-        );
+        return publicShipments(order).stream().findFirst().orElse(null);
+    }
+
+    private List<StoreShipmentPublicResponse> publicShipments(StoreOrder order) {
+        if (order.getDeliveryMethod() != StoreDeliveryMethod.SHIPPING || order.getBookstore() == null) return List.of();
+        return shipmentRepository.findAllByOrderIdAndBookstoreIdOrderByCreatedAtDesc(order.getId(), order.getBookstore().getId()).stream()
+                .filter(shipment -> shipment.getStatus() != ShipmentStatus.CANCELLED)
+                .sorted(java.util.Comparator.comparing(StoreShipment::getPackageSequence, java.util.Comparator.nullsLast(Integer::compareTo)))
+                .map(shipment -> new StoreShipmentPublicResponse(
+                        shipment.getPackageSequence(), shipment.getProvider(), shipment.getServiceName(), shipment.getStatus(), shipment.getTrackingNumber(), shipment.getTrackingUrl(),
+                        shipment.getProviderStatus(), shipment.getProviderStatusDetail(), shipment.getDispatchedAt(), shipment.getDeliveredAt(),
+                        shipmentItemRepository.findAllByShipmentIdOrderByIdAsc(shipment.getId()).stream()
+                                .map(i -> new com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentItemResponse(i.getOrderItem().getInventory().getId(), i.getOrderItem().getTitle(), i.getOrderItem().getIsbn(), i.getQuantity())).toList(),
+                        shipmentTrackingService.events(shipment.getId())
+                )).toList();
     }
 
     private StoreOrderResponse toAdmin(StoreOrder o, List<StoreOrderItem> items) {

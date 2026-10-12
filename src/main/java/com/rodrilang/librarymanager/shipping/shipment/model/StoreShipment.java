@@ -77,6 +77,12 @@ public class StoreShipment extends AuditableEntity {
     @Column(name = "declared_value", precision = 14, scale = 2)
     private BigDecimal declaredValue;
 
+    @Column(name = "package_sequence", nullable = false)
+    private Integer packageSequence;
+
+    @Column(columnDefinition = "TEXT")
+    private String notes;
+
     @Column(name = "created_at_provider")
     private Instant createdAtProvider;
 

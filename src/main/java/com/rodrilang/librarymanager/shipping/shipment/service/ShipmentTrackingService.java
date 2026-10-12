@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.shipping.shipment.model.ShipmentStatus;
 import com.rodrilang.librarymanager.shipping.shipment.model.StoreShipment;
 import com.rodrilang.librarymanager.shipping.shipment.model.StoreShipmentTrackingEvent;
 import com.rodrilang.librarymanager.shipping.shipment.repository.StoreShipmentTrackingEventRepository;
+import com.rodrilang.librarymanager.shipping.shipment.repository.StoreShipmentRepository;
 import com.rodrilang.librarymanager.shipping.shipment.tracking.ProviderTrackingEvent;
 import com.rodrilang.librarymanager.shipping.shipment.tracking.ProviderTrackingSnapshot;
 import com.rodrilang.librarymanager.shipping.shipment.tracking.ShipmentTrackingClient;
@@ -25,6 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ShipmentTrackingService {
     private final StoreShipmentTrackingEventRepository eventRepository;
+    private final StoreShipmentRepository shipmentRepository;
     private final ShipmentTrackingClientRegistry clientRegistry;
     private final NotificationService notificationService;
 
@@ -130,15 +132,26 @@ public class ShipmentTrackingService {
         if (newStatus == ShipmentStatus.DELIVERED) shipment.setDeliveredAt(at);
         if (newStatus == ShipmentStatus.CANCELLED) shipment.setCancelledAt(at);
 
-        if (newStatus == ShipmentStatus.IN_TRANSIT || newStatus == ShipmentStatus.OUT_FOR_DELIVERY) {
-            shipment.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.SHIPPED);
-        } else if (newStatus == ShipmentStatus.DELIVERED) {
-            shipment.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.DELIVERED);
-        } else if (newStatus == ShipmentStatus.CANCELLED && shipment.getOrder().getFulfillmentStatus() != StoreFulfillmentStatus.DELIVERED) {
-            shipment.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.PREPARING);
-        }
+        recalculateOrderFulfillment(shipment);
 
         if (notify && previous != newStatus) notificationService.notifyShipmentStatus(shipment, newStatus);
+    }
+
+    private void recalculateOrderFulfillment(StoreShipment changed) {
+        List<StoreShipment> shipments = shipmentRepository.findAllByOrderIdAndBookstoreIdOrderByCreatedAtDesc(
+                changed.getOrder().getId(), changed.getBookstore().getId());
+        List<StoreShipment> active = shipments.stream().filter(s -> s.getStatus() != ShipmentStatus.CANCELLED).toList();
+        if (active.isEmpty()) {
+            if (changed.getOrder().getFulfillmentStatus() != StoreFulfillmentStatus.DELIVERED) changed.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.PREPARING);
+            return;
+        }
+        if (active.stream().allMatch(s -> s.getStatus() == ShipmentStatus.DELIVERED)) {
+            changed.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.DELIVERED);
+        } else if (active.stream().anyMatch(s -> s.getStatus() == ShipmentStatus.IN_TRANSIT || s.getStatus() == ShipmentStatus.OUT_FOR_DELIVERY || s.getStatus() == ShipmentStatus.DELIVERED)) {
+            changed.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.SHIPPED);
+        } else {
+            changed.getOrder().setFulfillmentStatus(StoreFulfillmentStatus.PREPARING);
+        }
     }
 
     public StoreShipmentTrackingEventResponse toResponse(StoreShipmentTrackingEvent event) {
