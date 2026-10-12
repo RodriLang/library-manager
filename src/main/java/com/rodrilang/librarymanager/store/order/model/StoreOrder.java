@@ -46,4 +46,16 @@ public class StoreOrder extends AuditableEntity {
     @Column(name = "payment_checkout_url", columnDefinition = "TEXT") private String paymentCheckoutUrl;
     @Column(name = "payment_status_detail", length = 120) private String paymentStatusDetail;
     @Column(name = "payment_updated_at") private Instant paymentUpdatedAt;
+
+    @Column(name = "shipping_quote_id") private UUID shippingQuoteId;
+    @Column(name = "shipping_provider", length = 40) private String shippingProvider;
+    @Column(name = "shipping_service_code", length = 100) private String shippingServiceCode;
+    @Column(name = "shipping_service_name", length = 150) private String shippingServiceName;
+    @Column(name = "shipping_destination_postal_code", length = 20) private String shippingDestinationPostalCode;
+    @Column(name = "shipping_destination_city", length = 120) private String shippingDestinationCity;
+    @Column(name = "shipping_destination_state", length = 120) private String shippingDestinationState;
+    @Column(name = "shipping_destination_street", length = 180) private String shippingDestinationStreet;
+    @Column(name = "shipping_destination_street_number", length = 40) private String shippingDestinationStreetNumber;
+    @Column(name = "shipping_destination_floor_apartment", length = 80) private String shippingDestinationFloorApartment;
 }
+

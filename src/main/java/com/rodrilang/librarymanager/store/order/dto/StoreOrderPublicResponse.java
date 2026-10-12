@@ -24,5 +24,14 @@ public record StoreOrderPublicResponse(
         Instant createdAt,
         String paymentCheckoutUrl,
         String paymentStatusDetail,
+        String shippingProvider,
+        String shippingServiceCode,
+        String shippingServiceName,
+        String shippingDestinationPostalCode,
+        String shippingDestinationCity,
+        String shippingDestinationState,
+        String shippingDestinationStreet,
+        String shippingDestinationStreetNumber,
+        String shippingDestinationFloorApartment,
         List<StoreOrderItemResponse> items
 ) {}

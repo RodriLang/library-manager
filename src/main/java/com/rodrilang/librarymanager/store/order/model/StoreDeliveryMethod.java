@@ -1,2 +1,2 @@
 package com.rodrilang.librarymanager.store.order.model;
-public enum StoreDeliveryMethod { PICKUP }
+public enum StoreDeliveryMethod { PICKUP, SHIPPING }

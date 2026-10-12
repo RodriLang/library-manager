@@ -8,6 +8,8 @@ import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.notification.service.NotificationService;
+import com.rodrilang.librarymanager.shipping.quote.model.StoreShippingQuote;
+import com.rodrilang.librarymanager.shipping.quote.service.StorefrontShippingQuoteService;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import com.rodrilang.librarymanager.store.channel.SalesChannelType;
@@ -58,6 +60,7 @@ public class StoreOrderService {
     private final NotificationService notificationService;
     private final StoreMercadoPagoConfigService mercadoPagoConfigService;
     private final StoreMercadoPagoPaymentService mercadoPagoPaymentService;
+    private final StorefrontShippingQuoteService shippingQuoteService;
 
     @Value("${app.store.order-reservation-minutes:1440}")
     private long reservationMinutes;
@@ -120,6 +123,25 @@ public class StoreOrderService {
         }
 
         subtotal = money(subtotal);
+
+        StoreShippingQuote shippingQuote = null;
+        BigDecimal shippingCost = ZERO;
+        if (request.deliveryMethod() == StoreDeliveryMethod.SHIPPING) {
+            shippingQuote = shippingQuoteService.requireValidQuote(
+                    store.getId(), request.shippingQuoteId(), request.shippingAddress().postalCode(), request.items());
+            if (shippingQuote.getDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.STORE_PICKUP) {
+                throw new BusinessException("La opción seleccionada no corresponde a un envío.");
+            }
+            shippingCost = money(shippingQuote.getChargedAmount());
+        } else if (request.shippingQuoteId() != null && request.shippingAddress() != null && request.shippingAddress().postalCode() != null) {
+            shippingQuote = shippingQuoteService.requireValidQuote(
+                    store.getId(), request.shippingQuoteId(), request.shippingAddress().postalCode(), request.items());
+            if (shippingQuote.getDeliveryType() != com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.STORE_PICKUP) {
+                throw new BusinessException("La opción seleccionada no corresponde a retiro en librería.");
+            }
+        }
+        BigDecimal total = money(subtotal.add(shippingCost));
+
         StoreOrder order = orderRepository.saveAndFlush(StoreOrder.builder()
                 .publicId(UUID.randomUUID())
                 .store(store)
@@ -138,8 +160,18 @@ public class StoreOrderService {
                 .notes(normalize(request.notes()))
                 .subtotal(subtotal)
                 .discountAmount(ZERO)
-                .shippingCost(ZERO)
-                .total(subtotal)
+                .shippingCost(shippingCost)
+                .total(total)
+                .shippingQuoteId(shippingQuote != null ? shippingQuote.getId() : null)
+                .shippingProvider(shippingQuote != null ? shippingQuote.getProvider().name() : null)
+                .shippingServiceCode(shippingQuote != null ? shippingQuote.getServiceCode() : null)
+                .shippingServiceName(shippingQuote != null ? shippingQuote.getServiceName() : null)
+                .shippingDestinationPostalCode(request.shippingAddress() != null ? normalize(request.shippingAddress().postalCode()) : null)
+                .shippingDestinationCity(request.shippingAddress() != null ? normalize(request.shippingAddress().city()) : null)
+                .shippingDestinationState(request.shippingAddress() != null ? normalize(request.shippingAddress().state()) : null)
+                .shippingDestinationStreet(request.shippingAddress() != null ? normalize(request.shippingAddress().street()) : null)
+                .shippingDestinationStreetNumber(request.shippingAddress() != null ? normalize(request.shippingAddress().streetNumber()) : null)
+                .shippingDestinationFloorApartment(request.shippingAddress() != null ? normalize(request.shippingAddress().floorApartment()) : null)
                 .reservationExpiresAt(expiresAt)
                 .build());
 
@@ -351,8 +383,14 @@ public class StoreOrderService {
     }
 
     private void validateCreateRequest(BookstoreStore store, CreateStoreOrderRequest request) {
-        if (request.deliveryMethod() != StoreDeliveryMethod.PICKUP) {
-            throw new BusinessException("Por ahora la tienda admite únicamente retiro en la librería.");
+        if (request.deliveryMethod() == StoreDeliveryMethod.SHIPPING) {
+            if (request.shippingQuoteId() == null || request.shippingAddress() == null) {
+                throw new BusinessException("Elegí una opción de envío antes de confirmar el pedido.");
+            }
+            if (!hasText(request.shippingAddress().postalCode()) || !hasText(request.shippingAddress().street())
+                    || !hasText(request.shippingAddress().streetNumber()) || !hasText(request.shippingAddress().city())) {
+                throw new BusinessException("Completá la dirección de entrega.");
+            }
         }
         if (request.paymentMethod() != StorePaymentMethod.PAY_AT_STORE && request.paymentMethod() != StorePaymentMethod.MERCADO_PAGO) {
             throw new BusinessException("Medio de pago no permitido.");
@@ -411,7 +449,10 @@ public class StoreOrderService {
     private StoreOrderPublicResponse toPublic(StoreOrder o, List<StoreOrderItem> items) {
         return new StoreOrderPublicResponse(o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getSubtotal(), o.getShippingCost(), o.getTotal(),
-                o.getReservationExpiresAt(), o.getCreatedAt(), o.getPaymentCheckoutUrl(), o.getPaymentStatusDetail(), itemResponses(items));
+                o.getReservationExpiresAt(), o.getCreatedAt(), o.getPaymentCheckoutUrl(), o.getPaymentStatusDetail(),
+                o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDestinationPostalCode(),
+                o.getShippingDestinationCity(), o.getShippingDestinationState(), o.getShippingDestinationStreet(), o.getShippingDestinationStreetNumber(),
+                o.getShippingDestinationFloorApartment(), itemResponses(items));
     }
     private StoreOrderResponse toAdmin(StoreOrder o, List<StoreOrderItem> items) {
         return new StoreOrderResponse(o.getId(), o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
