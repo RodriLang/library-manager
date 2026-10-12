@@ -36,7 +36,9 @@ public class OcaShipmentClient implements ShipmentCreationClient, ShipmentCancel
         String user = support.require(credentials, "usuario", "usuario e-Pak");
         String password = support.require(credentials, "password", "contraseña e-Pak");
         String account = support.require(credentials, "nroCuenta", "número de cuenta");
-        int operativa = support.requireInt(credentials, settings, "operativa", "operativa");
+        boolean pickup = shipment.getOrder().getShippingDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.BRANCH
+                || shipment.getOrder().getShippingDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.PICKUP_POINT;
+        int operativa = pickup ? branchOperation(credentials, settings) : support.requireInt(credentials, settings, "operativa", "operativa");
         String costCenter = first(credentials.get("centroCosto"), Objects.toString(settings.get("centroCosto"), null));
         if (costCenter == null || costCenter.isBlank()) throw new BusinessException("Configurá el centro de costo de OCA (centroCosto).");
 
@@ -133,7 +135,7 @@ public class OcaShipmentClient implements ShipmentCreationClient, ShipmentCancel
                 " calle=\""+e(truncate(shipment.getOrder().getShippingDestinationStreet(),30))+"\" nro=\""+e(truncate(shipment.getOrder().getShippingDestinationStreetNumber(),5))+"\""+
                 " piso=\""+e(truncate(destFloor,6))+"\" depto=\"\" localidad=\""+e(truncate(shipment.getOrder().getShippingDestinationCity(),30))+"\""+
                 " provincia=\""+e(truncate(shipment.getOrder().getShippingDestinationState(),30))+"\" cp=\""+e(numericPostal(shipment.getOrder().getShippingDestinationPostalCode()))+"\""+
-                " telefono=\""+e(truncate(shipment.getOrder().getCustomerPhone(),30))+"\" email=\""+e(truncate(shipment.getOrder().getCustomerEmail(),100))+"\" idci=\"0\""+
+                " telefono=\""+e(truncate(shipment.getOrder().getCustomerPhone(),30))+"\" email=\""+e(truncate(shipment.getOrder().getCustomerEmail(),100))+"\" idci=\""+e(ocaDestinationCi(shipment))+"\""+
                 " celular=\""+e(truncate(shipment.getOrder().getCustomerPhone(),15))+"\" observaciones=\"Anaquel pedido "+e(truncate(shipment.getOrder().getOrderNumber(),30))+"\"/>"+
                 "<paquetes><paquete alto=\""+num(shipment.getHeightCm())+"\" ancho=\""+num(shipment.getWidthCm())+"\" largo=\""+num(shipment.getDepthCm())+"\""+
                 " peso=\""+kg.toPlainString()+"\" valor=\""+declared.setScale(2,RoundingMode.HALF_UP).toPlainString()+"\" cant=\"1\"/></paquetes>"+
@@ -141,6 +143,25 @@ public class OcaShipmentClient implements ShipmentCreationClient, ShipmentCancel
     }
 
     private String[] splitName(String full) { String v=full==null?"Cliente":full.trim(); int i=v.lastIndexOf(' '); return i<1?new String[]{v,"."}:new String[]{v.substring(0,i),v.substring(i+1)}; }
+    private int branchOperation(Map<String,String> credentials, Map<String,Object> settings) {
+        Object raw = settings.get("operativaSucursal");
+        if (raw == null || String.valueOf(raw).isBlank()) raw = credentials.get("operativaSucursal");
+        if (raw == null || String.valueOf(raw).isBlank()) throw new BusinessException("Configurá operativaSucursal para generar envíos OCA a sucursal.");
+        try { return Integer.parseInt(String.valueOf(raw).trim()); }
+        catch (NumberFormatException ex) { throw new BusinessException("operativaSucursal de OCA no es válida."); }
+    }
+
+    private String ocaDestinationCi(StoreShipment shipment) {
+        var type = shipment.getOrder().getShippingDeliveryType();
+        if (type == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.BRANCH
+                || type == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.PICKUP_POINT) {
+            String id = shipment.getOrder().getShippingPickupPointExternalId();
+            if (id == null || id.isBlank()) throw new BusinessException("El pedido no tiene una sucursal OCA seleccionada.");
+            return id.trim();
+        }
+        return "0";
+    }
+
     private String numericPostal(String value){String d=value==null?"":value.replaceAll("[^0-9]",""); return d.length()>4?d.substring(0,4):d;}
     private String truncate(String value,int max){String v=value==null?"":value.trim(); return v.length()<=max?v:v.substring(0,max);}
     private String num(BigDecimal value){return (value==null?BigDecimal.ONE:value.max(BigDecimal.ONE)).setScale(2,RoundingMode.CEILING).toPlainString();}

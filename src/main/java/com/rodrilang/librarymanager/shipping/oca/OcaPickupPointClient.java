@@ -1,6 +1,5 @@
 package com.rodrilang.librarymanager.shipping.oca;
 
-import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.shipping.model.ShippingProviderType;
 import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPoint;
 import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPointClient;
@@ -16,13 +15,11 @@ import java.util.*;
 public class OcaPickupPointClient implements ShippingPickupPointClient {
     private final OcaSettingsReader settingsReader;
     private final OcaClientSupport support;
-    private final BookstoreContext bookstoreContext;
 
     @Override public ShippingProviderType provider() { return ShippingProviderType.OCA; }
 
     @Override
-    public List<ShippingPickupPoint> findByPostalCode(String postalCode) {
-        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+    public List<ShippingPickupPoint> findByPostalCode(Long bookstoreId, String postalCode) {
         Map<String,Object> settings = settingsReader.settings(bookstoreId);
         String xml = support.post(settings, "GetCentrosImposicionConServiciosByCP", Map.of("CodigoPostal", numericPostal(postalCode)));
         Document doc = OcaXmlSupport.parse(xml);

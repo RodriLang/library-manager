@@ -94,4 +94,14 @@ public class StoreShipment extends AuditableEntity {
 
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
+
+    @Builder.Default
+    @Column(name = "tracking_sync_failures", nullable = false)
+    private Integer trackingSyncFailures = 0;
+
+    @Column(name = "tracking_last_synced_at")
+    private Instant trackingLastSyncedAt;
+
+    @Column(name = "tracking_next_sync_at")
+    private Instant trackingNextSyncAt;
 }

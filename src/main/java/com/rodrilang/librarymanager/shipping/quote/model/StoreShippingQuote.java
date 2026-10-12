@@ -33,6 +33,8 @@ public class StoreShippingQuote {
     @Column(name = "estimated_text", length = 120) private String estimatedText;
     @Column(name = "external_quote_id", length = 160) private String externalQuoteId;
     @Column(name = "free_shipping_applied", nullable = false) private Boolean freeShippingApplied;
+    @Column(name = "recommended", nullable = false) private Boolean recommended;
+    @Column(name = "sort_priority", nullable = false) private Integer sortPriority;
     @Column(name = "weight_grams", nullable = false) private Integer weightGrams;
     @Column(name = "width_cm", nullable = false, precision = 10, scale = 2) private BigDecimal widthCm;
     @Column(name = "height_cm", nullable = false, precision = 10, scale = 2) private BigDecimal heightCm;

@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.store.order.dto;
 
 import com.rodrilang.librarymanager.shipping.quote.dto.ShippingAddressRequest;
+import com.rodrilang.librarymanager.shipping.quote.dto.ShippingPickupPointRequest;
 import com.rodrilang.librarymanager.store.order.model.StoreDeliveryMethod;
 import com.rodrilang.librarymanager.store.order.model.StorePaymentMethod;
 import jakarta.validation.Valid;
@@ -16,6 +17,7 @@ public record CreateStoreOrderRequest(
         @NotNull StoreDeliveryMethod deliveryMethod,
         UUID shippingQuoteId,
         @Valid ShippingAddressRequest shippingAddress,
+        @Valid ShippingPickupPointRequest shippingPickupPoint,
         @NotNull StorePaymentMethod paymentMethod,
         @Size(max = 2000) String notes,
         @NotEmpty @Size(max = 100) List<@Valid CreateStoreOrderItemRequest> items

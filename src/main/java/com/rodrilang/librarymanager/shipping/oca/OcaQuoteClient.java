@@ -21,8 +21,26 @@ public class OcaQuoteClient {
 
     public ShippingProviderQuote quoteHome(String originPostalCode, String destinationPostalCode, ShippingPackage pack,
                                            Map<String, String> credentials, Map<String, Object> settings) {
-        String cuit = support.require(credentials, "cuit", "CUIT");
         int operativa = support.requireInt(credentials, settings, "operativa", "operativa");
+        return quote(originPostalCode, destinationPostalCode, pack, credentials, settings, operativa, ShippingDeliveryType.HOME, "OCA · Domicilio");
+    }
+
+    public ShippingProviderQuote quoteBranch(String originPostalCode, String destinationPostalCode, ShippingPackage pack,
+                                             Map<String, String> credentials, Map<String, Object> settings) {
+        Object raw = settings.get("operativaSucursal");
+        if (raw == null || String.valueOf(raw).isBlank()) raw = credentials.get("operativaSucursal");
+        if (raw == null || String.valueOf(raw).isBlank()) {
+            throw new BusinessException("Configurá operativaSucursal para cotizar OCA con retiro en sucursal.");
+        }
+        int operativa;
+        try { operativa = Integer.parseInt(String.valueOf(raw).trim()); }
+        catch (NumberFormatException ex) { throw new BusinessException("operativaSucursal de OCA no es válida."); }
+        return quote(originPostalCode, destinationPostalCode, pack, credentials, settings, operativa, ShippingDeliveryType.BRANCH, "OCA · Retiro en sucursal");
+    }
+
+    private ShippingProviderQuote quote(String originPostalCode, String destinationPostalCode, ShippingPackage pack,
+                                        Map<String, String> credentials, Map<String, Object> settings, int operativa, ShippingDeliveryType deliveryType, String displayName) {
+        String cuit = support.require(credentials, "cuit", "CUIT");
         BigDecimal weightKg = BigDecimal.valueOf(pack.weightGrams()).divide(BigDecimal.valueOf(1000), 3, RoundingMode.CEILING);
         BigDecimal volumeM3 = pack.volumeCm3().divide(BigDecimal.valueOf(1_000_000), 6, RoundingMode.CEILING);
         String xml = support.post(settings, "Tarifar_Envio_Corporativo", Map.of(
@@ -45,8 +63,8 @@ public class OcaQuoteClient {
         String tarifador = OcaXmlSupport.text(table, "Tarifador");
         String ambito = OcaXmlSupport.text(table, "Ambito");
         String metadata = "{\"operativa\":" + operativa + ",\"tarifador\":\"" + json(tarifador) + "\",\"ambito\":\"" + json(ambito) + "\"}";
-        return new ShippingProviderQuote(ShippingProviderType.OCA, "OCA-" + operativa, "OCA · Domicilio",
-                ShippingDeliveryType.HOME, amount, days, days, days == null ? plazo : days + " días hábiles", null, metadata);
+        return new ShippingProviderQuote(ShippingProviderType.OCA, "OCA-" + operativa + (deliveryType == ShippingDeliveryType.BRANCH ? "-BRANCH" : "-HOME"), displayName,
+                deliveryType, amount, days, days, days == null ? plazo : days + " días hábiles", null, metadata);
     }
 
     private int numericPostal(String value) {

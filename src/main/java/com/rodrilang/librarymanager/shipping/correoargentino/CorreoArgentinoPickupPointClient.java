@@ -1,7 +1,6 @@
 package com.rodrilang.librarymanager.shipping.correoargentino;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.shipping.model.ShippingProviderType;
 import com.rodrilang.librarymanager.shipping.operations.*;
 import com.rodrilang.librarymanager.shipping.service.BookstoreShippingConfigurationService;
@@ -16,12 +15,10 @@ public class CorreoArgentinoPickupPointClient implements ShippingPickupPointClie
     private final CorreoArgentinoClientSupport support;
     private final CorreoArgentinoSettingsReader settingsReader;
     private final BookstoreShippingConfigurationService configurationService;
-    private final BookstoreContext bookstoreContext;
     @Override public ShippingProviderType provider() { return ShippingProviderType.CORREO_ARGENTINO; }
-    @Override public List<ShippingPickupPoint> findByPostalCode(String postalCode) {
+    @Override public List<ShippingPickupPoint> findByPostalCode(Long bookstoreId, String postalCode) {
         // PAQ.AR permite consultar todas las agencias y filtrar por disponibilidad. Si el CPA incluye letra inicial,
         // se utiliza como código ISO de provincia; para CP numérico se consulta sin stateId y se filtra por CP.
-        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         Map<String,String> credentials = configurationService.requireCredentials(bookstoreId, provider());
         Map<String,Object> settings = settingsReader.settings(bookstoreId);
         JsonNode response = support.client(support.paqArBaseUrl(settings)).get().uri(uri -> {

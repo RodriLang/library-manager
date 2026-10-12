@@ -150,10 +150,11 @@ public class StoreShipmentService {
     private ShippingProviderType provider(String provider) { try { return provider == null ? ShippingProviderType.MANUAL : ShippingProviderType.valueOf(provider); } catch (IllegalArgumentException ex) { return ShippingProviderType.MANUAL; } }
 
     private ShipmentPackageEstimate estimatePackage(Map<StoreOrderItem, Integer> allocation) {
-        BigDecimal weight = new BigDecimal("150");
-        BigDecimal width = BigDecimal.ZERO;
-        BigDecimal height = BigDecimal.ZERO;
-        BigDecimal depth = new BigDecimal("2");
+        BigDecimal booksWeight = BigDecimal.ZERO;
+        BigDecimal maxWidth = BigDecimal.ZERO;
+        BigDecimal maxHeight = BigDecimal.ZERO;
+        BigDecimal maxDepth = BigDecimal.ZERO;
+        BigDecimal totalVolume = BigDecimal.ZERO;
         BigDecimal defaultWeight = new BigDecimal("400");
         BigDecimal defaultWidth = new BigDecimal("17");
         BigDecimal defaultHeight = new BigDecimal("24");
@@ -166,17 +167,27 @@ public class StoreShipmentService {
             BigDecimal bookWidth = positive(book.getWidthCm(), defaultWidth);
             BigDecimal bookHeight = positive(book.getHeightCm(), defaultHeight);
             BigDecimal bookDepth = positive(book.getDepthCm(), defaultDepth);
-            weight = weight.add(bookWeight.multiply(BigDecimal.valueOf(quantity)));
-            width = width.max(bookWidth);
-            height = height.max(bookHeight);
-            depth = depth.add(bookDepth.multiply(BigDecimal.valueOf(quantity)));
+            booksWeight = booksWeight.add(bookWeight.multiply(BigDecimal.valueOf(quantity)));
+            maxWidth = maxWidth.max(bookWidth);
+            maxHeight = maxHeight.max(bookHeight);
+            maxDepth = maxDepth.max(bookDepth);
+            totalVolume = totalVolume.add(bookWidth.multiply(bookHeight).multiply(bookDepth).multiply(BigDecimal.valueOf(quantity)));
         }
 
+        BigDecimal packagingWeight = booksWeight.multiply(new BigDecimal("0.05")).max(new BigDecimal("150"));
+        BigDecimal width = maxWidth.add(new BigDecimal("2"));
+        BigDecimal height = maxHeight.add(new BigDecimal("2"));
+        BigDecimal footprint = width.multiply(height).max(BigDecimal.ONE);
+        // Aproximación conservadora: 85% de eficiencia de acomodado + 2 cm de embalaje.
+        BigDecimal packedDepth = totalVolume.divide(footprint.multiply(new BigDecimal("0.85")), 4, RoundingMode.CEILING)
+                .add(new BigDecimal("2"));
+        BigDecimal depth = packedDepth.max(maxDepth.add(new BigDecimal("2"))).max(new BigDecimal("5"));
+
         return new ShipmentPackageEstimate(
-                weight.setScale(0, RoundingMode.CEILING).intValue(),
-                width.add(new BigDecimal("2")).setScale(2, RoundingMode.CEILING),
-                height.add(new BigDecimal("2")).setScale(2, RoundingMode.CEILING),
-                depth.max(new BigDecimal("5")).setScale(2, RoundingMode.CEILING)
+                booksWeight.add(packagingWeight).setScale(0, RoundingMode.CEILING).intValue(),
+                width.setScale(2, RoundingMode.CEILING),
+                height.setScale(2, RoundingMode.CEILING),
+                depth.setScale(2, RoundingMode.CEILING)
         );
     }
 

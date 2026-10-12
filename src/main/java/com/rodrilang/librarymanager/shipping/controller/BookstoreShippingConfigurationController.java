@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.shipping.controller;
 
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.shipping.dto.*;
 import com.rodrilang.librarymanager.shipping.model.ShippingProviderType;
 import com.rodrilang.librarymanager.shipping.service.BookstoreShippingConfigurationService;
@@ -19,6 +20,7 @@ public class BookstoreShippingConfigurationController {
     private final CorreoArgentinoConnectionService correoArgentinoConnectionService;
     private final OcaConnectionService ocaConnectionService;
     private final ShippingPickupPointClientRegistry pickupPointClientRegistry;
+    private final BookstoreContext bookstoreContext;
 
     @GetMapping
     public ShippingConfigurationResponse current() {
@@ -55,7 +57,7 @@ public class BookstoreShippingConfigurationController {
 
     @GetMapping("/integrations/{provider}/pickup-points")
     public java.util.List<ShippingPickupPoint> pickupPoints(@PathVariable ShippingProviderType provider, @RequestParam String postalCode) {
-        return pickupPointClientRegistry.require(provider).findByPostalCode(postalCode);
+        return pickupPointClientRegistry.require(provider).findByPostalCode(bookstoreContext.getCurrentBookstoreId(), postalCode);
     }
 
     @PostMapping("/integrations/CORREO_ARGENTINO/test")

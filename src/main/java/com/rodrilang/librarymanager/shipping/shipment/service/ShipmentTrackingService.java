@@ -87,8 +87,28 @@ public class ShipmentTrackingService {
     }
 
     @Transactional
-    public void refreshIfSupported(StoreShipment shipment) {
-        clientRegistry.find(shipment.getProvider()).ifPresent(client -> applySnapshot(shipment, client.track(shipment)));
+    public boolean refreshIfSupported(StoreShipment shipment) {
+        var client = clientRegistry.find(shipment.getProvider());
+        if (client.isEmpty()) {
+            shipment.setTrackingLastSyncedAt(Instant.now());
+            shipment.setTrackingNextSyncAt(Instant.now().plusSeconds(6 * 60 * 60));
+            return false;
+        }
+        applySnapshot(shipment, client.get().track(shipment));
+        shipment.setTrackingSyncFailures(0);
+        shipment.setTrackingLastSyncedAt(Instant.now());
+        shipment.setTrackingNextSyncAt(Instant.now().plusSeconds(15 * 60));
+        return true;
+    }
+
+    @Transactional
+    public void markSyncFailure(StoreShipment shipment) {
+        int failures = shipment.getTrackingSyncFailures() == null ? 0 : shipment.getTrackingSyncFailures();
+        failures = Math.min(8, failures + 1);
+        shipment.setTrackingSyncFailures(failures);
+        shipment.setTrackingLastSyncedAt(Instant.now());
+        long minutes = Math.min(360, 15L * (1L << Math.min(5, failures - 1)));
+        shipment.setTrackingNextSyncAt(Instant.now().plusSeconds(minutes * 60));
     }
 
     private void applySnapshot(StoreShipment shipment, ProviderTrackingSnapshot snapshot) {

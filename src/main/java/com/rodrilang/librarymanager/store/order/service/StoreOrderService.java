@@ -9,6 +9,9 @@ import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.notification.service.NotificationService;
 import com.rodrilang.librarymanager.shipping.quote.model.StoreShippingQuote;
+import com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType;
+import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPoint;
+import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPointClientRegistry;
 import com.rodrilang.librarymanager.shipping.quote.service.StorefrontShippingQuoteService;
 import com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentPublicResponse;
 import com.rodrilang.librarymanager.shipping.shipment.model.ShipmentStatus;
@@ -69,6 +72,7 @@ public class StoreOrderService {
     private final StoreShipmentRepository shipmentRepository;
     private final com.rodrilang.librarymanager.shipping.shipment.repository.StoreShipmentItemRepository shipmentItemRepository;
     private final ShipmentTrackingService shipmentTrackingService;
+    private final ShippingPickupPointClientRegistry pickupPointClientRegistry;
 
     @Value("${app.store.order-reservation-minutes:1440}")
     private long reservationMinutes;
@@ -133,18 +137,40 @@ public class StoreOrderService {
         subtotal = money(subtotal);
 
         StoreShippingQuote shippingQuote = null;
+        ShippingPickupPoint pickupPoint = null;
         BigDecimal shippingCost = ZERO;
         if (request.deliveryMethod() == StoreDeliveryMethod.SHIPPING) {
+            if (request.shippingQuoteId() == null || request.shippingAddress() == null || !hasText(request.shippingAddress().postalCode())) {
+                throw new BusinessException("Cotizá el envío e indicá el código postal antes de continuar.");
+            }
             shippingQuote = shippingQuoteService.requireValidQuote(
                     store.getId(), request.shippingQuoteId(), request.shippingAddress().postalCode(), request.items());
-            if (shippingQuote.getDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.STORE_PICKUP) {
+            if (shippingQuote.getDeliveryType() == ShippingDeliveryType.STORE_PICKUP) {
                 throw new BusinessException("La opción seleccionada no corresponde a un envío.");
+            }
+            if (shippingQuote.getDeliveryType() == ShippingDeliveryType.BRANCH || shippingQuote.getDeliveryType() == ShippingDeliveryType.PICKUP_POINT) {
+                if (request.shippingPickupPoint() == null || request.shippingPickupPoint().provider() != shippingQuote.getProvider()) {
+                    throw new BusinessException("Elegí el punto de retiro para la opción de envío seleccionada.");
+                }
+                String requestedPointId = normalize(request.shippingPickupPoint().externalId());
+                pickupPoint = pickupPointClientRegistry.require(shippingQuote.getProvider())
+                        .findByPostalCode(store.getBookstore().getId(), request.shippingAddress().postalCode()).stream()
+                        .filter(point -> Objects.equals(point.externalId(), requestedPointId))
+                        .findFirst()
+                        .orElseThrow(() -> new BusinessException("El punto de retiro seleccionado ya no está disponible. Volvé a elegirlo."));
+            } else {
+                if (!hasText(request.shippingAddress().city()) || !hasText(request.shippingAddress().street()) || !hasText(request.shippingAddress().streetNumber())) {
+                    throw new BusinessException("Completá la dirección de entrega.");
+                }
+                if (request.shippingPickupPoint() != null) {
+                    throw new BusinessException("La opción de envío seleccionada no utiliza un punto de retiro.");
+                }
             }
             shippingCost = money(shippingQuote.getChargedAmount());
         } else if (request.shippingQuoteId() != null && request.shippingAddress() != null && request.shippingAddress().postalCode() != null) {
             shippingQuote = shippingQuoteService.requireValidQuote(
                     store.getId(), request.shippingQuoteId(), request.shippingAddress().postalCode(), request.items());
-            if (shippingQuote.getDeliveryType() != com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.STORE_PICKUP) {
+            if (shippingQuote.getDeliveryType() != ShippingDeliveryType.STORE_PICKUP) {
                 throw new BusinessException("La opción seleccionada no corresponde a retiro en librería.");
             }
         }
@@ -174,12 +200,21 @@ public class StoreOrderService {
                 .shippingProvider(shippingQuote != null ? shippingQuote.getProvider().name() : null)
                 .shippingServiceCode(shippingQuote != null ? shippingQuote.getServiceCode() : null)
                 .shippingServiceName(shippingQuote != null ? shippingQuote.getServiceName() : null)
-                .shippingDestinationPostalCode(request.shippingAddress() != null ? normalize(request.shippingAddress().postalCode()) : null)
-                .shippingDestinationCity(request.shippingAddress() != null ? normalize(request.shippingAddress().city()) : null)
-                .shippingDestinationState(request.shippingAddress() != null ? normalize(request.shippingAddress().state()) : null)
-                .shippingDestinationStreet(request.shippingAddress() != null ? normalize(request.shippingAddress().street()) : null)
-                .shippingDestinationStreetNumber(request.shippingAddress() != null ? normalize(request.shippingAddress().streetNumber()) : null)
-                .shippingDestinationFloorApartment(request.shippingAddress() != null ? normalize(request.shippingAddress().floorApartment()) : null)
+                .shippingDeliveryType(shippingQuote != null ? shippingQuote.getDeliveryType() : null)
+                .shippingPickupPointExternalId(pickupPoint != null ? pickupPoint.externalId() : null)
+                .shippingPickupPointName(pickupPoint != null ? pickupPoint.name() : null)
+                .shippingPickupPointAddress(pickupPoint != null ? pickupPoint.address() : null)
+                .shippingPickupPointPostalCode(pickupPoint != null ? pickupPoint.postalCode() : null)
+                .shippingPickupPointCity(pickupPoint != null ? pickupPoint.city() : null)
+                .shippingPickupPointState(pickupPoint != null ? pickupPoint.state() : null)
+                .shippingPickupPointLatitude(pickupPoint != null ? pickupPoint.latitude() : null)
+                .shippingPickupPointLongitude(pickupPoint != null ? pickupPoint.longitude() : null)
+                .shippingDestinationPostalCode(pickupPoint != null && hasText(pickupPoint.postalCode()) ? normalize(pickupPoint.postalCode()) : (request.shippingAddress() != null ? normalize(request.shippingAddress().postalCode()) : null))
+                .shippingDestinationCity(pickupPoint != null && hasText(pickupPoint.city()) ? normalize(pickupPoint.city()) : (request.shippingAddress() != null ? normalize(request.shippingAddress().city()) : null))
+                .shippingDestinationState(pickupPoint != null && hasText(pickupPoint.state()) ? normalize(pickupPoint.state()) : (request.shippingAddress() != null ? normalize(request.shippingAddress().state()) : null))
+                .shippingDestinationStreet(pickupPoint != null && hasText(pickupPoint.address()) ? normalize(pickupPoint.address()) : (request.shippingAddress() != null ? normalize(request.shippingAddress().street()) : null))
+                .shippingDestinationStreetNumber(pickupPoint != null ? null : (request.shippingAddress() != null ? normalize(request.shippingAddress().streetNumber()) : null))
+                .shippingDestinationFloorApartment(pickupPoint != null ? null : (request.shippingAddress() != null ? normalize(request.shippingAddress().floorApartment()) : null))
                 .reservationExpiresAt(expiresAt)
                 .build());
 
@@ -460,7 +495,9 @@ public class StoreOrderService {
         return new StoreOrderPublicResponse(o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getSubtotal(), o.getShippingCost(), o.getTotal(),
                 o.getReservationExpiresAt(), o.getCreatedAt(), o.getPaymentCheckoutUrl(), o.getPaymentStatusDetail(),
-                o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDestinationPostalCode(),
+                o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDeliveryType(),
+                o.getShippingPickupPointExternalId(), o.getShippingPickupPointName(), o.getShippingPickupPointAddress(), o.getShippingPickupPointPostalCode(),
+                o.getShippingPickupPointCity(), o.getShippingPickupPointState(), o.getShippingPickupPointLatitude(), o.getShippingPickupPointLongitude(), o.getShippingDestinationPostalCode(),
                 o.getShippingDestinationCity(), o.getShippingDestinationState(), o.getShippingDestinationStreet(), o.getShippingDestinationStreetNumber(),
                 o.getShippingDestinationFloorApartment(), publicShipment(o), publicShipments(o), itemResponses(items));
     }
@@ -488,7 +525,9 @@ public class StoreOrderService {
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getCustomerPhone(), o.getNotes(), o.getSubtotal(),
                 o.getDiscountAmount(), o.getShippingCost(), o.getTotal(), o.getReservationExpiresAt(), o.getCreatedAt(), o.getConfirmedAt(), o.getCancelledAt(),
                 o.getCancellationReason(), o.getSale() != null ? o.getSale().getId() : null, o.getCompletedAt(), o.getPaymentExternalId(), o.getPaymentStatusDetail(),
-                o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDestinationPostalCode(),
+                o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDeliveryType(),
+                o.getShippingPickupPointExternalId(), o.getShippingPickupPointName(), o.getShippingPickupPointAddress(), o.getShippingPickupPointPostalCode(),
+                o.getShippingPickupPointCity(), o.getShippingPickupPointState(), o.getShippingPickupPointLatitude(), o.getShippingPickupPointLongitude(), o.getShippingDestinationPostalCode(),
                 o.getShippingDestinationCity(), o.getShippingDestinationState(), o.getShippingDestinationStreet(), o.getShippingDestinationStreetNumber(),
                 o.getShippingDestinationFloorApartment(), itemResponses(items));
     }

@@ -3,6 +3,9 @@ import com.rodrilang.librarymanager.shipping.returns.dto.*;
 import com.rodrilang.librarymanager.shipping.returns.service.StoreReturnService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import java.util.List;
 @RestController
 @RequestMapping("/api/store/orders/{orderId}/returns")
@@ -12,10 +15,16 @@ public class StoreReturnAdminController {
     @GetMapping public List<StoreReturnResponse> list(@PathVariable Long orderId) { return service.list(orderId); }
     @PostMapping public StoreReturnResponse create(@PathVariable Long orderId, @RequestBody CreateStoreReturnRequest request) { return service.create(orderId, request); }
     @PatchMapping("/{returnId}/shipping") public StoreReturnResponse shipping(@PathVariable Long orderId,@PathVariable Long returnId,@RequestBody UpdateStoreReturnShippingRequest request){return service.updateShipping(orderId,returnId,request);}
+    @PostMapping("/{returnId}/provider-shipment") public StoreReturnResponse providerShipment(@PathVariable Long orderId,@PathVariable Long returnId){return service.createProviderReturn(orderId,returnId);}
+    @GetMapping("/{returnId}/label") public ResponseEntity<byte[]> label(@PathVariable Long orderId,@PathVariable Long returnId){
+        var result=service.returnLabel(orderId,returnId);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\""+result.fileName()+"\"")
+                .contentType(MediaType.parseMediaType(result.contentType())).body(result.content());
+    }
     @PostMapping("/{returnId}/approve") public StoreReturnResponse approve(@PathVariable Long orderId,@PathVariable Long returnId){return service.approve(orderId,returnId);}
     @PostMapping("/{returnId}/in-transit") public StoreReturnResponse transit(@PathVariable Long orderId,@PathVariable Long returnId){return service.markInTransit(orderId,returnId);}
     @PostMapping("/{returnId}/receive") public StoreReturnResponse receive(@PathVariable Long orderId,@PathVariable Long returnId){return service.receive(orderId,returnId);}
-    @PostMapping("/{returnId}/complete") public StoreReturnResponse complete(@PathVariable Long orderId,@PathVariable Long returnId){return service.complete(orderId,returnId);}
+    @PostMapping("/{returnId}/complete") public StoreReturnResponse complete(@PathVariable Long orderId,@PathVariable Long returnId,@RequestBody(required=false) CompleteStoreReturnRequest request){return service.complete(orderId,returnId,request);}
     @PostMapping("/{returnId}/reject") public StoreReturnResponse reject(@PathVariable Long orderId,@PathVariable Long returnId){return service.reject(orderId,returnId);}
     @PostMapping("/{returnId}/cancel") public StoreReturnResponse cancel(@PathVariable Long orderId,@PathVariable Long returnId){return service.cancel(orderId,returnId);}
 }

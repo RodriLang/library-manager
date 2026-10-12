@@ -19,5 +19,7 @@ public record StorefrontShippingQuoteResponse(
         Integer estimatedDaysMax,
         String estimatedText,
         boolean freeShipping,
+        boolean recommended,
+        int sortPriority,
         Instant expiresAt
 ) {}

@@ -36,3 +36,14 @@ Settings opcionales de la integración:
 ## Nota sobre operativas
 
 OCA asigna las operativas según contrato. Anaquel no intenta inferirlas. Para ofrecer más de una modalidad (por ejemplo Puerta a Sucursal) hay que registrar un servicio distinto y asociarlo a la operativa correspondiente. El checkout actual expone HOME; la selección de sucursal queda apoyada por el endpoint genérico de pickup points, pero requiere la UX de selección de sucursal para persistir el `idci` destino antes de habilitar esa modalidad al comprador.
+
+## Funcionalidades extendidas en Anaquel
+
+Además de cotización, alta, tracking, cancelación y rótulos, Anaquel soporta:
+
+- Retiro en sucursal cuando se configura `operativaSucursal` en los settings de OCA.
+- Logística inversa puerta a puerta cuando se configura `operativaDevolucion` con la operativa real asignada a la cuenta.
+- Rótulo de devolución usando los servicios de etiquetas de e-Pak con `logisticaInversa=true`.
+- Reglas comerciales por integración: CP incluidos/excluidos, compra mínima/máxima, umbral propio de envío gratis, ajuste de precio, recomendación y prioridad.
+
+No se deben copiar operativas de ejemplo de la documentación oficial a producción: cada librería debe usar las operativas asignadas por OCA a su cuenta.

@@ -167,8 +167,7 @@ public class BookstoreShippingConfigurationService {
     public List<ShippingServiceResponse> services(ShippingProviderType providerType) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         providerRegistry.get(providerType);
-        return shippingServiceRepository.findAllByBookstoreIdAndProviderOrderBySortOrderAscIdAsc(bookstoreId, providerType)
-                .stream().map(this::toServiceResponse).toList();
+        return servicesForResponse(providerType, shippingServiceRepository.findAllByBookstoreIdAndProviderOrderBySortOrderAscIdAsc(bookstoreId, providerType));
     }
 
     @Transactional(readOnly = true)
@@ -251,12 +250,29 @@ public class BookstoreShippingConfigurationService {
                 credentialsConfigured,
                 credentialsConfigured ? credentialKeys(integration) : List.of(),
                 integration == null ? Map.of() : readSettings(integration.getSettingsJson()),
-                services.stream().map(this::toServiceResponse).toList(),
+                servicesForResponse(provider.type(), services),
                 integration == null ? null : integration.getLastError(),
                 integration == null ? null : integration.getConfiguredAt()
         );
     }
 
+
+    private List<ShippingServiceResponse> servicesForResponse(ShippingProviderType provider, List<BookstoreShippingService> persisted) {
+        List<ShippingServiceResponse> result = new ArrayList<>(persisted.stream().map(this::toServiceResponse).toList());
+        Set<ShippingDeliveryType> configuredTypes = persisted.stream().map(BookstoreShippingService::getDeliveryType).collect(java.util.stream.Collectors.toSet());
+        if (provider == ShippingProviderType.ANDREANI && !configuredTypes.contains(ShippingDeliveryType.HOME)) {
+            result.add(new ShippingServiceResponse("HOME", "Domicilio", ShippingDeliveryType.HOME, true, 0, Map.of()));
+        }
+        if (provider == ShippingProviderType.CORREO_ARGENTINO) {
+            if (!configuredTypes.contains(ShippingDeliveryType.HOME)) result.add(new ShippingServiceResponse("HOME", "Domicilio", ShippingDeliveryType.HOME, true, 0, Map.of()));
+            if (!configuredTypes.contains(ShippingDeliveryType.BRANCH)) result.add(new ShippingServiceResponse("BRANCH", "Retiro en sucursal", ShippingDeliveryType.BRANCH, true, 10, Map.of()));
+        }
+        if (provider == ShippingProviderType.OCA) {
+            if (!configuredTypes.contains(ShippingDeliveryType.HOME)) result.add(new ShippingServiceResponse("HOME", "Domicilio", ShippingDeliveryType.HOME, true, 0, Map.of()));
+            if (!configuredTypes.contains(ShippingDeliveryType.BRANCH)) result.add(new ShippingServiceResponse("BRANCH", "Retiro en sucursal", ShippingDeliveryType.BRANCH, true, 10, Map.of()));
+        }
+        return result.stream().sorted(Comparator.comparingInt(ShippingServiceResponse::sortOrder).thenComparing(ShippingServiceResponse::serviceCode)).toList();
+    }
 
     private ShippingServiceResponse toServiceResponse(BookstoreShippingService service) {
         return new ShippingServiceResponse(

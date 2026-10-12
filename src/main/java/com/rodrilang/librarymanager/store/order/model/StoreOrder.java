@@ -51,6 +51,15 @@ public class StoreOrder extends AuditableEntity {
     @Column(name = "shipping_provider", length = 40) private String shippingProvider;
     @Column(name = "shipping_service_code", length = 100) private String shippingServiceCode;
     @Column(name = "shipping_service_name", length = 150) private String shippingServiceName;
+    @Enumerated(EnumType.STRING) @Column(name = "shipping_delivery_type", length = 30) private com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType shippingDeliveryType;
+    @Column(name = "shipping_pickup_point_external_id", length = 160) private String shippingPickupPointExternalId;
+    @Column(name = "shipping_pickup_point_name", length = 200) private String shippingPickupPointName;
+    @Column(name = "shipping_pickup_point_address", length = 300) private String shippingPickupPointAddress;
+    @Column(name = "shipping_pickup_point_postal_code", length = 20) private String shippingPickupPointPostalCode;
+    @Column(name = "shipping_pickup_point_city", length = 120) private String shippingPickupPointCity;
+    @Column(name = "shipping_pickup_point_state", length = 120) private String shippingPickupPointState;
+    @Column(name = "shipping_pickup_point_latitude") private Double shippingPickupPointLatitude;
+    @Column(name = "shipping_pickup_point_longitude") private Double shippingPickupPointLongitude;
     @Column(name = "shipping_destination_postal_code", length = 20) private String shippingDestinationPostalCode;
     @Column(name = "shipping_destination_city", length = 120) private String shippingDestinationCity;
     @Column(name = "shipping_destination_state", length = 120) private String shippingDestinationState;

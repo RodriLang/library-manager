@@ -15,6 +15,8 @@ import com.rodrilang.librarymanager.shipping.quote.dto.*;
 import com.rodrilang.librarymanager.shipping.quote.model.StoreShippingQuote;
 import com.rodrilang.librarymanager.shipping.quote.provider.*;
 import com.rodrilang.librarymanager.shipping.oca.OcaQuoteClient;
+import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPoint;
+import com.rodrilang.librarymanager.shipping.operations.ShippingPickupPointClientRegistry;
 import com.rodrilang.librarymanager.shipping.quote.repository.StoreShippingQuoteRepository;
 import com.rodrilang.librarymanager.shipping.repository.BookstoreShippingIntegrationRepository;
 import com.rodrilang.librarymanager.shipping.repository.BookstoreShippingServiceRepository;
@@ -64,6 +66,7 @@ public class StorefrontShippingQuoteService {
     private final AndreaniQuoteClient andreaniClient;
     private final CorreoArgentinoQuoteClient correoArgentinoClient;
     private final OcaQuoteClient ocaQuoteClient;
+    private final ShippingPickupPointClientRegistry pickupPointClientRegistry;
     private final ObjectMapper objectMapper;
 
     @Value("${app.store.shipping.quote-ttl-minutes:10}")
@@ -110,11 +113,13 @@ public class StorefrontShippingQuoteService {
 
         addPickupQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, expiresAt, results);
         addManualQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, results);
-        addAndreaniQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
-        addCorreoArgentinoQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
-        addOcaQuotes(store, bookstoreId, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, results, warnings);
+        addAndreaniQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, results, warnings);
+        addCorreoArgentinoQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, results, warnings);
+        addOcaQuotes(store, bookstoreId, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, results, warnings);
 
-        results.sort(Comparator.comparing(StorefrontShippingQuoteResponse::amount)
+        results.sort(Comparator.comparing(StorefrontShippingQuoteResponse::recommended).reversed()
+                .thenComparingInt(StorefrontShippingQuoteResponse::sortPriority)
+                .thenComparing(StorefrontShippingQuoteResponse::amount)
                 .thenComparing(StorefrontShippingQuoteResponse::displayName));
         return new StorefrontShippingQuotesResponse(
                 postalCode,
@@ -122,6 +127,23 @@ public class StorefrontShippingQuoteService {
                 List.copyOf(results),
                 List.copyOf(warnings)
         );
+    }
+
+
+    @Transactional(readOnly = true)
+    public List<ShippingPickupPoint> pickupPoints(UUID publicStoreId, ShippingProviderType provider, String postalCode) {
+        BookstoreStore store = requireActiveStore(publicStoreId);
+        if (provider == null || provider == ShippingProviderType.MANUAL || provider == ShippingProviderType.PICKUP_IN_STORE) {
+            throw new BusinessException("El proveedor seleccionado no ofrece puntos de retiro.");
+        }
+        Long bookstoreId = store.getBookstore().getId();
+        var integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, provider).orElse(null);
+        if (integration == null || !Boolean.TRUE.equals(integration.getEnabled())) {
+            throw new BusinessException("El proveedor de envío no está habilitado para esta tienda.");
+        }
+        String normalized = normalizePostalCode(postalCode);
+        if (normalized.isBlank()) throw new BusinessException("Ingresá un código postal válido.");
+        return pickupPointClientRegistry.require(provider).findByPostalCode(bookstoreId, normalized);
     }
 
     @Transactional(readOnly = true)
@@ -137,7 +159,7 @@ public class StorefrontShippingQuoteService {
     }
 
     private void addAndreaniQuotes(BookstoreStore store, Long bookstoreId, String postalCode, String itemHash, ShippingPackage pack,
-                                   BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
+                                   BigDecimal subtotal, BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
                                    List<StorefrontShippingQuoteResponse> results, List<String> warnings) {
         var integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, ShippingProviderType.ANDREANI).orElse(null);
         if (integration == null || !Boolean.TRUE.equals(integration.getEnabled())) return;
@@ -148,29 +170,25 @@ public class StorefrontShippingQuoteService {
             Map<String, String> credentials = configurationService.requireCredentials(bookstoreId, ShippingProviderType.ANDREANI);
             Map<String, Object> integrationSettings = readSettings(integration.getSettingsJson());
             ShippingProviderQuote providerQuote = andreaniClient.quoteHome(postalCode, pack, credentials, integrationSettings);
-            results.add(persist(store, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, providerQuote));
+            addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, providerQuote, integrationSettings));
         } catch (RuntimeException ex) {
             warnings.add("Andreani no pudo cotizar en este momento.");
         }
     }
 
     private void addCorreoArgentinoQuotes(BookstoreStore store, Long bookstoreId, String postalCode, String itemHash, ShippingPackage pack,
-                                           BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
+                                           BigDecimal subtotal, BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
                                            List<StorefrontShippingQuoteResponse> results, List<String> warnings) {
         var integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, ShippingProviderType.CORREO_ARGENTINO).orElse(null);
         if (integration == null || !Boolean.TRUE.equals(integration.getEnabled())) return;
         var shippingSettings = settingsRepository.findByBookstoreId(bookstoreId).orElse(null);
         if (shippingSettings == null || shippingSettings.getOriginPostalCode() == null || shippingSettings.getOriginPostalCode().isBlank()) return;
-        boolean homeEnabled = shippingServiceRepository.findAllByBookstoreIdAndProviderOrderBySortOrderAscIdAsc(bookstoreId, ShippingProviderType.CORREO_ARGENTINO)
-                .stream().filter(s -> s.getDeliveryType() == ShippingDeliveryType.HOME).allMatch(s -> Boolean.TRUE.equals(s.getEnabled()));
-        if (!homeEnabled) return;
         try {
             Map<String, String> credentials = configurationService.requireCredentials(bookstoreId, ShippingProviderType.CORREO_ARGENTINO);
             Map<String, Object> integrationSettings = readSettings(integration.getSettingsJson());
             for (ShippingProviderQuote providerQuote : correoArgentinoClient.quote(shippingSettings.getOriginPostalCode(), postalCode, pack, credentials, integrationSettings)) {
-                // La selección de sucursal requiere agencyId; se habilitará en Store con el selector de puntos PAQ.AR.
-                if (providerQuote.deliveryType() != ShippingDeliveryType.HOME) continue;
-                results.add(persist(store, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, providerQuote));
+                if (!deliveryTypeEnabled(bookstoreId, ShippingProviderType.CORREO_ARGENTINO, providerQuote.deliveryType())) continue;
+                addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, providerQuote, integrationSettings));
             }
         } catch (RuntimeException ex) {
             warnings.add("Correo Argentino no pudo cotizar en este momento.");
@@ -178,20 +196,28 @@ public class StorefrontShippingQuoteService {
     }
 
     private void addOcaQuotes(BookstoreStore store, Long bookstoreId, String postalCode, String itemHash, ShippingPackage pack,
-                              BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
+                              BigDecimal subtotal, BigDecimal surcharge, boolean freeShipping, Instant expiresAt,
                               List<StorefrontShippingQuoteResponse> results, List<String> warnings) {
         var integration = integrationRepository.findByBookstoreIdAndProvider(bookstoreId, ShippingProviderType.OCA).orElse(null);
         if (integration == null || !Boolean.TRUE.equals(integration.getEnabled())) return;
         var shippingSettings = settingsRepository.findByBookstoreId(bookstoreId).orElse(null);
         if (shippingSettings == null || shippingSettings.getOriginPostalCode() == null || shippingSettings.getOriginPostalCode().isBlank()) return;
-        boolean homeEnabled = shippingServiceRepository.findAllByBookstoreIdAndProviderOrderBySortOrderAscIdAsc(bookstoreId, ShippingProviderType.OCA)
-                .stream().filter(s -> s.getDeliveryType() == ShippingDeliveryType.HOME).allMatch(s -> Boolean.TRUE.equals(s.getEnabled()));
-        if (!homeEnabled) return;
         try {
             Map<String, String> credentials = configurationService.requireCredentials(bookstoreId, ShippingProviderType.OCA);
             Map<String, Object> integrationSettings = readSettings(integration.getSettingsJson());
-            ShippingProviderQuote providerQuote = ocaQuoteClient.quoteHome(shippingSettings.getOriginPostalCode(), postalCode, pack, credentials, integrationSettings);
-            results.add(persist(store, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, providerQuote));
+            if (deliveryTypeEnabled(bookstoreId, ShippingProviderType.OCA, ShippingDeliveryType.HOME)) {
+                ShippingProviderQuote home = ocaQuoteClient.quoteHome(shippingSettings.getOriginPostalCode(), postalCode, pack, credentials, integrationSettings);
+                addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, home, integrationSettings));
+            }
+            if (deliveryTypeEnabled(bookstoreId, ShippingProviderType.OCA, ShippingDeliveryType.BRANCH)
+                    && (integrationSettings.containsKey("operativaSucursal") || credentials.containsKey("operativaSucursal"))) {
+                try {
+                    ShippingProviderQuote branch = ocaQuoteClient.quoteBranch(shippingSettings.getOriginPostalCode(), postalCode, pack, credentials, integrationSettings);
+                    addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, branch, integrationSettings));
+                } catch (RuntimeException branchError) {
+                    warnings.add("OCA no pudo cotizar retiro en sucursal en este momento.");
+                }
+            }
         } catch (RuntimeException ex) {
             warnings.add("OCA no pudo cotizar en este momento.");
         }
@@ -206,14 +232,14 @@ public class StorefrontShippingQuoteService {
         if (services.isEmpty()) {
             ShippingProviderQuote q = new ShippingProviderQuote(ShippingProviderType.PICKUP_IN_STORE, "STORE_PICKUP", "Retiro en librería",
                     ShippingDeliveryType.STORE_PICKUP, ZERO, null, null, "Sin costo", null, null);
-            results.add(persist(store, postalCode, itemHash, pack, ZERO, false, expiresAt, q));
+            addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, ZERO, false, expiresAt, q, Map.of()));
             return;
         }
         for (var service : services) {
             if (!Boolean.TRUE.equals(service.getEnabled())) continue;
             ShippingProviderQuote q = new ShippingProviderQuote(ShippingProviderType.PICKUP_IN_STORE, service.getServiceCode(), service.getDisplayName(),
                     ShippingDeliveryType.STORE_PICKUP, ZERO, null, null, settingText(service.getSettingsJson(), "estimatedDays"), null, service.getSettingsJson());
-            results.add(persist(store, postalCode, itemHash, pack, ZERO, false, expiresAt, q));
+            addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, ZERO, false, expiresAt, q, readSettings(service.getSettingsJson())));
         }
     }
 
@@ -231,49 +257,92 @@ public class StorefrontShippingQuoteService {
             BigDecimal price = decimal(settings.get("price"), ZERO);
             ShippingProviderQuote q = new ShippingProviderQuote(ShippingProviderType.MANUAL, service.getServiceCode(), service.getDisplayName(),
                     service.getDeliveryType(), price, null, null, objectText(settings.get("estimatedDays")), null, service.getSettingsJson());
-            results.add(persist(store, postalCode, itemHash, pack, surcharge, freeShipping, expiresAt, q));
+            addIfPresent(results, persist(store, postalCode, itemHash, pack, subtotal, surcharge, freeShipping, expiresAt, q, settings));
         }
     }
 
     private StorefrontShippingQuoteResponse persist(BookstoreStore store, String postalCode, String itemHash, ShippingPackage pack,
-                                                    BigDecimal surcharge, boolean freeShipping, Instant expiresAt, ShippingProviderQuote providerQuote) {
+                                                    BigDecimal subtotal, BigDecimal surcharge, boolean globalFreeShipping, Instant expiresAt,
+                                                    ShippingProviderQuote providerQuote, Map<String, Object> ruleSettings) {
+        CarrierRules rules = carrierRules(ruleSettings, postalCode, subtotal, globalFreeShipping);
+        if (!rules.eligible()) return null;
         BigDecimal providerAmount = money(providerQuote.amount());
-        BigDecimal charged = freeShipping && providerQuote.deliveryType() != ShippingDeliveryType.STORE_PICKUP
-                ? ZERO : money(providerAmount.add(surcharge));
+        BigDecimal charged = rules.freeShipping() && providerQuote.deliveryType() != ShippingDeliveryType.STORE_PICKUP
+                ? ZERO : money(providerAmount.add(surcharge).add(rules.priceAdjustment()).max(ZERO));
         StoreShippingQuote entity = quoteRepository.save(StoreShippingQuote.builder()
                 .id(UUID.randomUUID()).store(store).bookstore(store.getBookstore()).provider(providerQuote.provider())
                 .serviceCode(providerQuote.serviceCode()).serviceName(providerQuote.displayName()).deliveryType(providerQuote.deliveryType())
                 .destinationPostalCode(postalCode).itemsHash(itemHash).providerAmount(providerAmount).packagingSurcharge(surcharge)
                 .chargedAmount(charged).currency("ARS").estimatedDaysMin(providerQuote.estimatedDaysMin()).estimatedDaysMax(providerQuote.estimatedDaysMax())
-                .estimatedText(providerQuote.estimatedText()).externalQuoteId(providerQuote.externalQuoteId()).freeShippingApplied(freeShipping)
+                .estimatedText(providerQuote.estimatedText()).externalQuoteId(providerQuote.externalQuoteId()).freeShippingApplied(rules.freeShipping())
+                .recommended(rules.recommended()).sortPriority(rules.sortPriority())
                 .weightGrams(pack.weightGrams()).widthCm(pack.widthCm()).heightCm(pack.heightCm()).depthCm(pack.depthCm()).volumeCm3(pack.volumeCm3())
                 .metadataJson(providerQuote.metadataJson()).expiresAt(expiresAt).createdAt(Instant.now()).build());
         return new StorefrontShippingQuoteResponse(entity.getId(), entity.getProvider(), entity.getServiceCode(), entity.getServiceName(), entity.getDeliveryType(),
                 entity.getChargedAmount(), entity.getCurrency(), entity.getEstimatedDaysMin(), entity.getEstimatedDaysMax(), entity.getEstimatedText(),
-                Boolean.TRUE.equals(entity.getFreeShippingApplied()), entity.getExpiresAt());
+                Boolean.TRUE.equals(entity.getFreeShippingApplied()), Boolean.TRUE.equals(entity.getRecommended()), entity.getSortPriority(), entity.getExpiresAt());
+    }
+
+    private CarrierRules carrierRules(Map<String, Object> settings, String postalCode, BigDecimal subtotal, boolean globalFreeShipping) {
+        Map<String, Object> safe = settings == null ? Map.of() : settings;
+        if (!postalAllowed(postalCode, safe.get("postalCodes"))) return CarrierRules.ineligible();
+        if (postalListed(postalCode, safe.get("excludedPostalCodes"))) return CarrierRules.ineligible();
+        BigDecimal minOrder = decimal(safe.get("minOrderAmount"), ZERO);
+        BigDecimal maxOrder = decimal(safe.get("maxOrderAmount"), null);
+        if (subtotal.compareTo(minOrder) < 0 || (maxOrder != null && maxOrder.signum() > 0 && subtotal.compareTo(maxOrder) > 0)) return CarrierRules.ineligible();
+        boolean disableGlobalFree = bool(safe.get("disableGlobalFreeShipping"), false);
+        BigDecimal ownThreshold = decimal(safe.get("freeShippingThreshold"), null);
+        boolean free = ownThreshold != null && ownThreshold.signum() >= 0
+                ? subtotal.compareTo(ownThreshold) >= 0
+                : globalFreeShipping && !disableGlobalFree;
+        BigDecimal adjustment = decimal(safe.get("priceAdjustment"), ZERO);
+        boolean recommended = bool(safe.get("recommended"), false);
+        int priority = integer(safe.get("sortPriority"), 100);
+        return new CarrierRules(true, free, adjustment, recommended, priority);
+    }
+
+    private boolean deliveryTypeEnabled(Long bookstoreId, ShippingProviderType provider, ShippingDeliveryType type) {
+        List<BookstoreShippingService> matching = shippingServiceRepository
+                .findAllByBookstoreIdAndProviderOrderBySortOrderAscIdAsc(bookstoreId, provider).stream()
+                .filter(s -> s.getDeliveryType() == type).toList();
+        return matching.isEmpty() || matching.stream().anyMatch(s -> Boolean.TRUE.equals(s.getEnabled()));
+    }
+
+    private void addIfPresent(List<StorefrontShippingQuoteResponse> results, StorefrontShippingQuoteResponse quote) {
+        if (quote != null) results.add(quote);
     }
 
     private ShippingPackage estimatePackage(List<Long> ids, Map<Long, Integer> quantities, Map<Long, Inventory> inventories, BigDecimal subtotal) {
-        BigDecimal weight = new BigDecimal("150");
-        BigDecimal width = BigDecimal.ZERO;
-        BigDecimal height = BigDecimal.ZERO;
-        BigDecimal depth = new BigDecimal("2");
+        BigDecimal booksWeight = ZERO;
+        BigDecimal maxWidth = BigDecimal.ZERO;
+        BigDecimal maxHeight = BigDecimal.ZERO;
+        BigDecimal maxDepth = BigDecimal.ZERO;
+        BigDecimal totalBookVolume = BigDecimal.ZERO;
         boolean fallback = false;
+
         for (Long id : ids) {
             Book book = inventories.get(id).getBook();
             int quantity = quantities.get(id);
-            BigDecimal bookWeight = positive(book.getWeightGrams(), DEFAULT_WEIGHT_GRAMS); fallback |= book.getWeightGrams() == null;
-            BigDecimal bookWidth = positive(book.getWidthCm(), DEFAULT_WIDTH_CM); fallback |= book.getWidthCm() == null;
-            BigDecimal bookHeight = positive(book.getHeightCm(), DEFAULT_HEIGHT_CM); fallback |= book.getHeightCm() == null;
-            BigDecimal bookDepth = positive(book.getDepthCm(), DEFAULT_DEPTH_CM); fallback |= book.getDepthCm() == null;
-            weight = weight.add(bookWeight.multiply(BigDecimal.valueOf(quantity)));
-            width = width.max(bookWidth);
-            height = height.max(bookHeight);
-            depth = depth.add(bookDepth.multiply(BigDecimal.valueOf(quantity)));
+            BigDecimal bookWeight = positive(book.getWeightGrams(), DEFAULT_WEIGHT_GRAMS); fallback |= book.getWeightGrams() == null || book.getWeightGrams().signum() <= 0;
+            BigDecimal bookWidth = positive(book.getWidthCm(), DEFAULT_WIDTH_CM); fallback |= book.getWidthCm() == null || book.getWidthCm().signum() <= 0;
+            BigDecimal bookHeight = positive(book.getHeightCm(), DEFAULT_HEIGHT_CM); fallback |= book.getHeightCm() == null || book.getHeightCm().signum() <= 0;
+            BigDecimal bookDepth = positive(book.getDepthCm(), DEFAULT_DEPTH_CM); fallback |= book.getDepthCm() == null || book.getDepthCm().signum() <= 0;
+
+            booksWeight = booksWeight.add(bookWeight.multiply(BigDecimal.valueOf(quantity)));
+            maxWidth = maxWidth.max(bookWidth);
+            maxHeight = maxHeight.max(bookHeight);
+            maxDepth = maxDepth.max(bookDepth);
+            totalBookVolume = totalBookVolume.add(bookWidth.multiply(bookHeight).multiply(bookDepth).multiply(BigDecimal.valueOf(quantity)));
         }
-        width = width.add(new BigDecimal("2")).setScale(2, RoundingMode.CEILING);
-        height = height.add(new BigDecimal("2")).setScale(2, RoundingMode.CEILING);
-        depth = depth.max(new BigDecimal("5")).setScale(2, RoundingMode.CEILING);
+
+        BigDecimal packagingWeight = booksWeight.multiply(new BigDecimal("0.05")).max(new BigDecimal("150"));
+        BigDecimal weight = booksWeight.add(packagingWeight);
+        BigDecimal width = maxWidth.add(new BigDecimal("2")).max(new BigDecimal("10")).setScale(2, RoundingMode.CEILING);
+        BigDecimal height = maxHeight.add(new BigDecimal("2")).max(new BigDecimal("10")).setScale(2, RoundingMode.CEILING);
+        BigDecimal footprint = width.multiply(height).multiply(new BigDecimal("0.85"));
+        BigDecimal packedDepth = footprint.signum() == 0 ? maxDepth : totalBookVolume.divide(footprint, 2, RoundingMode.CEILING);
+        BigDecimal depth = packedDepth.add(new BigDecimal("2")).max(maxDepth.add(new BigDecimal("2"))).max(new BigDecimal("5")).setScale(2, RoundingMode.CEILING);
+
         int grams = weight.setScale(0, RoundingMode.CEILING).intValue();
         BigDecimal volume = width.multiply(height).multiply(depth).setScale(2, RoundingMode.CEILING);
         return new ShippingPackage(grams, width, height, depth, volume, subtotal, fallback);
@@ -315,10 +384,30 @@ public class StorefrontShippingQuoteService {
         try { return new BigDecimal(String.valueOf(value)); } catch (NumberFormatException ex) { return fallback; }
     }
     private boolean postalAllowed(String postalCode, Object configured) {
-        if (!(configured instanceof Collection<?> values) || values.isEmpty()) return true;
-        return values.stream().map(String::valueOf).map(this::normalizePostalCode).anyMatch(postalCode::equals);
+        List<String> values = stringValues(configured);
+        if (values.isEmpty()) return true;
+        return values.stream().map(this::normalizePostalCode).anyMatch(postalCode::equals);
+    }
+    private boolean postalListed(String postalCode, Object configured) {
+        return stringValues(configured).stream().map(this::normalizePostalCode).anyMatch(postalCode::equals);
+    }
+    private List<String> stringValues(Object configured) {
+        if (configured instanceof Collection<?> values) return values.stream().map(String::valueOf).filter(v -> !v.isBlank()).toList();
+        if (configured == null) return List.of();
+        return Arrays.stream(String.valueOf(configured).split("[,;\\s]+"))
+                .map(String::trim).filter(v -> !v.isBlank()).toList();
+    }
+    private boolean bool(Object value, boolean fallback) {
+        return value == null ? fallback : Boolean.parseBoolean(String.valueOf(value));
+    }
+    private int integer(Object value, int fallback) {
+        if (value == null) return fallback;
+        try { return Integer.parseInt(String.valueOf(value)); } catch (NumberFormatException ex) { return fallback; }
     }
     private BigDecimal positive(BigDecimal value, BigDecimal fallback) { return value != null && value.signum() > 0 ? value : fallback; }
     private String normalizePostalCode(String value) { return value == null ? "" : value.replaceAll("\\s+", "").toUpperCase(Locale.ROOT); }
     private BigDecimal money(BigDecimal value) { return value.setScale(2, RoundingMode.HALF_UP); }
+    private record CarrierRules(boolean eligible, boolean freeShipping, BigDecimal priceAdjustment, boolean recommended, int sortPriority) {
+        static CarrierRules ineligible() { return new CarrierRules(false, false, ZERO, false, 100); }
+    }
 }

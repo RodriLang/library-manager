@@ -58,8 +58,10 @@ public class CorreoArgentinoShipmentClient implements ShipmentCreationClient, Sh
         parcel.put("productCategory", "LIBROS");
         parcel.put("declaredValue", shipment.getDeclaredValue() == null ? "0" : shipment.getDeclaredValue().setScale(0, RoundingMode.HALF_UP).toPlainString());
         order.put("parcels", List.of(parcel));
-        order.put("deliveryType", "homeDelivery");
-        order.put("agencyId", "");
+        boolean pickup = shipment.getOrder().getShippingDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.BRANCH
+                || shipment.getOrder().getShippingDeliveryType() == com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType.PICKUP_POINT;
+        order.put("deliveryType", pickup ? "agency" : "homeDelivery");
+        order.put("agencyId", pickup ? blankToEmpty(shipment.getOrder().getShippingPickupPointExternalId()) : "");
         order.put("saleDate", OffsetDateTime.now(ZoneId.of("America/Argentina/Buenos_Aires")).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
         order.put("shipmentClientId", shipment.getOrder().getOrderNumber() + "-" + shipment.getPackageSequence());
         order.put("serviceType", support.serviceType(credentials, settings));
