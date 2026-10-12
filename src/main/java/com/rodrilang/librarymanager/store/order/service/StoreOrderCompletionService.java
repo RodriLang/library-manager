@@ -59,8 +59,14 @@ public class StoreOrderCompletionService {
         if (order.getStatus() != StoreOrderStatus.CONFIRMED) {
             throw new BusinessException("El pedido debe estar confirmado antes de entregarlo.");
         }
-        if (order.getFulfillmentStatus() != StoreFulfillmentStatus.READY_FOR_PICKUP) {
+        if (order.getDeliveryMethod() == StoreDeliveryMethod.PICKUP
+                && order.getFulfillmentStatus() != StoreFulfillmentStatus.READY_FOR_PICKUP) {
             throw new BusinessException("El pedido debe estar listo para retirar antes de marcarlo como entregado.");
+        }
+        if (order.getDeliveryMethod() == StoreDeliveryMethod.SHIPPING
+                && order.getFulfillmentStatus() != StoreFulfillmentStatus.SHIPPED
+                && order.getFulfillmentStatus() != StoreFulfillmentStatus.DELIVERED) {
+            throw new BusinessException("El pedido debe estar despachado antes de registrar la venta.");
         }
         if (order.getPaymentMethod() == StorePaymentMethod.MERCADO_PAGO) {
             if (order.getPaymentStatus() != StorePaymentStatus.PAID) {
@@ -181,7 +187,9 @@ public class StoreOrderCompletionService {
         order.setSale(sale);
         order.setStatus(StoreOrderStatus.COMPLETED);
         order.setPaymentStatus(StorePaymentStatus.PAID);
-        order.setFulfillmentStatus(StoreFulfillmentStatus.DELIVERED);
+        if (order.getDeliveryMethod() == StoreDeliveryMethod.PICKUP) {
+            order.setFulfillmentStatus(StoreFulfillmentStatus.DELIVERED);
+        }
         order.setCompletedAt(now);
         order.setReservationExpiresAt(null);
 

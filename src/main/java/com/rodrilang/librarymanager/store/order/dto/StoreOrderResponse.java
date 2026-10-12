@@ -33,5 +33,14 @@ public record StoreOrderResponse(
         Instant completedAt,
         String paymentExternalId,
         String paymentStatusDetail,
+        String shippingProvider,
+        String shippingServiceCode,
+        String shippingServiceName,
+        String shippingDestinationPostalCode,
+        String shippingDestinationCity,
+        String shippingDestinationState,
+        String shippingDestinationStreet,
+        String shippingDestinationStreetNumber,
+        String shippingDestinationFloorApartment,
         List<StoreOrderItemResponse> items
 ) {}

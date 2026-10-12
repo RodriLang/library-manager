@@ -14,13 +14,18 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class AndreaniQuoteClient {
     private static final String QA_BASE_URL = "https://apisqa.andreani.com";
     private static final String PROD_BASE_URL = "https://apis.andreani.com";
     private final ObjectMapper objectMapper;
+    private final Map<String, CachedToken> tokenCache = new ConcurrentHashMap<>();
 
     public AndreaniQuoteClient(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -35,7 +40,7 @@ public class AndreaniQuoteClient {
 
         String baseUrl = baseUrl(credentials, settings);
         RestClient client = client(baseUrl);
-        String token = loginIfConfigured(client, credentials);
+        String token = loginIfConfigured(client, credentials, baseUrl);
         URI uri = UriComponentsBuilder.fromUriString(baseUrl + "/v1/tarifas")
                 .queryParam("cpDestino", postalCode)
                 .queryParam("contrato", contract)
@@ -50,7 +55,7 @@ public class AndreaniQuoteClient {
         try {
             RestClient.RequestHeadersSpec<?> request = client.get().uri(uri).accept(MediaType.APPLICATION_JSON);
             if (!blank(token)) {
-                request = request.header("Authorization", "Bearer " + token).header("x-authorization-token", token);
+                request = request.header("x-authorization-token", token);
             }
             JsonNode body = request.retrieve().body(JsonNode.class);
             if (body == null) throw new BusinessException("Andreani respondió sin datos de cotización.");
@@ -86,22 +91,42 @@ public class AndreaniQuoteClient {
         return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
-    private String loginIfConfigured(RestClient client, Map<String, String> credentials) {
+    private String loginIfConfigured(RestClient client, Map<String, String> credentials, String baseUrl) {
         String user = first(credentials, "usuario", "username", "user");
         String password = first(credentials, "password", "contrasena", "pass");
         if (blank(user) || blank(password)) return null;
+
+        String cacheKey = baseUrl + "|" + user;
+        CachedToken cached = tokenCache.get(cacheKey);
+        if (cached != null && cached.expiresAt().isAfter(Instant.now())) return cached.token();
+
         try {
-            JsonNode response = client.post().uri("/v2/login")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("usuario", user, "password", password))
-                    .retrieve().body(JsonNode.class);
-            if (response == null) return null;
-            String token = response.path("token").asText(null);
-            if (blank(token)) token = response.path("access_token").asText(null);
+            String basic = Base64.getEncoder().encodeToString((user + ":" + password).getBytes(StandardCharsets.UTF_8));
+            org.springframework.http.ResponseEntity<String> response = client.get().uri("/login")
+                    .header("Authorization", "Basic " + basic)
+                    .retrieve().toEntity(String.class);
+
+            String token = response.getHeaders().getFirst("x-authorization-token");
+            String body = response.getBody();
+            if (blank(token) && !blank(body)) {
+                try {
+                    JsonNode json = objectMapper.readTree(body);
+                    token = json.path("token").asText(null);
+                    if (blank(token)) token = json.path("access_token").asText(null);
+                    if (blank(token)) token = json.path("x-authorization-token").asText(null);
+                } catch (Exception ignored) {
+                    token = body.trim().replaceAll("^\"|\"$", "");
+                }
+            }
+            if (blank(token)) throw new BusinessException("Andreani no devolvió un token de autenticación.");
+            tokenCache.put(cacheKey, new CachedToken(token, Instant.now().plus(Duration.ofHours(23))));
             return token;
-        } catch (RuntimeException ignored) {
-            // El cotizador histórico de Andreani puede operar sin autenticación.
-            return null;
+        } catch (RestClientResponseException ex) {
+            throw new BusinessException("No se pudo autenticar con Andreani (HTTP " + ex.getStatusCode().value() + ").");
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new BusinessException("No se pudo autenticar con Andreani.");
         }
     }
 
@@ -149,4 +174,7 @@ public class AndreaniQuoteClient {
     }
 
     private boolean blank(String value) { return value == null || value.isBlank(); }
+
+    private record CachedToken(String token, Instant expiresAt) {}
 }
+

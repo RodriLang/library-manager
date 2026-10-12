@@ -311,7 +311,9 @@ public class StoreOrderService {
         StoreFulfillmentStatus current = order.getFulfillmentStatus();
         StoreFulfillmentStatus target = request.status();
         boolean allowed = (current == StoreFulfillmentStatus.PENDING && target == StoreFulfillmentStatus.PREPARING)
-                || (current == StoreFulfillmentStatus.PREPARING && target == StoreFulfillmentStatus.READY_FOR_PICKUP)
+                || (order.getDeliveryMethod() == StoreDeliveryMethod.PICKUP
+                    && current == StoreFulfillmentStatus.PREPARING
+                    && target == StoreFulfillmentStatus.READY_FOR_PICKUP)
                 || current == target;
         if (!allowed) {
             throw new BusinessException("Cambio de estado de preparación no permitido en esta etapa.");
@@ -458,7 +460,10 @@ public class StoreOrderService {
         return new StoreOrderResponse(o.getId(), o.getPublicId(), o.getOrderNumber(), o.getTrackingToken(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(),
                 o.getPaymentMethod(), o.getDeliveryMethod(), o.getCustomerName(), o.getCustomerEmail(), o.getCustomerPhone(), o.getNotes(), o.getSubtotal(),
                 o.getDiscountAmount(), o.getShippingCost(), o.getTotal(), o.getReservationExpiresAt(), o.getCreatedAt(), o.getConfirmedAt(), o.getCancelledAt(),
-                o.getCancellationReason(), o.getSale() != null ? o.getSale().getId() : null, o.getCompletedAt(), o.getPaymentExternalId(), o.getPaymentStatusDetail(), itemResponses(items));
+                o.getCancellationReason(), o.getSale() != null ? o.getSale().getId() : null, o.getCompletedAt(), o.getPaymentExternalId(), o.getPaymentStatusDetail(),
+                o.getShippingProvider(), o.getShippingServiceCode(), o.getShippingServiceName(), o.getShippingDestinationPostalCode(),
+                o.getShippingDestinationCity(), o.getShippingDestinationState(), o.getShippingDestinationStreet(), o.getShippingDestinationStreetNumber(),
+                o.getShippingDestinationFloorApartment(), itemResponses(items));
     }
     private StoreOrderSummaryResponse toSummary(StoreOrder o) {
         return new StoreOrderSummaryResponse(o.getId(), o.getOrderNumber(), o.getStatus(), o.getPaymentStatus(), o.getFulfillmentStatus(), o.getCustomerName(),
