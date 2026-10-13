@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookEf
 import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookFieldOverrideService;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.image.service.InventoryImageService;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
 import com.rodrilang.librarymanager.model.*;
 import com.rodrilang.librarymanager.store.channel.SalesChannelType;
@@ -31,6 +32,7 @@ public class StorefrontService {
     private final StorePublicationRepository publicationRepository;
     private final StorefrontProductQueryRepository queryRepository;
     private final InventoryPriceService priceService;
+    private final InventoryImageService inventoryImageService;
     private final SalesChannelService salesChannelService;
     private final BookstoreBookFieldOverrideService overrideService;
     private final StoreOrderService storeOrderService;
@@ -118,12 +120,15 @@ public class StorefrontService {
         StorefrontPublisherResponse publisher = effective.publisher() == null ? null : new StorefrontPublisherResponse(effective.publisher().getId(), effective.publisher().getName());
         String displayTitle = displayTitle(store.getTitleFormat(), title, authors, publisher);
         int stock = Math.max(0, (i.getStock() == null ? 0 : i.getStock()) - Math.max(0, reserved));
+        var gallery = inventoryImageService.getGalleryForInventory(i);
+        List<String> imageUrls = gallery.images().stream().map(image -> image.url()).filter(Objects::nonNull).toList();
+        String coverUrl = imageUrls.isEmpty() ? effective.coverUrl() : imageUrls.getFirst();
         return new StorefrontProductResponse(i.getId(), b.getId(), slugify(title) + "-" + i.getId(), title, displayTitle,
                 Boolean.TRUE.equals(store.getShowIsbn()) ? b.getPreferredIsbn() : null,
                 textOr(p.getCustomDescription(), effective.description()),
                 Boolean.TRUE.equals(store.getShowAuthor()) ? authors : List.of(),
                 Boolean.TRUE.equals(store.getShowPublisher()) ? publisher : null,
-                effective.categoryName(), effective.genreName(), effective.coverUrl(), price == null ? null : price.getAmount(),
+                effective.categoryName(), effective.genreName(), coverUrl, imageUrls, price == null ? null : price.getAmount(),
                 stock > 0 ? "IN_STOCK" : "OUT_OF_STOCK", Boolean.TRUE.equals(store.getShowStock()) ? stock : null,
                 effective.publicationYear(), Boolean.TRUE.equals(p.getFeatured()), p.getPublishedAt() != null && p.getPublishedAt().isAfter(Instant.now().minus(Duration.ofDays(45))));
     }

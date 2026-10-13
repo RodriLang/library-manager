@@ -22,6 +22,10 @@ public class ImageFolderResolver {
         return "%s/books/%d/covers".formatted(rootFolder, bookId);
     }
 
+    public String inventoryImages() {
+        return "%s/inventory/images".formatted(rootFolder);
+    }
+
     private String normalizeSegment(String value) {
         if (value == null || value.isBlank()) {
             return "anaquel";

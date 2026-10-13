@@ -14,6 +14,7 @@ public record StorefrontProductResponse(
         String category,
         String genre,
         String coverUrl,
+        List<String> imageUrls,
         BigDecimal price,
         String availability,
         Integer stock,
