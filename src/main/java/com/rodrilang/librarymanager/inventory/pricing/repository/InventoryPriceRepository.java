@@ -41,6 +41,34 @@ public interface InventoryPriceRepository extends JpaRepository<InventoryPrice, 
     @Query("""
             select p
             from InventoryPrice p
+            join p.inventory i
+            where i.bookstore.id = :bookstoreId
+              and i.active = true
+              and p.effectiveFrom <= :date
+            order by i.id asc, p.effectiveFrom desc, p.id desc
+            """)
+    List<InventoryPrice> findCurrentCandidatesForBookstore(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("date") LocalDate date
+    );
+
+    @Query("""
+            select p
+            from InventoryPrice p
+            join p.inventory i
+            where i.bookstore.id = :bookstoreId
+              and i.active = true
+              and p.effectiveFrom = :effectiveFrom
+            order by i.id asc, p.id desc
+            """)
+    List<InventoryPrice> findAllByBookstoreIdAndEffectiveFrom(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("effectiveFrom") LocalDate effectiveFrom
+    );
+
+    @Query("""
+            select p
+            from InventoryPrice p
             where p.inventory.id = :inventoryId
               and p.effectiveFrom > :date
             order by p.effectiveFrom asc, p.id asc

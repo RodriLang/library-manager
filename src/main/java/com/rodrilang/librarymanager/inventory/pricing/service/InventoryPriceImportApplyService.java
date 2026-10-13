@@ -154,6 +154,7 @@ public class InventoryPriceImportApplyService {
 
     private String statusMessage(InventoryPriceImportStatus status) {
         return switch (status) {
+            case PREVIEW_PROCESSING -> "El preview de la importación todavía se está generando.";
             case PROCESSING -> "La importación ya se está procesando.";
             case APPLIED -> "La importación ya fue aplicada.";
             case CANCELLED -> "La importación fue cancelada y no puede aplicarse.";

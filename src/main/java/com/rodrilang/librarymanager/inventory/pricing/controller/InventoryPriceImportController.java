@@ -23,13 +23,13 @@ public class InventoryPriceImportController {
     private final InventoryPriceImportApplyService applyService;
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public InventoryPriceImportPreviewResponse preview(
+    public ResponseEntity<InventoryPriceImportPreviewStartResponse> preview(
             @RequestParam Long formatId,
             @RequestParam(required = false) String sourceName,
             @RequestParam LocalDate effectiveFrom,
             @RequestParam MultipartFile file
     ) {
-        return service.preview(formatId, sourceName, effectiveFrom, file);
+        return ResponseEntity.accepted().body(service.startPreview(formatId, sourceName, effectiveFrom, file));
     }
 
     @PostMapping("/{importId}/duplicates/{inventoryId}/resolve")
