@@ -96,6 +96,10 @@ public interface InventoryPriceRepository extends JpaRepository<InventoryPrice, 
             select p
             from InventoryPrice p
             join fetch p.inventory i
+            left join fetch p.priceImport pi
+            left join fetch pi.provider
+            left join fetch p.lastConfirmedPriceImport cpi
+            left join fetch cpi.provider
             where i.bookstore.id = :bookstoreId
             order by i.id asc, p.effectiveFrom desc, p.id desc
             """)

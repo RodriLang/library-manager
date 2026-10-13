@@ -48,6 +48,10 @@ public class InventoryPrice extends AuditableEntity {
     private String lastConfirmedSource;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "last_confirmed_price_import_id")
+    private InventoryPriceImport lastConfirmedPriceImport;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "price_import_id")
     private InventoryPriceImport priceImport;
 
