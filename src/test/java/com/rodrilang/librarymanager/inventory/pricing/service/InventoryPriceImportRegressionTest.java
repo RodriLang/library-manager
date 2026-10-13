@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,7 +48,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -93,8 +93,6 @@ class InventoryPriceImportRegressionTest {
         when(context.getCurrentUserId()).thenReturn(5L);
         when(inventoryRepository.findByIdAndBookstoreId(10L, 7L)).thenReturn(Optional.of(inventory));
         when(priceRepository.findCurrentCandidates(eq(10L), any())).thenAnswer(call -> at(call.getArgument(1)));
-        when(priceRepository.findCurrentCandidatesForInventoryIds(anyCollection(), any()))
-                .thenAnswer(call -> at(call.getArgument(1)));
         when(priceRepository.findByInventoryIdAndEffectiveFrom(eq(10L), any())).thenAnswer(call ->
                 prices.stream().filter(p -> p.getEffectiveFrom().equals(call.getArgument(1))).findFirst());
         when(priceRepository.save(any(InventoryPrice.class))).thenAnswer(call -> {
@@ -304,28 +302,100 @@ class InventoryPriceImportRegressionTest {
         StreamingConfigurablePriceListParser parser = mock(StreamingConfigurablePriceListParser.class);
         NormalizedPriceListStorage normalized = mock(NormalizedPriceListStorage.class);
         CanonicalIsbnResolver isbns = mock(CanonicalIsbnResolver.class);
+        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
+        ApplicationEventPublisher previewEvents = mock(ApplicationEventPublisher.class);
+
+        BookstorePriceListFormat format = BookstorePriceListFormat.builder()
+                .id(1L)
+                .bookstore(inventory.getBookstore())
+                .name("ISBN y precio")
+                .sheetIndex(0)
+                .firstDataRowIndex(1)
+                .isbnColumn(0)
+                .priceColumn(1)
+                .active(true)
+                .build();
+        AtomicReference<InventoryPriceImport> storedImport = new AtomicReference<>();
+        List<InventoryPriceImportItem> storedItems = new ArrayList<>();
+
         when(context.getCurrentBookstoreId()).thenReturn(7L);
         when(bookstores.findById(7L)).thenReturn(Optional.of(inventory.getBookstore()));
         when(inventoryRepository.findAllByBookstoreIdAndActiveTrue(7L)).thenReturn(List.of(inventory));
-        when(formats.getForCurrentBookstore(1L)).thenReturn(BookstorePriceListFormat.builder()
-                .name("ISBN y precio").sheetIndex(0).firstDataRowIndex(1).isbnColumn(0).priceColumn(1).build());
+        when(formats.getForCurrentBookstore(1L)).thenReturn(format);
         when(imports.save(any())).thenAnswer(call -> {
             InventoryPriceImport value = call.getArgument(0);
             value.setId(30L);
+            storedImport.set(value);
             return value;
         });
-        when(files.store(any())).thenReturn(Path.of("unused-mocked-source.xlsx"));
-        when(normalized.upload(eq(7L), any())).thenReturn(new NormalizedPriceListStorage.StoredRawFile("list", "https://example.com/list.csv"));
+        when(imports.findById(30L)).thenAnswer(call -> Optional.ofNullable(storedImport.get()));
+        when(imports.findByIdAndBookstoreId(30L, 7L))
+                .thenAnswer(call -> Optional.ofNullable(storedImport.get()));
+        when(items.saveAll(any())).thenAnswer(call -> {
+            storedItems.clear();
+            storedItems.addAll(call.getArgument(0));
+            return List.copyOf(storedItems);
+        });
+        when(items.findAllByPriceImportIdOrderByRowNumberAsc(30L))
+                .thenAnswer(call -> List.copyOf(storedItems));
+
+        when(priceRepository.findCurrentCandidatesForBookstore(eq(7L), any()))
+                .thenAnswer(call -> at(call.getArgument(1)));
+        when(priceRepository.findAllByBookstoreIdAndEffectiveFrom(eq(7L), any()))
+                .thenAnswer(call -> prices.stream()
+                        .filter(price -> price.getEffectiveFrom().equals(call.getArgument(1)))
+                        .toList());
+
+        Path source = Path.of("unused-mocked-source.xlsx");
+        when(files.store(any())).thenReturn(source);
+        when(normalized.upload(eq(7L), any()))
+                .thenReturn(new NormalizedPriceListStorage.StoredRawFile("list", "https://example.com/list.csv"));
         when(isbns.resolve(ISBN)).thenReturn(ISBN);
         doAnswer(call -> {
             Consumer<PriceListRow> consumer = call.getArgument(2);
-            consumer.accept(new PriceListRow(2, ISBN, "Un libro", null, "Editorial", new BigDecimal(incoming), null, null, null));
+            consumer.accept(new PriceListRow(
+                    2,
+                    ISBN,
+                    "Un libro",
+                    null,
+                    "Editorial",
+                    new BigDecimal(incoming),
+                    null,
+                    null,
+                    null
+            ));
             return null;
         }).when(parser).parse(any(), any(), any());
-        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
-        InventoryPriceImportService importer = new InventoryPriceImportService(context, bookstores,
-                inventoryRepository, priceRepository, service, formats, imports, items, files, parser, normalized, isbns, providerRows);
-        return importer.preview(1L, "Editorial", month,
-                new MockMultipartFile("file", "lista.xlsx", "application/octet-stream", new byte[]{1}));
+
+        InventoryPriceImportService importer = new InventoryPriceImportService(
+                context,
+                bookstores,
+                inventoryRepository,
+                priceRepository,
+                service,
+                formats,
+                imports,
+                items,
+                files,
+                parser,
+                normalized,
+                isbns,
+                providerRows,
+                previewEvents
+        );
+
+        var started = importer.startPreview(
+                1L,
+                "Editorial",
+                month,
+                new MockMultipartFile("file", "lista.xlsx", "application/octet-stream", new byte[]{1})
+        );
+        assertEquals(30L, started.importId());
+        assertEquals(InventoryPriceImportStatus.PREVIEW_PROCESSING, started.status());
+
+        importer.processPreview(started.importId(), source);
+
+        assertEquals(InventoryPriceImportStatus.PREVIEW_READY, storedImport.get().getStatus());
+        return importer.get(started.importId());
     }
 }
