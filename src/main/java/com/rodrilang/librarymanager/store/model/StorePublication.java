@@ -15,6 +15,8 @@ public class StorePublication extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "inventory_id", nullable = false) private Inventory inventory;
     @Builder.Default @Column(nullable = false) private Boolean published = false;
     @Column(name = "published_at") private Instant publishedAt;
+    @Column(name = "first_published_at") private Instant firstPublishedAt;
+    @Column(name = "last_published_at") private Instant lastPublishedAt;
     @Builder.Default @Column(nullable = false) private Boolean featured = false;
     @Column(name = "featured_order") private Integer featuredOrder;
     @Column(name = "custom_title", length = 500) private String customTitle;

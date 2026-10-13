@@ -22,6 +22,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service @RequiredArgsConstructor
 public class StoreAdminService {
@@ -32,6 +34,8 @@ public class StoreAdminService {
     private final BookstoreStoreRepository storeRepository;
     private final StoreDomainRepository domainRepository;
     private final StorePublicationRepository publicationRepository;
+    private final StoreSocialLinkRepository socialLinkRepository;
+    private final StoreSectionService storeSectionService;
     private final InventoryPriceService priceService;
     private final SalesChannelService salesChannelService;
 
@@ -39,7 +43,9 @@ public class StoreAdminService {
 
     @Transactional
     public StoreSettingsResponse getOrCreateSettings() {
-        return toSettings(ensureCurrentStore());
+        BookstoreStore store = ensureCurrentStore();
+        storeSectionService.ensureSystemSections(store);
+        return toSettings(store);
     }
 
     @Transactional
@@ -60,7 +66,10 @@ public class StoreAdminService {
             bookstoreRepository.save(store.getBookstore());
         }
         store.setDescription(blankToNull(request.description()));
-        return toSettings(storeRepository.save(store));
+        BookstoreStore saved = storeRepository.save(store);
+        replaceSocialLinks(saved, request.socialLinks());
+        storeSectionService.ensureSystemSections(saved);
+        return toSettings(saved);
     }
 
 
@@ -331,7 +340,10 @@ public class StoreAdminService {
     ) {
         if (published != null) {
             if (published && !Boolean.TRUE.equals(publication.getPublished())) {
-                publication.setPublishedAt(Instant.now());
+                Instant now = Instant.now();
+                if (publication.getFirstPublishedAt() == null) publication.setFirstPublishedAt(now);
+                publication.setLastPublishedAt(now);
+                publication.setPublishedAt(now);
             }
             publication.setPublished(published);
             if (!published) {
@@ -359,6 +371,7 @@ public class StoreAdminService {
                 .publicId(UUID.randomUUID()).bookstore(bookstore).slug(slug).displayName(bookstore.getName()).build());
         domainRepository.save(StoreDomain.builder().store(store).hostname(slug + "." + baseDomain.toLowerCase(Locale.ROOT))
                 .type(StoreDomainType.ANAQUEL_SUBDOMAIN).status(StoreDomainStatus.ACTIVE).verifiedAt(Instant.now()).build());
+        storeSectionService.ensureSystemSections(store);
         return store;
     }
 
@@ -375,9 +388,60 @@ public class StoreAdminService {
         boolean enabled = salesChannelService.isEnabled(store.getBookstore().getId(), SalesChannelType.ANAQUEL_STORE);
         List<StoreDomainResponse> domains = domainRepository.findAllByStoreIdOrderByIdAsc(store.getId()).stream()
                 .map(d -> toDomain(d)).toList();
+        List<StoreSocialLinkResponse> socialLinks = socialLinkRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId()).stream()
+                .map(link -> new StoreSocialLinkResponse(link.getType(), link.getUrl(), Boolean.TRUE.equals(link.getEnabled()), link.getDisplayOrder()))
+                .toList();
         return new StoreSettingsResponse(store.getPublicId(), store.getSlug(), store.getDisplayName(), enabled, store.getTitleFormat(),
                 store.getShowIsbn(), store.getShowAuthor(), store.getShowPublisher(), store.getShowStock(), store.getLogoUrl(), store.getFaviconUrl(),
-                store.getPrimaryColor(), store.getSecondaryColor(), store.getBookstore().getPhone(), store.getDescription(), domains);
+                store.getPrimaryColor(), store.getSecondaryColor(), store.getBookstore().getPhone(), store.getDescription(), domains, socialLinks);
+    }
+
+    private void replaceSocialLinks(BookstoreStore store, List<StoreSocialLinkRequest> requested) {
+        List<StoreSocialLink> existing = socialLinkRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId());
+        Map<StoreSocialLinkType, StoreSocialLink> existingByType = existing.stream()
+                .collect(Collectors.toMap(StoreSocialLink::getType, Function.identity()));
+
+        List<StoreSocialLink> linksToSave = new ArrayList<>();
+        Set<StoreSocialLinkType> requestedTypes = EnumSet.noneOf(StoreSocialLinkType.class);
+        int fallbackOrder = 10;
+
+        if (requested != null) {
+            for (StoreSocialLinkRequest item : requested) {
+                if (item == null || item.type() == null || item.url() == null || item.url().isBlank()
+                        || !requestedTypes.add(item.type())) {
+                    continue;
+                }
+
+                String url = item.url().trim();
+                if (!url.matches("(?i)^https?://.+")) {
+                    throw new BusinessException("Las redes sociales deben usar una URL http o https.");
+                }
+
+                StoreSocialLink link = existingByType.get(item.type());
+                if (link == null) {
+                    link = StoreSocialLink.builder()
+                            .store(store)
+                            .type(item.type())
+                            .build();
+                }
+                link.setUrl(url);
+                link.setEnabled(item.enabled() == null || item.enabled());
+                link.setDisplayOrder(item.displayOrder() == null ? fallbackOrder : item.displayOrder());
+                linksToSave.add(link);
+                fallbackOrder += 10;
+            }
+        }
+
+        if (!linksToSave.isEmpty()) {
+            socialLinkRepository.saveAll(linksToSave);
+        }
+
+        List<StoreSocialLink> linksToDelete = existing.stream()
+                .filter(link -> !requestedTypes.contains(link.getType()))
+                .toList();
+        if (!linksToDelete.isEmpty()) {
+            socialLinkRepository.deleteAll(linksToDelete);
+        }
     }
     private StoreDomainResponse toDomain(StoreDomain d) {
         return new StoreDomainResponse(d.getId(), d.getHostname(), d.getType(), d.getStatus(), d.getVerificationToken());

@@ -16,6 +16,7 @@ import com.rodrilang.librarymanager.store.order.service.StoreOrderService;
 import com.rodrilang.librarymanager.store.payment.service.StoreMercadoPagoConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +31,10 @@ public class StorefrontService {
     private final BookstoreStoreRepository storeRepository;
     private final StoreDomainRepository domainRepository;
     private final StorePublicationRepository publicationRepository;
+    private final StoreSectionRepository sectionRepository;
+    private final StoreSectionItemRepository sectionItemRepository;
+    private final StoreSocialLinkRepository socialLinkRepository;
+    private final StoreSectionService storeSectionService;
     private final StorefrontProductQueryRepository queryRepository;
     private final InventoryPriceService priceService;
     private final InventoryImageService inventoryImageService;
@@ -61,8 +66,9 @@ public class StorefrontService {
         List<Long> inventoryIds = ordered.stream().map(p -> p.getInventory().getId()).toList();
         Map<Long, InventoryPrice> prices = priceService.currentFor(inventoryIds);
         Map<Long, Integer> reserved = storeOrderService.activeReservedByInventoryIds(inventoryIds);
+        int newArrivalDays = newArrivalWindowDays(store.getId());
         List<StorefrontProductResponse> content = ordered.stream()
-                .map(p -> toProduct(store, p, prices.get(p.getInventory().getId()), reserved.getOrDefault(p.getInventory().getId(), 0)))
+                .map(p -> toProduct(store, p, prices.get(p.getInventory().getId()), reserved.getOrDefault(p.getInventory().getId(), 0), newArrivalDays))
                 .toList();
         return PageResponse.of(new PageImpl<>(content, org.springframework.data.domain.PageRequest.of(safePage, safeSize), result.total()));
     }
@@ -86,7 +92,22 @@ public class StorefrontService {
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró el producto publicado."));
         InventoryPrice price = priceService.current(inventoryId).orElseThrow(() -> new ResourceNotFoundException("El producto no tiene un precio vigente."));
         int reserved = storeOrderService.activeReservedByInventoryIds(List.of(inventoryId)).getOrDefault(inventoryId, 0);
-        return toProduct(store, publication, price, reserved);
+        return toProduct(store, publication, price, reserved, newArrivalWindowDays(store.getId()));
+    }
+
+    @Transactional
+    public List<StorefrontSectionResponse> sections(UUID publicStoreId) {
+        BookstoreStore store = requireActiveStore(publicStoreId);
+        storeSectionService.ensureSystemSections(store);
+        int newArrivalDays = newArrivalWindowDays(store.getId());
+        List<StorefrontSectionResponse> result = new ArrayList<>();
+        for (StoreSection section : sectionRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId())) {
+            if (!Boolean.TRUE.equals(section.getEnabled())) continue;
+            List<StorePublication> publications = publicationsForSection(store, section);
+            List<StorefrontProductResponse> products = toProducts(store, publications, newArrivalDays);
+            if (!products.isEmpty()) result.add(new StorefrontSectionResponse(section.getId(), section.getType(), section.getSlug(), section.getName(), products));
+        }
+        return result;
     }
 
     private BookstoreStore resolveActiveStore(String hostOrSlug) {
@@ -107,11 +128,14 @@ public class StorefrontService {
         }
     }
     private StorefrontResponse toStorefront(BookstoreStore s) {
+        List<StorefrontSocialLinkResponse> socialLinks = socialLinkRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(s.getId()).stream()
+                .filter(link -> Boolean.TRUE.equals(link.getEnabled()))
+                .map(link -> new StorefrontSocialLinkResponse(link.getType(), link.getUrl())).toList();
         return new StorefrontResponse(s.getPublicId(), s.getSlug(), s.getDisplayName(), s.getDescription(), s.getLogoUrl(), s.getFaviconUrl(),
                 s.getPrimaryColor(), s.getSecondaryColor(), s.getTitleFormat(), s.getShowIsbn(), s.getShowAuthor(), s.getShowPublisher(), s.getShowStock(),
-                s.getBookstore().getPhone(), mercadoPagoConfigService.isEnabled(s.getBookstore().getId()));
+                s.getBookstore().getPhone(), mercadoPagoConfigService.isEnabled(s.getBookstore().getId()), socialLinks);
     }
-    private StorefrontProductResponse toProduct(BookstoreStore store, StorePublication p, InventoryPrice price, int reserved) {
+    private StorefrontProductResponse toProduct(BookstoreStore store, StorePublication p, InventoryPrice price, int reserved, int newArrivalDays) {
         Inventory i = p.getInventory(); Book b = i.getBook();
         BookstoreBookEffectiveValues effective = overrideService.resolve(b, store.getBookstore().getId());
         String title = textOr(p.getCustomTitle(), effective.title());
@@ -130,7 +154,49 @@ public class StorefrontService {
                 Boolean.TRUE.equals(store.getShowPublisher()) ? publisher : null,
                 effective.categoryName(), effective.genreName(), coverUrl, imageUrls, price == null ? null : price.getAmount(),
                 stock > 0 ? "IN_STOCK" : "OUT_OF_STOCK", Boolean.TRUE.equals(store.getShowStock()) ? stock : null,
-                effective.publicationYear(), Boolean.TRUE.equals(p.getFeatured()), p.getPublishedAt() != null && p.getPublishedAt().isAfter(Instant.now().minus(Duration.ofDays(45))));
+                effective.publicationYear(), Boolean.TRUE.equals(p.getFeatured()), newArrivalDays > 0 && (p.getFirstPublishedAt() != null ? p.getFirstPublishedAt() : p.getPublishedAt()) != null && (p.getFirstPublishedAt() != null ? p.getFirstPublishedAt() : p.getPublishedAt()).isAfter(Instant.now().minus(Duration.ofDays(newArrivalDays))));
+    }
+
+    private int newArrivalWindowDays(Long storeId) {
+        return sectionRepository.findByStoreIdAndType(storeId, StoreSectionType.NEW_ARRIVALS)
+                .filter(section -> Boolean.TRUE.equals(section.getEnabled()))
+                .map(StoreSection::getWindowDays).filter(days -> days != null && days > 0).orElse(0);
+    }
+
+    private List<StorePublication> publicationsForSection(BookstoreStore store, StoreSection section) {
+        int max = Math.max(1, Math.min(50, section.getMaxItems() == null ? 8 : section.getMaxItems()));
+        return switch (section.getType()) {
+            case FEATURED -> publicationRepository.findFeaturedForStore(store.getId(), PageRequest.of(0, max));
+            case NEW_ARRIVALS -> publicationRepository.findNewArrivalsForStore(store.getId(),
+                    Instant.now().minus(Duration.ofDays(section.getWindowDays() == null ? 45 : section.getWindowDays())), PageRequest.of(0, max));
+            case RESTOCKED -> {
+                List<Long> ids = queryRepository.restockedPublicationIds(store.getId(),
+                        Instant.now().minus(Duration.ofDays(section.getWindowDays() == null ? 30 : section.getWindowDays())), max);
+                Map<Long, StorePublication> byId = new HashMap<>();
+                publicationRepository.findAllByIdIn(ids).forEach(publication -> byId.put(publication.getId(), publication));
+                yield ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+            }
+            case CUSTOM -> {
+                List<Long> inventoryIds = sectionItemRepository.findInventoryIdsBySectionId(section.getId());
+                if (inventoryIds.isEmpty()) yield List.of();
+                List<Long> limited = inventoryIds.stream().limit(max).toList();
+                Map<Long, StorePublication> byInventory = new HashMap<>();
+                publicationRepository.findPublishedByStoreAndInventoryIds(store.getId(), limited)
+                        .forEach(publication -> byInventory.put(publication.getInventory().getId(), publication));
+                yield limited.stream().map(byInventory::get).filter(Objects::nonNull).toList();
+            }
+        };
+    }
+
+    private List<StorefrontProductResponse> toProducts(BookstoreStore store, List<StorePublication> publications, int newArrivalDays) {
+        if (publications.isEmpty()) return List.of();
+        List<Long> inventoryIds = publications.stream().map(p -> p.getInventory().getId()).toList();
+        Map<Long, InventoryPrice> prices = priceService.currentFor(inventoryIds);
+        Map<Long, Integer> reserved = storeOrderService.activeReservedByInventoryIds(inventoryIds);
+        return publications.stream()
+                .filter(p -> prices.containsKey(p.getInventory().getId()))
+                .map(p -> toProduct(store, p, prices.get(p.getInventory().getId()), reserved.getOrDefault(p.getInventory().getId(), 0), newArrivalDays))
+                .toList();
     }
     private String displayTitle(StoreTitleFormat format, String title, List<StorefrontAuthorResponse> authors, StorefrontPublisherResponse publisher) {
         if (format == StoreTitleFormat.TITLE_AUTHOR && !authors.isEmpty()) return title + " - " + authors.getFirst().name();

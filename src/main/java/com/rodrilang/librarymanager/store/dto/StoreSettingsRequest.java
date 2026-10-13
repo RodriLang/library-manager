@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.store.dto;
 import com.rodrilang.librarymanager.store.model.StoreTitleFormat;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import java.util.List;
 public record StoreSettingsRequest(
         @NotBlank @Size(max=150) String displayName,
         @NotNull StoreTitleFormat titleFormat,
@@ -13,5 +15,6 @@ public record StoreSettingsRequest(
         @Size(max=20) String primaryColor,
         @Size(max=20) String secondaryColor,
         @Size(max=50) String phone,
-        String description
+        String description,
+        @Valid List<StoreSocialLinkRequest> socialLinks
 ) {}

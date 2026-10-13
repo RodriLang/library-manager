@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.store.dto;
 import com.rodrilang.librarymanager.store.model.StoreTitleFormat;
+import java.util.List;
 import java.util.UUID;
 public record StorefrontResponse(
         UUID publicId,
@@ -16,5 +17,6 @@ public record StorefrontResponse(
         boolean showPublisher,
         boolean showStock,
         String whatsappPhone,
-        boolean mercadoPagoEnabled
+        boolean mercadoPagoEnabled,
+        List<StorefrontSocialLinkResponse> socialLinks
 ) {}

@@ -6,7 +6,9 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.sql.Types;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.*;
 
 @Repository
@@ -152,6 +154,52 @@ public class StorefrontProductQueryRepository {
                 "SELECT MIN(current_price.amount) min_price, MAX(current_price.amount) max_price " + commonJoins + where,
                 params, (rs, n) -> new PriceRange(rs.getBigDecimal("min_price"), rs.getBigDecimal("max_price")));
         return new FilterData(authors, publishers, categories, genres, range == null ? null : range.min(), range == null ? null : range.max());
+    }
+
+    public List<Long> restockedPublicationIds(Long storeId, java.time.Instant after, int limit) {
+        String sql = """
+                SELECT sp.id
+                FROM store_publications sp
+                JOIN inventory i ON i.id = sp.inventory_id
+                JOIN books b ON b.id = i.book_id
+                LEFT JOIN LATERAL (
+                    SELECT MAX(m.created_at) AS restocked_at
+                    FROM inventory_movements m
+                    WHERE m.inventory_id = i.id
+                      AND m.stock_before <= 0
+                      AND m.stock_after > 0
+                      AND m.created_at >= :after
+                      AND EXISTS (
+                          SELECT 1 FROM inventory_movements prior
+                          WHERE prior.inventory_id = i.id
+                            AND prior.created_at < m.created_at
+                            AND prior.stock_after = 0
+                      )
+                ) stock_restock ON TRUE
+                WHERE sp.store_id = :storeId
+                  AND sp.published = TRUE
+                  AND i.active = TRUE
+                  AND b.active = TRUE
+                  AND i.stock > 0
+                  AND (
+                      stock_restock.restocked_at IS NOT NULL
+                      OR (
+                          sp.last_published_at >= :after
+                          AND sp.first_published_at IS NOT NULL
+                          AND sp.last_published_at > sp.first_published_at
+                      )
+                  )
+                ORDER BY GREATEST(
+                    COALESCE(stock_restock.restocked_at, TIMESTAMPTZ 'epoch'),
+                    COALESCE(CASE WHEN sp.last_published_at > sp.first_published_at THEN sp.last_published_at END, TIMESTAMPTZ 'epoch')
+                ) DESC, sp.id DESC
+                LIMIT :limit
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("storeId", storeId)
+                .addValue("after", after.atOffset(ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("limit", Math.max(1, Math.min(50, limit)));
+        return jdbc.queryForList(sql, params, Long.class);
     }
 
     private String orderBy(String sort, boolean hasQuery) {

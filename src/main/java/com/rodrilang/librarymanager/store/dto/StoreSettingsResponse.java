@@ -18,5 +18,6 @@ public record StoreSettingsResponse(
         String secondaryColor,
         String phone,
         String description,
-        List<StoreDomainResponse> domains
+        List<StoreDomainResponse> domains,
+        List<StoreSocialLinkResponse> socialLinks
 ) {}

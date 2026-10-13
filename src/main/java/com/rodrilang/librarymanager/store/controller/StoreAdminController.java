@@ -8,6 +8,7 @@ import com.rodrilang.librarymanager.enums.InventoryStockFilter;
 
 import java.util.List;
 import com.rodrilang.librarymanager.store.service.StoreAdminService;
+import com.rodrilang.librarymanager.store.service.StoreSectionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class StoreAdminController {
     private final StoreAdminService service;
+    private final StoreSectionService sectionService;
 
     @GetMapping("/settings")
     public StoreSettingsResponse settings() { return service.getOrCreateSettings(); }
@@ -66,4 +68,31 @@ public class StoreAdminController {
             @PathVariable Long inventoryId,
             @Valid @RequestBody UpdateStorePublicationRequest request
     ) { return service.updatePublication(inventoryId, request); }
+    @GetMapping("/sections")
+    public List<StoreSectionResponse> sections() { return sectionService.currentSections(); }
+
+    @PostMapping("/sections")
+    public StoreSectionResponse createSection(@Valid @RequestBody CreateStoreSectionRequest request) { return sectionService.createCustom(request); }
+
+    @PatchMapping("/sections/{sectionId}")
+    public StoreSectionResponse updateSection(@PathVariable Long sectionId, @Valid @RequestBody UpdateStoreSectionRequest request) {
+        return sectionService.update(sectionId, request);
+    }
+
+    @PutMapping("/sections/order")
+    public List<StoreSectionResponse> reorderSections(@Valid @RequestBody UpdateStoreSectionsOrderRequest request) {
+        return sectionService.reorder(request);
+    }
+
+    @DeleteMapping("/sections/{sectionId}")
+    public void deleteSection(@PathVariable Long sectionId) { sectionService.delete(sectionId); }
+
+    @GetMapping("/sections/{sectionId}/items")
+    public List<Long> sectionItems(@PathVariable Long sectionId) { return sectionService.itemIds(sectionId); }
+
+    @PutMapping("/sections/{sectionId}/items")
+    public StoreSectionResponse updateSectionItems(@PathVariable Long sectionId, @Valid @RequestBody UpdateStoreSectionItemsRequest request) {
+        return sectionService.replaceItems(sectionId, request);
+    }
+
 }

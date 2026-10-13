@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.store.dto.StorefrontProductResponse;
 import com.rodrilang.librarymanager.store.dto.StorefrontResponse;
 import com.rodrilang.librarymanager.store.dto.StorefrontFiltersResponse;
+import com.rodrilang.librarymanager.store.dto.StorefrontSectionResponse;
 import com.rodrilang.librarymanager.store.service.StorefrontService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -49,4 +50,9 @@ public class StorefrontController {
     public StorefrontProductResponse product(@PathVariable UUID storeId, @PathVariable Long inventoryId) {
         return service.product(storeId, inventoryId);
     }
+    @GetMapping("/{storeId}/sections")
+    public List<StorefrontSectionResponse> sections(@PathVariable UUID storeId) {
+        return service.sections(storeId);
+    }
+
 }
