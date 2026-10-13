@@ -15,6 +15,7 @@ import com.rodrilang.librarymanager.importer.price.configuration.parser.Streamin
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import com.rodrilang.librarymanager.importer.price.storage.PriceListImportFileStorage;
 import com.rodrilang.librarymanager.inventory.pricing.dto.*;
+import com.rodrilang.librarymanager.inventory.pricing.event.InventoryPriceImportPreviewRequestedEvent;
 import com.rodrilang.librarymanager.inventory.pricing.model.*;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
@@ -29,9 +30,11 @@ import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -42,6 +45,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -67,41 +71,94 @@ public class InventoryPriceImportService {
     private final NormalizedPriceListStorage normalizedStorage;
     private final CanonicalIsbnResolver canonicalIsbnResolver;
     private final InventoryPriceImportProviderRowRepository providerRowRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public InventoryPriceImportPreviewResponse preview(
+    public InventoryPriceImportPreviewStartResponse startPreview(
             Long formatId,
             String sourceName,
             LocalDate effectiveFrom,
             MultipartFile file
     ) {
-        if (effectiveFrom == null) {
-            throw new BusinessException("Debe indicar el mes de vigencia de la lista.");
-        }
-        if (effectiveFrom.getDayOfMonth() != 1) {
-            throw new BusinessException("Las listas de precios deben comenzar a regir el primer día del mes.");
-        }
+        validateEffectiveFrom(effectiveFrom);
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró la librería seleccionada."));
         BookstorePriceListFormat format = formatService.getForCurrentBookstore(formatId);
-        InventoryPriceImport priceImport = importRepository.save(InventoryPriceImport.builder()
-                .bookstore(bookstore)
-                .format(format)
-                .provider(format.getProvider())
-                .sourceName(resolveSourceName(sourceName, format))
-                .originalFilename(resolveFilename(file))
-                .effectiveFrom(effectiveFrom)
-                .status(InventoryPriceImportStatus.PREVIEW_READY)
-                .createdByUserId(bookstoreContext.getCurrentUserId())
-                .build());
 
+        Path source = fileStorage.store(file);
+        try {
+            Instant startedAt = Instant.now();
+            InventoryPriceImport priceImport = importRepository.save(InventoryPriceImport.builder()
+                    .bookstore(bookstore)
+                    .format(format)
+                    .provider(format.getProvider())
+                    .sourceName(resolveSourceName(sourceName, format))
+                    .originalFilename(resolveFilename(file))
+                    .effectiveFrom(effectiveFrom)
+                    .status(InventoryPriceImportStatus.PREVIEW_PROCESSING)
+                    .createdByUserId(bookstoreContext.getCurrentUserId())
+                    .processingStartedAt(startedAt)
+                    .processingFinishedAt(null)
+                    .processingError(null)
+                    .build());
+
+            eventPublisher.publishEvent(new InventoryPriceImportPreviewRequestedEvent(
+                    priceImport.getId(),
+                    source.toString()
+            ));
+
+            return new InventoryPriceImportPreviewStartResponse(
+                    priceImport.getId(),
+                    InventoryPriceImportStatus.PREVIEW_PROCESSING,
+                    startedAt
+            );
+        } catch (RuntimeException exception) {
+            fileStorage.deleteQuietly(source);
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public void processPreview(Long importId, Path source) {
+        long totalStarted = System.nanoTime();
+        InventoryPriceImport priceImport = importRepository.findById(importId)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró la importación solicitada."));
+
+        if (priceImport.getStatus() != InventoryPriceImportStatus.PREVIEW_PROCESSING) {
+            log.info(
+                    "Skipping price import preview importId={} because status={}",
+                    importId,
+                    priceImport.getStatus()
+            );
+            return;
+        }
+
+        Long bookstoreId = priceImport.getBookstore().getId();
+        BookstorePriceListFormat format = priceImport.getFormat();
+        if (format == null) {
+            throw new BusinessException("La importación no tiene un formato de lista asociado.");
+        }
+
+        long phaseStarted = System.nanoTime();
         List<Inventory> inventories = inventoryRepository.findAllByBookstoreIdAndActiveTrue(bookstoreId);
+        logPreviewPhase(importId, "load-inventory", phaseStarted, "inventories=" + inventories.size());
+
+        phaseStarted = System.nanoTime();
         MatchIndex matchIndex = buildMatchIndex(inventories);
-        LocalDate applicationDate = priceService.importApplicationDate(effectiveFrom);
-        Map<Long, InventoryPrice> currentPrices = priceService.pricesAt(inventories.stream()
-                .map(Inventory::getId).toList(), applicationDate);
+        logPreviewPhase(importId, "build-match-index", phaseStarted, "inventories=" + inventories.size());
+
+        LocalDate applicationDate = priceService.importApplicationDate(priceImport.getEffectiveFrom());
+
+        phaseStarted = System.nanoTime();
+        Map<Long, InventoryPrice> currentPrices = currentPricesAt(bookstoreId, applicationDate);
+        logPreviewPhase(importId, "load-current-prices", phaseStarted, "prices=" + currentPrices.size());
+
+        phaseStarted = System.nanoTime();
+        Map<Long, InventoryPrice> scheduledPrices = scheduledPricesAt(bookstoreId, applicationDate);
+        logPreviewPhase(importId, "load-scheduled-prices", phaseStarted, "prices=" + scheduledPrices.size());
+
         Map<String, List<InventoryPriceImportItem>> itemsByDuplicateKey = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
         List<InventoryPriceImportProviderRow> providerRows = new ArrayList<>();
@@ -110,10 +167,10 @@ public class InventoryPriceImportService {
         AtomicInteger matched = new AtomicInteger();
         AtomicInteger unmatched = new AtomicInteger();
 
-        Path source = fileStorage.store(file);
         Path normalizedFile = null;
         try {
             normalizedFile = Files.createTempFile("anaquel-price-list-", ".csv");
+            phaseStarted = System.nanoTime();
             try (BufferedWriter writer = Files.newBufferedWriter(normalizedFile, StandardCharsets.UTF_8)) {
                 writer.write("isbn,title,author,publisher,price");
                 writer.newLine();
@@ -154,7 +211,8 @@ public class InventoryPriceImportService {
                             inventory,
                             row,
                             applicationDate,
-                            currentPrices.get(inventory.getId())
+                            currentPrices.get(inventory.getId()),
+                            scheduledPrices.get(inventory.getId())
                     );
 
                     String duplicateKey = duplicateKey(row, inventory);
@@ -163,10 +221,9 @@ public class InventoryPriceImportService {
 
                     boolean samePriceAlreadyPresent = existingItems.stream()
                             .anyMatch(existing -> samePrice(
-                                            existing.getIncomingPrice(),
-                                            item.getIncomingPrice()
-                                    )
-                            );
+                                    existing.getIncomingPrice(),
+                                    item.getIncomingPrice()
+                            ));
 
                     if (samePriceAlreadyPresent) {
                         return;
@@ -177,22 +234,34 @@ public class InventoryPriceImportService {
                         for (InventoryPriceImportItem existing : existingItems) {
                             markDuplicateConflict(existing, duplicateByIsbn);
                         }
-
                         markDuplicateConflict(item, duplicateByIsbn);
                     }
 
                     existingItems.add(item);
                     items.add(item);
                 });
-
             }
+            logPreviewPhase(
+                    importId,
+                    "parse-match-classify",
+                    phaseStarted,
+                    "rows=" + total.get() + " matched=" + matched.get() + " items=" + items.size()
+            );
 
+            phaseStarted = System.nanoTime();
             itemRepository.saveAll(items);
             if (!providerRows.isEmpty()) {
                 providerRowRepository.saveAll(providerRows);
             }
             updateCounters(priceImport, total.get(), matched.get(), unmatched.get(), items);
+            logPreviewPhase(
+                    importId,
+                    "persist-preview",
+                    phaseStarted,
+                    "items=" + items.size() + " providerRows=" + providerRows.size()
+            );
 
+            phaseStarted = System.nanoTime();
             try {
                 NormalizedPriceListStorage.StoredRawFile stored = normalizedStorage.upload(bookstoreId, normalizedFile);
                 priceImport.setNormalizedFilePublicId(stored.publicId());
@@ -200,16 +269,26 @@ public class InventoryPriceImportService {
             } catch (RuntimeException storageException) {
                 log.warn("No se pudo guardar la copia normalizada de la lista {}", priceImport.getId(), storageException);
             }
+            logPreviewPhase(importId, "upload-normalized", phaseStarted, "");
 
-            return toPreview(priceImport, items);
+            priceImport.setStatus(InventoryPriceImportStatus.PREVIEW_READY);
+            priceImport.setProcessingFinishedAt(Instant.now());
+            priceImport.setProcessingError(null);
+
+            log.info(
+                    "PRICE IMPORT PREVIEW COMPLETED importId={} totalMs={} rows={} matched={} unmatched={} items={}",
+                    importId,
+                    elapsedMillis(totalStarted),
+                    total.get(),
+                    matched.get(),
+                    unmatched.get(),
+                    items.size()
+            );
         } catch (BusinessException exception) {
-            priceImport.setStatus(InventoryPriceImportStatus.FAILED);
             throw exception;
         } catch (Exception exception) {
-            priceImport.setStatus(InventoryPriceImportStatus.FAILED);
             throw new BusinessException("No se pudo procesar la lista de precios: " + safeMessage(exception));
         } finally {
-            fileStorage.deleteQuietly(source);
             if (normalizedFile != null) {
                 try {
                     Files.deleteIfExists(normalizedFile);
@@ -219,10 +298,27 @@ public class InventoryPriceImportService {
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markPreviewFailed(Long importId, Throwable exception) {
+        InventoryPriceImport priceImport = importRepository.findById(importId).orElse(null);
+        if (priceImport == null || priceImport.getStatus() != InventoryPriceImportStatus.PREVIEW_PROCESSING) {
+            return;
+        }
+
+        priceImport.setStatus(InventoryPriceImportStatus.FAILED);
+        priceImport.setProcessingFinishedAt(Instant.now());
+        priceImport.setProcessingError(errorMessage(exception));
+        providerRowRepository.deleteAllByPriceImportId(importId);
+        log.warn("PRICE IMPORT PREVIEW FAILED importId={} error={}", importId, priceImport.getProcessingError());
+    }
+
     @Transactional(readOnly = true)
     public InventoryPriceImportPreviewResponse get(Long importId) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         InventoryPriceImport priceImport = getImport(importId, bookstoreId);
+        if (priceImport.getStatus() == InventoryPriceImportStatus.PREVIEW_PROCESSING) {
+            throw new BusinessException("La previsualización todavía se está generando.");
+        }
         return toPreview(priceImport, itemRepository.findAllByPriceImportIdOrderByRowNumberAsc(importId));
     }
 
@@ -323,18 +419,13 @@ public class InventoryPriceImportService {
             Inventory inventory,
             PriceListRow row,
             LocalDate effectiveFrom,
-            InventoryPrice current
+            InventoryPrice current,
+            InventoryPrice existingAtDate
     ) {
         BigDecimal incoming = row.retailPrice();
 
         BigDecimal currentAmount = current != null
                 ? current.getAmount()
-                : null;
-
-        // Only future prices are scheduled conflicts. A list already in force
-        // updates the selling price on the day it is applied.
-        InventoryPrice existingAtDate = effectiveFrom.isAfter(priceService.today())
-                ? priceRepository.findByInventoryIdAndEffectiveFrom(inventory.getId(), effectiveFrom).orElse(null)
                 : null;
 
         BigDecimal scheduledAmount = existingAtDate != null
@@ -939,6 +1030,59 @@ public class InventoryPriceImportService {
         }
         String normalized = value.trim();
         return normalized.length() <= 150 ? normalized : normalized.substring(0, 150);
+    }
+
+    private void validateEffectiveFrom(LocalDate effectiveFrom) {
+        if (effectiveFrom == null) {
+            throw new BusinessException("Debe indicar el mes de vigencia de la lista.");
+        }
+        if (effectiveFrom.getDayOfMonth() != 1) {
+            throw new BusinessException("Las listas de precios deben comenzar a regir el primer día del mes.");
+        }
+    }
+
+    private Map<Long, InventoryPrice> currentPricesAt(Long bookstoreId, LocalDate applicationDate) {
+        Map<Long, InventoryPrice> result = new LinkedHashMap<>();
+        for (InventoryPrice price : priceRepository.findCurrentCandidatesForBookstore(bookstoreId, applicationDate)) {
+            result.putIfAbsent(price.getInventory().getId(), price);
+        }
+        return result;
+    }
+
+    private Map<Long, InventoryPrice> scheduledPricesAt(Long bookstoreId, LocalDate applicationDate) {
+        if (!applicationDate.isAfter(priceService.today())) {
+            return Map.of();
+        }
+
+        Map<Long, InventoryPrice> result = new LinkedHashMap<>();
+        for (InventoryPrice price : priceRepository.findAllByBookstoreIdAndEffectiveFrom(bookstoreId, applicationDate)) {
+            result.putIfAbsent(price.getInventory().getId(), price);
+        }
+        return result;
+    }
+
+    private void logPreviewPhase(Long importId, String phase, long startedAtNanos, String details) {
+        log.info(
+                "PRICE IMPORT PREVIEW PHASE importId={} phase={} timeMs={} {}",
+                importId,
+                phase,
+                elapsedMillis(startedAtNanos),
+                details == null ? "" : details
+        );
+    }
+
+    private long elapsedMillis(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
+    }
+
+    private String errorMessage(Throwable exception) {
+        String message = exception instanceof BusinessException
+                ? exception.getMessage()
+                : "No se pudo generar la previsualización de la lista de precios.";
+        if (message == null || message.isBlank()) {
+            message = "No se pudo generar la previsualización de la lista de precios.";
+        }
+        return message.length() <= 2_000 ? message : message.substring(0, 2_000);
     }
 
     private String safeMessage(Exception exception) {
