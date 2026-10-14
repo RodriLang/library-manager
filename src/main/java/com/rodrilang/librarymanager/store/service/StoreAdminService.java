@@ -44,6 +44,7 @@ public class StoreAdminService {
     private final StoreDomainRepository domainRepository;
     private final StorePublicationRepository publicationRepository;
     private final StoreSocialLinkRepository socialLinkRepository;
+    private final StoreHeroItemRepository heroItemRepository;
     private final StoreSectionService storeSectionService;
     private final InventoryPriceService priceService;
     private final SalesChannelService salesChannelService;
@@ -79,8 +80,35 @@ public class StoreAdminService {
             bookstoreRepository.save(store.getBookstore());
         }
         store.setDescription(blankToNull(request.description()));
+
+        if (request.headerShowLogo() != null) store.setHeaderShowLogo(request.headerShowLogo());
+        if (request.headerShowName() != null) store.setHeaderShowName(request.headerShowName());
+        if (request.headerBrandLayout() != null) store.setHeaderBrandLayout(request.headerBrandLayout());
+        if (request.headerLogoSize() != null) store.setHeaderLogoSize(request.headerLogoSize());
+
+        if (request.heroShowEyebrow() != null) store.setHeroShowEyebrow(request.heroShowEyebrow());
+        if (request.heroEyebrow() != null) store.setHeroEyebrow(defaultIfBlank(request.heroEyebrow(), "LIBRERÍA ONLINE"));
+        if (request.heroShowLogo() != null) store.setHeroShowLogo(request.heroShowLogo());
+        if (request.heroShowName() != null) store.setHeroShowName(request.heroShowName());
+        store.setHeroTitle(blankToNull(request.heroTitle()));
+        store.setHeroDescription(blankToNull(request.heroDescription()));
+        if (request.heroTextAlignment() != null) store.setHeroTextAlignment(request.heroTextAlignment());
+        if (request.heroShowBooks() != null) store.setHeroShowBooks(request.heroShowBooks());
+        if (request.heroBooksMode() != null) store.setHeroBooksMode(request.heroBooksMode());
+        if (request.heroPrimaryButtonEnabled() != null) store.setHeroPrimaryButtonEnabled(request.heroPrimaryButtonEnabled());
+        if (request.heroPrimaryButtonText() != null) store.setHeroPrimaryButtonText(defaultIfBlank(request.heroPrimaryButtonText(), "Explorar catálogo"));
+        if (request.heroSecondaryButtonEnabled() != null) store.setHeroSecondaryButtonEnabled(request.heroSecondaryButtonEnabled());
+        if (request.heroSecondaryButtonText() != null) store.setHeroSecondaryButtonText(defaultIfBlank(request.heroSecondaryButtonText(), "Ver novedades"));
+
+        if (request.discoverEnabled() != null) store.setDiscoverEnabled(request.discoverEnabled());
+        if (request.discoverEyebrow() != null) store.setDiscoverEyebrow(defaultIfBlank(request.discoverEyebrow(), "ENCONTRÁ TU PRÓXIMA LECTURA"));
+        if (request.discoverTitle() != null) store.setDiscoverTitle(defaultIfBlank(request.discoverTitle(), "Todo el catálogo en un solo lugar"));
+        if (request.discoverDescription() != null) store.setDiscoverDescription(defaultIfBlank(request.discoverDescription(), "Buscá por título, autor, editorial o ISBN y filtrá por categorías, géneros, precio y disponibilidad."));
+        if (request.discoverButtonText() != null) store.setDiscoverButtonText(defaultIfBlank(request.discoverButtonText(), "Ver catálogo completo"));
+
         BookstoreStore saved = storeRepository.save(store);
         replaceSocialLinks(saved, request.socialLinks());
+        if (request.heroItemInventoryIds() != null) replaceHeroItems(saved, request.heroItemInventoryIds());
         storeSectionService.ensureSystemSections(saved);
         return toSettings(saved);
     }
@@ -457,9 +485,39 @@ public class StoreAdminService {
         List<StoreSocialLinkResponse> socialLinks = socialLinkRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId()).stream()
                 .map(link -> new StoreSocialLinkResponse(link.getType(), link.getUrl(), Boolean.TRUE.equals(link.getEnabled()), link.getDisplayOrder()))
                 .toList();
+        List<Long> heroItemIds = heroItemRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId()).stream()
+                .map(item -> item.getInventory().getId()).toList();
         return new StoreSettingsResponse(store.getPublicId(), store.getSlug(), store.getDisplayName(), enabled, store.getTitleFormat(),
                 store.getShowIsbn(), store.getShowAuthor(), store.getShowPublisher(), store.getShowStock(), store.getLogoUrl(), store.getFaviconUrl(),
-                store.getPrimaryColor(), store.getSecondaryColor(), store.getBookstore().getPhone(), store.getDescription(), domains, socialLinks);
+                store.getPrimaryColor(), store.getSecondaryColor(), store.getBookstore().getPhone(), store.getDescription(), domains, socialLinks,
+                Boolean.TRUE.equals(store.getHeaderShowLogo()), Boolean.TRUE.equals(store.getHeaderShowName()), store.getHeaderBrandLayout(), store.getHeaderLogoSize(),
+                Boolean.TRUE.equals(store.getHeroShowEyebrow()), store.getHeroEyebrow(), Boolean.TRUE.equals(store.getHeroShowLogo()), Boolean.TRUE.equals(store.getHeroShowName()),
+                store.getHeroTitle(), store.getHeroDescription(), store.getHeroTextAlignment(), Boolean.TRUE.equals(store.getHeroShowBooks()), store.getHeroBooksMode(), heroItemIds,
+                Boolean.TRUE.equals(store.getHeroPrimaryButtonEnabled()), store.getHeroPrimaryButtonText(), Boolean.TRUE.equals(store.getHeroSecondaryButtonEnabled()), store.getHeroSecondaryButtonText(),
+                Boolean.TRUE.equals(store.getDiscoverEnabled()), store.getDiscoverEyebrow(), store.getDiscoverTitle(), store.getDiscoverDescription(), store.getDiscoverButtonText());
+    }
+
+    private void replaceHeroItems(BookstoreStore store, List<Long> requestedIds) {
+        List<Long> ids = requestedIds == null ? List.of() : requestedIds.stream().filter(Objects::nonNull).distinct().limit(3).toList();
+        List<StorePublication> publications = ids.isEmpty() ? List.of() : publicationRepository.findPublishedByStoreAndInventoryIds(store.getId(), ids);
+        Map<Long, StorePublication> byInventory = publications.stream().collect(Collectors.toMap(p -> p.getInventory().getId(), Function.identity()));
+        if (byInventory.size() != ids.size()) {
+            throw new BusinessException("Los libros de portada deben estar publicados en la tienda.");
+        }
+        heroItemRepository.deleteAllByStoreId(store.getId());
+        heroItemRepository.flush();
+        if (ids.isEmpty()) return;
+        List<StoreHeroItem> items = new ArrayList<>();
+        for (int index = 0; index < ids.size(); index++) {
+            StorePublication publication = byInventory.get(ids.get(index));
+            items.add(StoreHeroItem.builder().store(store).inventory(publication.getInventory()).displayOrder(index).build());
+        }
+        heroItemRepository.saveAll(items);
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        String normalized = blankToNull(value);
+        return normalized == null ? fallback : normalized;
     }
 
     private void replaceSocialLinks(BookstoreStore store, List<StoreSocialLinkRequest> requested) {

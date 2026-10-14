@@ -34,6 +34,7 @@ public class StorefrontService {
     private final StoreSectionRepository sectionRepository;
     private final StoreSectionItemRepository sectionItemRepository;
     private final StoreSocialLinkRepository socialLinkRepository;
+    private final StoreHeroItemRepository heroItemRepository;
     private final StoreSectionService storeSectionService;
     private final StorefrontProductQueryRepository queryRepository;
     private final InventoryPriceService priceService;
@@ -131,9 +132,36 @@ public class StorefrontService {
         List<StorefrontSocialLinkResponse> socialLinks = socialLinkRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(s.getId()).stream()
                 .filter(link -> Boolean.TRUE.equals(link.getEnabled()))
                 .map(link -> new StorefrontSocialLinkResponse(link.getType(), link.getUrl())).toList();
+        List<StorefrontProductResponse> heroProducts = Boolean.TRUE.equals(s.getHeroShowBooks()) ? heroProducts(s) : List.of();
         return new StorefrontResponse(s.getPublicId(), s.getSlug(), s.getDisplayName(), s.getDescription(), s.getLogoUrl(), s.getFaviconUrl(),
                 s.getPrimaryColor(), s.getSecondaryColor(), s.getTitleFormat(), s.getShowIsbn(), s.getShowAuthor(), s.getShowPublisher(), s.getShowStock(),
-                s.getBookstore().getPhone(), mercadoPagoConfigService.isEnabled(s.getBookstore().getId()), socialLinks);
+                s.getBookstore().getPhone(), mercadoPagoConfigService.isEnabled(s.getBookstore().getId()), socialLinks,
+                Boolean.TRUE.equals(s.getHeaderShowLogo()), Boolean.TRUE.equals(s.getHeaderShowName()), s.getHeaderBrandLayout(), s.getHeaderLogoSize(),
+                Boolean.TRUE.equals(s.getHeroShowEyebrow()), s.getHeroEyebrow(), Boolean.TRUE.equals(s.getHeroShowLogo()), Boolean.TRUE.equals(s.getHeroShowName()),
+                s.getHeroTitle(), s.getHeroDescription(), s.getHeroTextAlignment(), Boolean.TRUE.equals(s.getHeroShowBooks()), s.getHeroBooksMode(), heroProducts,
+                Boolean.TRUE.equals(s.getHeroPrimaryButtonEnabled()), s.getHeroPrimaryButtonText(), Boolean.TRUE.equals(s.getHeroSecondaryButtonEnabled()), s.getHeroSecondaryButtonText(),
+                Boolean.TRUE.equals(s.getDiscoverEnabled()), s.getDiscoverEyebrow(), s.getDiscoverTitle(), s.getDiscoverDescription(), s.getDiscoverButtonText());
+    }
+
+    private List<StorefrontProductResponse> heroProducts(BookstoreStore store) {
+        StoreHeroBooksMode mode = store.getHeroBooksMode() == null ? StoreHeroBooksMode.FEATURED_FIXED : store.getHeroBooksMode();
+        List<StorePublication> publications;
+        if (mode == StoreHeroBooksMode.MANUAL) {
+            List<Long> inventoryIds = heroItemRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId()).stream()
+                    .map(item -> item.getInventory().getId()).limit(3).toList();
+            if (inventoryIds.isEmpty()) return List.of();
+            Map<Long, StorePublication> byInventory = new HashMap<>();
+            publicationRepository.findPublishedByStoreAndInventoryIds(store.getId(), inventoryIds)
+                    .forEach(publication -> byInventory.put(publication.getInventory().getId(), publication));
+            publications = inventoryIds.stream().map(byInventory::get).filter(Objects::nonNull).toList();
+        } else if (mode == StoreHeroBooksMode.FEATURED_RANDOM) {
+            List<StorePublication> candidates = new ArrayList<>(publicationRepository.findFeaturedForStore(store.getId(), PageRequest.of(0, 30)));
+            Collections.shuffle(candidates);
+            publications = candidates.stream().limit(3).toList();
+        } else {
+            publications = publicationRepository.findFeaturedForStore(store.getId(), PageRequest.of(0, 3));
+        }
+        return toProducts(store, publications, newArrivalWindowDays(store.getId())).stream().limit(3).toList();
     }
     private StorefrontProductResponse toProduct(BookstoreStore store, StorePublication p, InventoryPrice price, int reserved, int newArrivalDays) {
         Inventory i = p.getInventory(); Book b = i.getBook();
