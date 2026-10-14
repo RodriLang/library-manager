@@ -12,6 +12,8 @@ import com.rodrilang.librarymanager.store.service.StoreSectionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -26,6 +28,16 @@ public class StoreAdminController {
 
     @PutMapping("/settings")
     public StoreSettingsResponse updateSettings(@Valid @RequestBody StoreSettingsRequest request) { return service.updateSettings(request); }
+
+    @PostMapping(value = "/settings/logo/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public StoreSettingsResponse uploadLogo(@RequestPart("file") MultipartFile file) {
+        return service.uploadLogo(file);
+    }
+
+    @PostMapping(value = "/settings/favicon/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public StoreSettingsResponse uploadFavicon(@RequestPart("file") MultipartFile file) {
+        return service.uploadFavicon(file);
+    }
 
     @PostMapping("/domains")
     public StoreDomainResponse addDomain(@Valid @RequestBody CreateStoreDomainRequest request) {

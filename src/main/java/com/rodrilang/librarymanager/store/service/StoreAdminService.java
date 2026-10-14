@@ -4,6 +4,14 @@ import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.exception.*;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
+import com.rodrilang.librarymanager.media.image.ImageOptimizer;
+import com.rodrilang.librarymanager.media.image.OptimizedImage;
+import com.rodrilang.librarymanager.media.storage.ImageFolderResolver;
+import com.rodrilang.librarymanager.media.storage.ImageStorageService;
+import com.rodrilang.librarymanager.media.storage.ImageUploadRequest;
+import com.rodrilang.librarymanager.media.storage.StoredImage;
+import com.rodrilang.librarymanager.media.validation.ImageValidator;
+import com.rodrilang.librarymanager.media.validation.ValidatedImage;
 import com.rodrilang.librarymanager.model.*;
 import com.rodrilang.librarymanager.repository.*;
 import com.rodrilang.librarymanager.store.channel.SalesChannelType;
@@ -15,6 +23,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.text.Normalizer;
 import java.time.Instant;
@@ -38,6 +47,10 @@ public class StoreAdminService {
     private final StoreSectionService storeSectionService;
     private final InventoryPriceService priceService;
     private final SalesChannelService salesChannelService;
+    private final ImageOptimizer imageOptimizer;
+    private final ImageValidator imageValidator;
+    private final ImageStorageService imageStorageService;
+    private final ImageFolderResolver imageFolderResolver;
 
     @Value("${app.storefront.base-domain:anaquel.com.ar}") private String baseDomain;
 
@@ -72,6 +85,59 @@ public class StoreAdminService {
         return toSettings(saved);
     }
 
+
+
+    @Transactional
+    public StoreSettingsResponse uploadLogo(MultipartFile file) {
+        return uploadBrandImage(file, true);
+    }
+
+    @Transactional
+    public StoreSettingsResponse uploadFavicon(MultipartFile file) {
+        return uploadBrandImage(file, false);
+    }
+
+    private StoreSettingsResponse uploadBrandImage(MultipartFile file, boolean logo) {
+        BookstoreStore store = ensureCurrentStore();
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("Seleccioná una imagen para subir.");
+        }
+        if (file.getSize() > 10L * 1024 * 1024) {
+            throw new BusinessException("La imagen no puede superar los 10 MB antes del procesamiento.");
+        }
+
+        byte[] raw;
+        try {
+            raw = file.getBytes();
+        } catch (java.io.IOException ex) {
+            throw new BusinessException("No se pudo leer la imagen seleccionada.");
+        }
+
+        OptimizedImage optimized = imageOptimizer.optimize(raw, file.getOriginalFilename(), file.getContentType());
+        ValidatedImage validated = imageValidator.validate(
+                optimized.content(),
+                optimized.filename(),
+                optimized.optimized() ? "image/jpeg" : file.getContentType()
+        );
+
+        String publicId = logo ? "logo" : "favicon";
+        StoredImage stored = imageStorageService.upload(new ImageUploadRequest(
+                validated.content(),
+                validated.originalFilename(),
+                imageFolderResolver.storeBranding(store.getId()),
+                publicId,
+                true
+        ));
+        imageValidator.validateStoredDimensions(stored.width(), stored.height());
+
+        if (logo) {
+            store.setLogoUrl(stored.secureUrl());
+        } else {
+            store.setFaviconUrl(stored.secureUrl());
+        }
+        storeRepository.save(store);
+        return toSettings(store);
+    }
 
     @Transactional
     public StoreDomainResponse addCustomDomain(String rawHostname) {

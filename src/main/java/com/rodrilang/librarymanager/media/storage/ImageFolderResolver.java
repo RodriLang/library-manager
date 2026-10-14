@@ -26,6 +26,13 @@ public class ImageFolderResolver {
         return "%s/inventory/images".formatted(rootFolder);
     }
 
+    public String storeBranding(Long storeId) {
+        if (storeId == null) {
+            throw new IllegalArgumentException("El id de la tienda es obligatorio");
+        }
+        return "%s/store/%d/branding".formatted(rootFolder, storeId);
+    }
+
     private String normalizeSegment(String value) {
         if (value == null || value.isBlank()) {
             return "anaquel";
