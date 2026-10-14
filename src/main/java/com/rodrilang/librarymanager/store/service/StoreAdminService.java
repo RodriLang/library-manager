@@ -75,6 +75,9 @@ public class StoreAdminService {
         store.setFaviconUrl(blankToNull(request.faviconUrl()));
         store.setPrimaryColor(blankToNull(request.primaryColor()));
         store.setSecondaryColor(blankToNull(request.secondaryColor()));
+        store.setHomeTitleColor(normalizeColor(request.homeTitleColor(), "color de títulos"));
+        store.setHomeAccentColor(normalizeColor(request.homeAccentColor(), "color de subtítulos"));
+        store.setHomeTextColor(normalizeColor(request.homeTextColor(), "color de textos"));
         if (request.phone() != null) {
             store.getBookstore().setPhone(blankToNull(request.phone()));
             bookstoreRepository.save(store.getBookstore());
@@ -89,8 +92,11 @@ public class StoreAdminService {
         if (request.heroShowEyebrow() != null) store.setHeroShowEyebrow(request.heroShowEyebrow());
         if (request.heroEyebrow() != null) store.setHeroEyebrow(defaultIfBlank(request.heroEyebrow(), "LIBRERÍA ONLINE"));
         if (request.heroShowLogo() != null) store.setHeroShowLogo(request.heroShowLogo());
+        if (request.heroLogoSize() != null) store.setHeroLogoSize(request.heroLogoSize());
         if (request.heroShowName() != null) store.setHeroShowName(request.heroShowName());
+        if (request.heroNameSize() != null) store.setHeroNameSize(request.heroNameSize());
         store.setHeroTitle(blankToNull(request.heroTitle()));
+        if (request.heroTitleSize() != null) store.setHeroTitleSize(request.heroTitleSize());
         store.setHeroDescription(blankToNull(request.heroDescription()));
         if (request.heroTextAlignment() != null) store.setHeroTextAlignment(request.heroTextAlignment());
         if (request.heroShowBooks() != null) store.setHeroShowBooks(request.heroShowBooks());
@@ -489,10 +495,11 @@ public class StoreAdminService {
                 .map(item -> item.getInventory().getId()).toList();
         return new StoreSettingsResponse(store.getPublicId(), store.getSlug(), store.getDisplayName(), enabled, store.getTitleFormat(),
                 store.getShowIsbn(), store.getShowAuthor(), store.getShowPublisher(), store.getShowStock(), store.getLogoUrl(), store.getFaviconUrl(),
-                store.getPrimaryColor(), store.getSecondaryColor(), store.getBookstore().getPhone(), store.getDescription(), domains, socialLinks,
+                store.getPrimaryColor(), store.getSecondaryColor(), store.getHomeTitleColor(), store.getHomeAccentColor(), store.getHomeTextColor(),
+                store.getBookstore().getPhone(), store.getDescription(), domains, socialLinks,
                 Boolean.TRUE.equals(store.getHeaderShowLogo()), Boolean.TRUE.equals(store.getHeaderShowName()), store.getHeaderBrandLayout(), store.getHeaderLogoSize(),
-                Boolean.TRUE.equals(store.getHeroShowEyebrow()), store.getHeroEyebrow(), Boolean.TRUE.equals(store.getHeroShowLogo()), Boolean.TRUE.equals(store.getHeroShowName()),
-                store.getHeroTitle(), store.getHeroDescription(), store.getHeroTextAlignment(), Boolean.TRUE.equals(store.getHeroShowBooks()), store.getHeroBooksMode(), heroItemIds,
+                Boolean.TRUE.equals(store.getHeroShowEyebrow()), store.getHeroEyebrow(), Boolean.TRUE.equals(store.getHeroShowLogo()), store.getHeroLogoSize(), Boolean.TRUE.equals(store.getHeroShowName()), store.getHeroNameSize(),
+                store.getHeroTitle(), store.getHeroTitleSize(), store.getHeroDescription(), store.getHeroTextAlignment(), Boolean.TRUE.equals(store.getHeroShowBooks()), store.getHeroBooksMode(), heroItemIds,
                 Boolean.TRUE.equals(store.getHeroPrimaryButtonEnabled()), store.getHeroPrimaryButtonText(), Boolean.TRUE.equals(store.getHeroSecondaryButtonEnabled()), store.getHeroSecondaryButtonText(),
                 Boolean.TRUE.equals(store.getDiscoverEnabled()), store.getDiscoverEyebrow(), store.getDiscoverTitle(), store.getDiscoverDescription(), store.getDiscoverButtonText());
     }
@@ -513,6 +520,15 @@ public class StoreAdminService {
             items.add(StoreHeroItem.builder().store(store).inventory(publication.getInventory()).displayOrder(index).build());
         }
         heroItemRepository.saveAll(items);
+    }
+
+    private String normalizeColor(String value, String label) {
+        String normalized = blankToNull(value);
+        if (normalized == null) return null;
+        if (!normalized.matches("(?i)^#[0-9a-f]{6}$")) {
+            throw new BusinessException("El " + label + " debe tener formato hexadecimal #RRGGBB.");
+        }
+        return normalized.toUpperCase(Locale.ROOT);
     }
 
     private String defaultIfBlank(String value, String fallback) {

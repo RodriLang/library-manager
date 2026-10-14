@@ -134,11 +134,11 @@ public class StorefrontService {
                 .map(link -> new StorefrontSocialLinkResponse(link.getType(), link.getUrl())).toList();
         List<StorefrontProductResponse> heroProducts = Boolean.TRUE.equals(s.getHeroShowBooks()) ? heroProducts(s) : List.of();
         return new StorefrontResponse(s.getPublicId(), s.getSlug(), s.getDisplayName(), s.getDescription(), s.getLogoUrl(), s.getFaviconUrl(),
-                s.getPrimaryColor(), s.getSecondaryColor(), s.getTitleFormat(), s.getShowIsbn(), s.getShowAuthor(), s.getShowPublisher(), s.getShowStock(),
+                s.getPrimaryColor(), s.getSecondaryColor(), s.getHomeTitleColor(), s.getHomeAccentColor(), s.getHomeTextColor(), s.getTitleFormat(), s.getShowIsbn(), s.getShowAuthor(), s.getShowPublisher(), s.getShowStock(),
                 s.getBookstore().getPhone(), mercadoPagoConfigService.isEnabled(s.getBookstore().getId()), socialLinks,
                 Boolean.TRUE.equals(s.getHeaderShowLogo()), Boolean.TRUE.equals(s.getHeaderShowName()), s.getHeaderBrandLayout(), s.getHeaderLogoSize(),
-                Boolean.TRUE.equals(s.getHeroShowEyebrow()), s.getHeroEyebrow(), Boolean.TRUE.equals(s.getHeroShowLogo()), Boolean.TRUE.equals(s.getHeroShowName()),
-                s.getHeroTitle(), s.getHeroDescription(), s.getHeroTextAlignment(), Boolean.TRUE.equals(s.getHeroShowBooks()), s.getHeroBooksMode(), heroProducts,
+                Boolean.TRUE.equals(s.getHeroShowEyebrow()), s.getHeroEyebrow(), Boolean.TRUE.equals(s.getHeroShowLogo()), s.getHeroLogoSize(), Boolean.TRUE.equals(s.getHeroShowName()), s.getHeroNameSize(),
+                s.getHeroTitle(), s.getHeroTitleSize(), s.getHeroDescription(), s.getHeroTextAlignment(), Boolean.TRUE.equals(s.getHeroShowBooks()), s.getHeroBooksMode(), heroProducts,
                 Boolean.TRUE.equals(s.getHeroPrimaryButtonEnabled()), s.getHeroPrimaryButtonText(), Boolean.TRUE.equals(s.getHeroSecondaryButtonEnabled()), s.getHeroSecondaryButtonText(),
                 Boolean.TRUE.equals(s.getDiscoverEnabled()), s.getDiscoverEyebrow(), s.getDiscoverTitle(), s.getDiscoverDescription(), s.getDiscoverButtonText());
     }

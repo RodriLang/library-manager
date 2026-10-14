@@ -24,6 +24,9 @@ public class BookstoreStore extends AuditableEntity {
     @Column(name = "favicon_url", length = 1000) private String faviconUrl;
     @Column(name = "primary_color", length = 20) private String primaryColor;
     @Column(name = "secondary_color", length = 20) private String secondaryColor;
+    @Column(name = "home_title_color", length = 20) private String homeTitleColor;
+    @Column(name = "home_accent_color", length = 20) private String homeAccentColor;
+    @Column(name = "home_text_color", length = 20) private String homeTextColor;
     @Column(columnDefinition = "TEXT") private String description;
 
     @Column(name = "header_show_logo", nullable = false) @Builder.Default private Boolean headerShowLogo = true;
@@ -34,8 +37,11 @@ public class BookstoreStore extends AuditableEntity {
     @Column(name = "hero_show_eyebrow", nullable = false) @Builder.Default private Boolean heroShowEyebrow = true;
     @Column(name = "hero_eyebrow", nullable = false, length = 120) @Builder.Default private String heroEyebrow = "LIBRERÍA ONLINE";
     @Column(name = "hero_show_logo", nullable = false) @Builder.Default private Boolean heroShowLogo = false;
+    @Enumerated(EnumType.STRING) @Column(name = "hero_logo_size", nullable = false, length = 20) @Builder.Default private StoreHeroComponentSize heroLogoSize = StoreHeroComponentSize.MEDIUM;
     @Column(name = "hero_show_name", nullable = false) @Builder.Default private Boolean heroShowName = true;
+    @Enumerated(EnumType.STRING) @Column(name = "hero_name_size", nullable = false, length = 20) @Builder.Default private StoreHeroComponentSize heroNameSize = StoreHeroComponentSize.MEDIUM;
     @Column(name = "hero_title", length = 220) private String heroTitle;
+    @Enumerated(EnumType.STRING) @Column(name = "hero_title_size", nullable = false, length = 20) @Builder.Default private StoreHeroComponentSize heroTitleSize = StoreHeroComponentSize.MEDIUM;
     @Column(name = "hero_description", columnDefinition = "TEXT") private String heroDescription;
     @Enumerated(EnumType.STRING) @Column(name = "hero_text_alignment", nullable = false, length = 20) @Builder.Default private StoreHeroTextAlignment heroTextAlignment = StoreHeroTextAlignment.LEFT;
     @Column(name = "hero_show_books", nullable = false) @Builder.Default private Boolean heroShowBooks = true;
