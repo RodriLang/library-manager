@@ -15,11 +15,14 @@ import java.util.List;
 @Repository
 @RequiredArgsConstructor
 public class InventoryPriceImportProviderRowJdbcRepository {
+    private static final int INSERT_BATCH_SIZE = 5_000;
+
     private final JdbcTemplate jdbcTemplate;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void insertBatch(long importId, List<StagedRow> rows) {
+    public void insertAll(long importId, List<StagedRow> rows) {
         if (rows.isEmpty()) return;
+        Timestamp createdAt = Timestamp.from(Instant.now());
         jdbcTemplate.batchUpdate("""
                 INSERT INTO inventory_price_import_provider_rows
                     (import_id, row_number, isbn, title, author, publisher, incoming_price, external_code, book_id, created_at)
@@ -32,7 +35,7 @@ public class InventoryPriceImportProviderRowJdbcRepository {
                     incoming_price = EXCLUDED.incoming_price,
                     external_code = EXCLUDED.external_code,
                     book_id = COALESCE(EXCLUDED.book_id, inventory_price_import_provider_rows.book_id)
-                """, rows, rows.size(), (ps, row) -> bindInsert(ps, importId, row));
+                """, rows, INSERT_BATCH_SIZE, (ps, row) -> bindInsert(ps, importId, row, createdAt));
     }
 
     public List<StoredRow> findBatch(long importId, long afterId, int limit) {
@@ -69,7 +72,7 @@ public class InventoryPriceImportProviderRowJdbcRepository {
         jdbcTemplate.update("DELETE FROM inventory_price_import_provider_rows WHERE import_id = ?", importId);
     }
 
-    private void bindInsert(PreparedStatement ps, long importId, StagedRow row) throws java.sql.SQLException {
+    private void bindInsert(PreparedStatement ps, long importId, StagedRow row, Timestamp createdAt) throws java.sql.SQLException {
         ps.setLong(1, importId);
         ps.setInt(2, row.rowNumber());
         ps.setString(3, row.isbn());
@@ -79,7 +82,7 @@ public class InventoryPriceImportProviderRowJdbcRepository {
         ps.setBigDecimal(7, row.incomingPrice());
         ps.setString(8, row.externalCode());
         if (row.bookId() == null) ps.setObject(9, null); else ps.setLong(9, row.bookId());
-        ps.setTimestamp(10, Timestamp.from(Instant.now()));
+        ps.setTimestamp(10, createdAt);
     }
 
     public record StagedRow(int rowNumber, String isbn, String title, String author, String publisher,

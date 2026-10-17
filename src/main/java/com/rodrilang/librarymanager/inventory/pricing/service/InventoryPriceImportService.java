@@ -165,8 +165,7 @@ public class InventoryPriceImportService {
 
         Map<String, List<InventoryPriceImportItem>> itemsByDuplicateKey = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
-        List<InventoryPriceImportProviderRowJdbcRepository.StagedRow> providerBatch = new ArrayList<>(500);
-        AtomicInteger providerRowCount = new AtomicInteger();
+        List<InventoryPriceImportProviderRowJdbcRepository.StagedRow> providerRows = new ArrayList<>();
 
         AtomicInteger total = new AtomicInteger();
         AtomicInteger matched = new AtomicInteger();
@@ -191,12 +190,7 @@ public class InventoryPriceImportService {
                     MatchResult match = match(row, matchIndex);
                     Long matchedBookId = match.inventory() != null ? match.inventory().getBook().getId() : null;
                     if (format.getProvider() != null) {
-                        providerBatch.add(toStagedProviderRow(row, matchedBookId));
-                        providerRowCount.incrementAndGet();
-                        if (providerBatch.size() >= 500) {
-                            providerRowJdbcRepository.insertBatch(importId, List.copyOf(providerBatch));
-                            providerBatch.clear();
-                        }
+                        providerRows.add(toStagedProviderRow(row, matchedBookId));
                     }
                     if (match.inventory() == null) {
                         if (match.ambiguous()) {
@@ -252,9 +246,15 @@ public class InventoryPriceImportService {
                     "rows=" + total.get() + " matched=" + matched.get() + " items=" + items.size()
             );
 
-            if (!providerBatch.isEmpty()) {
-                providerRowJdbcRepository.insertBatch(importId, List.copyOf(providerBatch));
-                providerBatch.clear();
+            if (!providerRows.isEmpty()) {
+                phaseStarted = System.nanoTime();
+                providerRowJdbcRepository.insertAll(importId, providerRows);
+                logPreviewPhase(
+                        importId,
+                        "persist-provider-rows",
+                        phaseStarted,
+                        "providerRows=" + providerRows.size()
+                );
             }
 
             phaseStarted = System.nanoTime();
@@ -264,7 +264,7 @@ public class InventoryPriceImportService {
                     importId,
                     "persist-preview",
                     phaseStarted,
-                    "items=" + items.size() + " providerRows=" + providerRowCount.get()
+                    "items=" + items.size() + " providerRows=" + providerRows.size()
             );
 
             phaseStarted = System.nanoTime();
@@ -280,8 +280,8 @@ public class InventoryPriceImportService {
             priceImport.setStatus(InventoryPriceImportStatus.PREVIEW_READY);
             priceImport.setProcessingFinishedAt(Instant.now());
             priceImport.setProcessingError(null);
-            if (format.getProvider() != null && providerRowCount.get() > 0) {
-                jobService.ensureProviderCatalogSync(importId, providerRowCount.get());
+            if (format.getProvider() != null && !providerRows.isEmpty()) {
+                jobService.ensureProviderCatalogSync(importId, providerRows.size());
             }
 
             log.info(
@@ -604,7 +604,19 @@ public class InventoryPriceImportService {
     }
 
     private List<Inventory> distinct(List<Inventory> candidates) {
-        return candidates.stream().collect(Collectors.toMap(Inventory::getId, item -> item, (a, b) -> a, LinkedHashMap::new)).values().stream().toList();
+        if (candidates.size() < 2) {
+            return candidates;
+        }
+        return candidates.stream()
+                .collect(Collectors.toMap(
+                        Inventory::getId,
+                        item -> item,
+                        (a, b) -> a,
+                        LinkedHashMap::new
+                ))
+                .values()
+                .stream()
+                .toList();
     }
 
     private PriceListImportConfig toParserConfig(BookstorePriceListFormat format) {
