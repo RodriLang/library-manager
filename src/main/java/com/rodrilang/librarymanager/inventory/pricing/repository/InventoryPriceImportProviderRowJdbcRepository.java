@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.inventory.pricing.repository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,6 +15,7 @@ import java.util.List;
 
 @Repository
 @RequiredArgsConstructor
+@Slf4j
 public class InventoryPriceImportProviderRowJdbcRepository {
     private static final int INSERT_BATCH_SIZE = 5_000;
 
@@ -22,6 +24,9 @@ public class InventoryPriceImportProviderRowJdbcRepository {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void insertAll(long importId, List<StagedRow> rows) {
         if (rows.isEmpty()) return;
+        long started = System.nanoTime();
+        log.info("PRICE IMPORT STAGING INSERT START importId={} rows={} batchSize={}",
+                importId, rows.size(), INSERT_BATCH_SIZE);
         Timestamp createdAt = Timestamp.from(Instant.now());
         jdbcTemplate.batchUpdate("""
                 INSERT INTO inventory_price_import_provider_rows
@@ -36,6 +41,8 @@ public class InventoryPriceImportProviderRowJdbcRepository {
                     external_code = EXCLUDED.external_code,
                     book_id = COALESCE(EXCLUDED.book_id, inventory_price_import_provider_rows.book_id)
                 """, rows, INSERT_BATCH_SIZE, (ps, row) -> bindInsert(ps, importId, row, createdAt));
+        log.info("PRICE IMPORT STAGING INSERT DONE importId={} rows={} timeMs={}",
+                importId, rows.size(), (System.nanoTime() - started) / 1_000_000L);
     }
 
     public List<StoredRow> findBatch(long importId, long afterId, int limit) {

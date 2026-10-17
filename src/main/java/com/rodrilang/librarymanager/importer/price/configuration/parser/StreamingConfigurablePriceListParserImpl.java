@@ -35,8 +35,14 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
             PriceListImportConfig config,
             Consumer<PriceListRow> rowConsumer
     ) {
+        long overallStarted = System.nanoTime();
+        log.info("PRICE LIST PARSER OPEN START fileBytes={} sheetStrategy={} firstDataRow={} mappings={}",
+                safeFileSize(filePath), config.getSheetStrategy(), config.getFirstDataRowIndex(),
+                config.getMappings() == null ? 0 : config.getMappings().size());
         try (OPCPackage opcPackage =
                      OPCPackage.open(filePath.toFile())) {
+            log.info("PRICE LIST PARSER OPEN DONE timeMs={}", millisSince(overallStarted));
+            long setupStarted = System.nanoTime();
 
             XSSFReader reader = new XSSFReader(opcPackage);
 
@@ -44,6 +50,8 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
 
             ReadOnlySharedStringsTable sharedStrings =
                     new ReadOnlySharedStringsTable(opcPackage);
+
+            log.info("PRICE LIST PARSER SETUP DONE timeMs={}", millisSince(setupStarted));
 
             XSSFReader.SheetIterator iterator =
                     (XSSFReader.SheetIterator)
@@ -67,6 +75,8 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
 
                     boolean fastPath = canUseFastPath(config);
                     long parseStarted = System.nanoTime();
+                    log.info("PRICE LIST PARSER START mode={} sheet={} sheetIndex={} setupElapsedMs={}",
+                            fastPath ? "FAST_SAX" : "FORMATTED", sheetName, sheetIndex, millisSince(overallStarted));
                     if (fastPath) {
                         parseSheetFast(
                                 sheetStream,
@@ -95,6 +105,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
                 }
             }
 
+            log.info("PRICE LIST PARSER FINISHED totalMs={} processed={}", millisSince(overallStarted), processed);
             if (!processed) {
                 throw new BusinessException(
                         "No se encontró la hoja configurada."
@@ -102,8 +113,12 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
             }
 
         } catch (BusinessException exception) {
+            log.warn("PRICE LIST PARSER FAILED totalMs={} errorType={}", millisSince(overallStarted),
+                    exception.getClass().getSimpleName());
             throw exception;
         } catch (Exception exception) {
+            log.warn("PRICE LIST PARSER FAILED totalMs={} errorType={}", millisSince(overallStarted),
+                    exception.getClass().getSimpleName(), exception);
             throw new BusinessException(
                     "No se pudo leer la lista de precios: "
                             + safeMessage(exception)
@@ -111,6 +126,18 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
         }
     }
 
+
+    private static long millisSince(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
+    }
+
+    private static long safeFileSize(Path file) {
+        try {
+            return java.nio.file.Files.size(file);
+        } catch (java.io.IOException ignored) {
+            return -1L;
+        }
+    }
 
     private void parseSheetFast(
             InputStream sheetStream,

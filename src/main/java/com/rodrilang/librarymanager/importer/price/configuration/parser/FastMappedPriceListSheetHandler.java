@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.importer.price.configuration.model.PriceList
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
+import lombok.extern.slf4j.Slf4j;
 import org.xml.sax.Attributes;
 import org.xml.sax.helpers.DefaultHandler;
 
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
  * This is important for large provider lists where only a handful of columns
  * are relevant.</p>
  */
+@Slf4j
 final class FastMappedPriceListSheetHandler extends DefaultHandler {
 
     private final PriceListImportConfig config;
@@ -29,6 +31,10 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
     private final ReadOnlySharedStringsTable sharedStrings;
     private final BitSet selectedColumns;
     private final int maxSelectedColumn;
+
+    private long emittedRows;
+    private long callbackNanos;
+    private final long startedNanos = System.nanoTime();
 
     private List<String> currentCells;
     private int currentRowIndex = -1;
@@ -163,7 +169,25 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
         if (currentCells == null || currentRowIndex < config.getFirstDataRowIndex()) {
             return;
         }
-        consumer.accept(rowMapper.map(currentRowIndex, currentCells, config));
+        long callbackStarted = System.nanoTime();
+        try {
+            consumer.accept(rowMapper.map(currentRowIndex, currentCells, config));
+        } finally {
+            callbackNanos += System.nanoTime() - callbackStarted;
+            emittedRows++;
+            if (emittedRows % 5_000 == 0) {
+                log.info("PRICE LIST PARSER PROGRESS mode=FAST_SAX rows={} elapsedMs={} callbackMs={} rowIndex={}",
+                        emittedRows, (System.nanoTime() - startedNanos) / 1_000_000L,
+                        callbackNanos / 1_000_000L, currentRowIndex);
+            }
+        }
+    }
+
+    @Override
+    public void endDocument() {
+        log.info("PRICE LIST PARSER ROWS DONE mode=FAST_SAX rows={} elapsedMs={} callbackMs={}",
+                emittedRows, (System.nanoTime() - startedNanos) / 1_000_000L,
+                callbackNanos / 1_000_000L);
     }
 
     private String decodeCellValue() {

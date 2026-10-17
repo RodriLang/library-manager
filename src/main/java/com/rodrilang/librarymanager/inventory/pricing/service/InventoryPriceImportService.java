@@ -145,6 +145,11 @@ public class InventoryPriceImportService {
             throw new BusinessException("La importación no tiene un formato de lista asociado.");
         }
 
+        log.info("PRICE IMPORT PREVIEW START importId={} bookstoreId={} formatId={} providerId={} effectiveFrom={} fileBytes={}",
+                importId, bookstoreId, format.getId(),
+                format.getProvider() == null ? null : format.getProvider().getId(),
+                priceImport.getEffectiveFrom(), safePreviewFileSize(source));
+
         long phaseStarted = System.nanoTime();
         List<Inventory> inventories = inventoryRepository.findAllByBookstoreIdAndActiveTrue(bookstoreId);
         logPreviewPhase(importId, "load-inventory", phaseStarted, "inventories=" + inventories.size());
@@ -246,8 +251,11 @@ public class InventoryPriceImportService {
                     "rows=" + total.get() + " matched=" + matched.get() + " items=" + items.size()
             );
 
+            log.info("PRICE IMPORT PREVIEW PARSED importId={} rows={} matches={} providerRows={} elapsedMs={}",
+                    importId, total.get(), matched.get(), providerRows.size(), elapsedMillis(totalStarted));
             if (!providerRows.isEmpty()) {
                 phaseStarted = System.nanoTime();
+                log.info("PRICE IMPORT PREVIEW PROVIDER INSERT START importId={} rows={}", importId, providerRows.size());
                 providerRowJdbcRepository.insertAll(importId, providerRows);
                 logPreviewPhase(
                         importId,
@@ -258,6 +266,7 @@ public class InventoryPriceImportService {
             }
 
             phaseStarted = System.nanoTime();
+            log.info("PRICE IMPORT PREVIEW ITEMS SAVE START importId={} items={}", importId, items.size());
             itemRepository.saveAll(items);
             updateCounters(priceImport, total.get(), matched.get(), unmatched.get(), items);
             logPreviewPhase(
@@ -268,6 +277,8 @@ public class InventoryPriceImportService {
             );
 
             phaseStarted = System.nanoTime();
+            log.info("PRICE IMPORT PREVIEW UPLOAD START importId={} bytes={}",
+                    importId, safePreviewFileSize(normalizedFile));
             try {
                 NormalizedPriceListStorage.StoredRawFile stored = normalizedStorage.upload(bookstoreId, normalizedFile);
                 priceImport.setNormalizedFilePublicId(stored.publicId());
@@ -281,7 +292,9 @@ public class InventoryPriceImportService {
             priceImport.setProcessingFinishedAt(Instant.now());
             priceImport.setProcessingError(null);
             if (format.getProvider() != null && !providerRows.isEmpty()) {
+                log.info("PRICE IMPORT PREVIEW CATALOG JOB START importId={} providerRows={}", importId, providerRows.size());
                 jobService.ensureProviderCatalogSync(importId, providerRows.size());
+                log.info("PRICE IMPORT PREVIEW CATALOG JOB READY importId={}", importId);
             }
 
             log.info(
@@ -304,6 +317,14 @@ public class InventoryPriceImportService {
                 } catch (Exception ignored) {
                 }
             }
+        }
+    }
+
+    private static long safePreviewFileSize(Path file) {
+        try {
+            return file == null ? -1L : Files.size(file);
+        } catch (java.io.IOException ignored) {
+            return -1L;
         }
     }
 
