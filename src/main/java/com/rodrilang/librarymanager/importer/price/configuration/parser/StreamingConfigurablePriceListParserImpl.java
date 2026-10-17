@@ -1,9 +1,12 @@
 package com.rodrilang.librarymanager.importer.price.configuration.parser;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.importer.price.configuration.enums.PriceListValueType;
+import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.util.XMLHelper;
 import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
@@ -21,6 +24,7 @@ import java.util.function.Consumer;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class StreamingConfigurablePriceListParserImpl implements StreamingConfigurablePriceListParser {
 
     private final ConfigurableStreamingRowMapper rowMapper;
@@ -61,12 +65,29 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
                         continue;
                     }
 
-                    parseSheet(
-                            sheetStream,
-                            styles,
-                            sharedStrings,
-                            config,
-                            rowConsumer
+                    boolean fastPath = canUseFastPath(config);
+                    long parseStarted = System.nanoTime();
+                    if (fastPath) {
+                        parseSheetFast(
+                                sheetStream,
+                                sharedStrings,
+                                config,
+                                rowConsumer
+                        );
+                    } else {
+                        parseSheet(
+                                sheetStream,
+                                styles,
+                                sharedStrings,
+                                config,
+                                rowConsumer
+                        );
+                    }
+                    log.info(
+                            "PRICE LIST PARSER mode={} sheet={} timeMs={}",
+                            fastPath ? "FAST_SAX" : "FORMATTED",
+                            sheetName,
+                            (System.nanoTime() - parseStarted) / 1_000_000L
                     );
 
                     processed = true;
@@ -88,6 +109,47 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
                             + safeMessage(exception)
             );
         }
+    }
+
+
+    private void parseSheetFast(
+            InputStream sheetStream,
+            ReadOnlySharedStringsTable sharedStrings,
+            PriceListImportConfig config,
+            Consumer<PriceListRow> consumer
+    ) throws Exception {
+        FastMappedPriceListSheetHandler handler =
+                new FastMappedPriceListSheetHandler(
+                        config,
+                        rowMapper,
+                        consumer,
+                        sharedStrings
+                );
+
+        XMLReader parser = XMLHelper.newXMLReader();
+        parser.setContentHandler(handler);
+        parser.parse(new InputSource(sheetStream));
+    }
+
+    private boolean canUseFastPath(PriceListImportConfig config) {
+        if (config.getMappings() == null || config.getMappings().isEmpty()) {
+            return false;
+        }
+
+        for (PriceListColumnMapping mapping : config.getMappings()) {
+            if (!mapping.isActive()) {
+                continue;
+            }
+            if (mapping.getColumnIndex() == null || mapping.getColumnIndex() < 0) {
+                return false;
+            }
+            // Numeric Excel dates depend on cell style information. Keep those
+            // formats on XSSFSheetXMLHandler/DataFormatter for exact compatibility.
+            if (mapping.getValueType() == PriceListValueType.DATE) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void parseSheet(

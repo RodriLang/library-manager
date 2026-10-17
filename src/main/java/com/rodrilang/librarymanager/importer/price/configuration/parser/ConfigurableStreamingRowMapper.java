@@ -12,12 +12,30 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
 public class ConfigurableStreamingRowMapper {
+
+    private static final EnumSet<PriceListField> METADATA_FIELDS = EnumSet.of(
+            PriceListField.SUBTITLE,
+            PriceListField.DESCRIPTION,
+            PriceListField.GENRE,
+            PriceListField.PAGE_COUNT,
+            PriceListField.PUBLICATION_DATE,
+            PriceListField.LANGUAGE,
+            PriceListField.COVER_URL,
+            PriceListField.COLLECTION,
+            PriceListField.DIMENSIONS,
+            PriceListField.WEIGHT,
+            PriceListField.TAGS,
+            PriceListField.EXTERNAL_CODE,
+            PriceListField.EXTERNAL_STOCK,
+            PriceListField.OBSERVATIONS
+    );
 
     private final PriceListCellValueConverter converter;
 
@@ -57,20 +75,45 @@ public class ConfigurableStreamingRowMapper {
             int rowIndex,
             Map<PriceListField, Object> values
     ) {
+        PriceListMetadata metadata = buildMetadata(values);
+
+        return new PriceListRow(
+                rowIndex + 1,
+                text(values, PriceListField.ISBN),
+                text(values, PriceListField.TITLE),
+                text(values, PriceListField.AUTHOR),
+                text(values, PriceListField.PUBLISHER),
+                decimal(values, PriceListField.RETAIL_PRICE),
+                text(values, PriceListField.CATEGORY),
+                BookSource.EXTERNAL_METADATA,
+                metadata
+        );
+    }
+
+    private PriceListMetadata buildMetadata(Map<PriceListField, Object> values) {
+        boolean hasMetadata = false;
+        for (PriceListField field : METADATA_FIELDS) {
+            if (values.get(field) != null) {
+                hasMetadata = true;
+                break;
+            }
+        }
+        if (!hasMetadata) {
+            return null;
+        }
+
         ParsedDimensions dimensions = parseDimensions(
                 text(values, PriceListField.DIMENSIONS)
         );
-
         BigDecimal weightGrams = parseWeightGrams(
                 decimal(values, PriceListField.WEIGHT)
         );
-
         LocalDate publicationDate = date(
                 values,
                 PriceListField.PUBLICATION_DATE
         );
 
-        PriceListMetadata metadata = PriceListMetadata.builder()
+        return PriceListMetadata.builder()
                 .subtitle(text(values, PriceListField.SUBTITLE))
                 .description(text(values, PriceListField.DESCRIPTION))
                 .genreName(text(values, PriceListField.GENRE))
@@ -85,28 +128,10 @@ public class ConfigurableStreamingRowMapper {
                 .depthCm(dimensions.depthCm())
                 .weightGrams(weightGrams)
                 .tags(text(values, PriceListField.TAGS))
-                .externalCode(
-                        text(values, PriceListField.EXTERNAL_CODE)
-                )
-                .externalStock(
-                        integer(values, PriceListField.EXTERNAL_STOCK)
-                )
-                .observations(
-                        text(values, PriceListField.OBSERVATIONS)
-                )
+                .externalCode(text(values, PriceListField.EXTERNAL_CODE))
+                .externalStock(integer(values, PriceListField.EXTERNAL_STOCK))
+                .observations(text(values, PriceListField.OBSERVATIONS))
                 .build();
-
-        return new PriceListRow(
-                rowIndex + 1,
-                text(values, PriceListField.ISBN),
-                text(values, PriceListField.TITLE),
-                text(values, PriceListField.AUTHOR),
-                text(values, PriceListField.PUBLISHER),
-                decimal(values, PriceListField.RETAIL_PRICE),
-                text(values, PriceListField.CATEGORY),
-                BookSource.EXTERNAL_METADATA,
-                metadata
-        );
     }
 
     private String getValue(

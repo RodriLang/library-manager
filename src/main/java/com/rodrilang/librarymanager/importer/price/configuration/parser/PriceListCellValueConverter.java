@@ -16,7 +16,6 @@ import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
 import java.time.temporal.ChronoField;
 import java.util.List;
-import java.util.Locale;
 
 @Component
 @RequiredArgsConstructor
@@ -141,27 +140,49 @@ public class PriceListCellValueConverter {
 
         String trimmed = value.trim();
 
-        String scientificCandidate = trimmed
-                .replace(",", ".")
-                .replaceAll("\\s+", "");
+        String scientificCandidate = removeWhitespace(trimmed.replace(',', '.'));
 
-        if (scientificCandidate.matches(
-                "[-+]?\\d+(?:\\.\\d+)?[eE][-+]?\\d+"
-        )) {
+        if (scientificCandidate.indexOf('e') >= 0 || scientificCandidate.indexOf('E') >= 0) {
             try {
-                return new BigDecimal(scientificCandidate)
-                        .toBigIntegerExact()
-                        .toString();
-            } catch (ArithmeticException | NumberFormatException ignored) {
-                return null;
+                BigDecimal scientific = new BigDecimal(scientificCandidate);
+                try {
+                    return scientific.toBigIntegerExact().toString();
+                } catch (ArithmeticException ignored) {
+                    return null;
+                }
+            } catch (NumberFormatException ignored) {
+                // Not actually scientific notation: preserve the previous fallback
+                // and keep only ISBN-compatible characters below.
             }
         }
 
-        String normalized = trimmed.replaceAll("[^0-9Xx]", "");
+        StringBuilder normalized = new StringBuilder(trimmed.length());
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (c >= '0' && c <= '9') {
+                normalized.append(c);
+            } else if (c == 'X' || c == 'x') {
+                normalized.append('X');
+            }
+        }
 
-        return normalized.isBlank()
-                ? null
-                : normalized.toUpperCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized.toString();
+    }
+
+    private String removeWhitespace(String value) {
+        StringBuilder result = null;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c)) {
+                if (result == null) {
+                    result = new StringBuilder(value.length());
+                    result.append(value, 0, i);
+                }
+            } else if (result != null) {
+                result.append(c);
+            }
+        }
+        return result == null ? value : result.toString();
     }
 
     private String parseIsbn(Cell cell, String raw) {
@@ -196,9 +217,7 @@ public class PriceListCellValueConverter {
             return null;
         }
 
-        String normalized = raw
-                .replace("$", "")
-                .replaceAll("\\s+", "")
+        String normalized = removeWhitespace(raw.replace("$", ""))
                 .trim()
                 .replace("0.,", "0.")
                 .replace("0,.", "0.");
