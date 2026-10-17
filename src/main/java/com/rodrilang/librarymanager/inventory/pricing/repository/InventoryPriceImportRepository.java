@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.inventory.pricing.repository;
 
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportStatus;
+import com.rodrilang.librarymanager.inventory.pricing.job.model.InventoryPriceImportJobStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -13,6 +15,8 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface InventoryPriceImportRepository extends JpaRepository<InventoryPriceImport, Long> {
@@ -28,6 +32,28 @@ public interface InventoryPriceImportRepository extends JpaRepository<InventoryP
 
     @EntityGraph(attributePaths = {"format", "provider"})
     Optional<InventoryPriceImport> findByIdAndBookstoreId(Long id, Long bookstoreId);
+
+    @EntityGraph(attributePaths = {"format", "provider"})
+    @Query("""
+            select priceImport
+            from InventoryPriceImport priceImport
+            where priceImport.bookstore.id = :bookstoreId
+              and (
+                    priceImport.status in :importStatuses
+                    or exists (
+                        select job.id
+                        from InventoryPriceImportJob job
+                        where job.priceImport.id = priceImport.id
+                          and job.status in :jobStatuses
+                    )
+              )
+            order by priceImport.createdAt desc
+            """)
+    List<InventoryPriceImport> findActiveByBookstoreId(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("importStatuses") Collection<InventoryPriceImportStatus> importStatuses,
+            @Param("jobStatuses") Collection<InventoryPriceImportJobStatus> jobStatuses
+    );
 
     @EntityGraph(attributePaths = {"bookstore", "format", "provider"})
     @Query("select priceImport from InventoryPriceImport priceImport where priceImport.id = :id")

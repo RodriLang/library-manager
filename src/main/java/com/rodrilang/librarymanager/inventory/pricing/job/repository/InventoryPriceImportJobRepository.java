@@ -5,12 +5,22 @@ import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface InventoryPriceImportJobRepository extends JpaRepository<InventoryPriceImportJob, Long> {
     Optional<InventoryPriceImportJob> findByPriceImportIdAndType(Long importId, InventoryPriceImportJobType type);
     List<InventoryPriceImportJob> findAllByPriceImportIdOrderByIdAsc(Long importId);
+    @Query("""
+            select job
+            from InventoryPriceImportJob job
+            where job.priceImport.id in :importIds
+            order by job.priceImport.id asc, job.id asc
+            """)
+    List<InventoryPriceImportJob> findAllByPriceImportIdInOrderByImportAndId(
+            @Param("importIds") Collection<Long> importIds
+    );
 
     @Modifying
     @Query(value = """

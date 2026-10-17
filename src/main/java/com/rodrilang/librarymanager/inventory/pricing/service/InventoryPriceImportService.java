@@ -20,6 +20,8 @@ import com.rodrilang.librarymanager.inventory.pricing.model.*;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowJdbcRepository;
+import com.rodrilang.librarymanager.inventory.pricing.job.dto.InventoryPriceImportJobResponse;
+import com.rodrilang.librarymanager.inventory.pricing.job.model.InventoryPriceImportJobStatus;
 import com.rodrilang.librarymanager.inventory.pricing.job.service.InventoryPriceImportJobService;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceListStorage;
@@ -346,6 +348,42 @@ public class InventoryPriceImportService {
                 ? importRepository.findAllByBookstoreIdOrderByCreatedAtDesc(bookstoreId, pageable)
                 : importRepository.findAllByBookstoreIdAndProviderIdOrderByCreatedAtDesc(bookstoreId, providerId, pageable);
         return PageResponse.of(imports.map(this::toHistory));
+    }
+
+    @Transactional(readOnly = true)
+    public List<InventoryPriceImportActivityResponse> active(Long providerId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+
+        List<InventoryPriceImport> imports = importRepository.findActiveByBookstoreId(
+                bookstoreId,
+                EnumSet.of(
+                        InventoryPriceImportStatus.PREVIEW_PROCESSING,
+                        InventoryPriceImportStatus.PREVIEW_READY,
+                        InventoryPriceImportStatus.PROCESSING
+                ),
+                EnumSet.of(
+                        InventoryPriceImportJobStatus.PENDING,
+                        InventoryPriceImportJobStatus.PROCESSING,
+                        InventoryPriceImportJobStatus.FAILED
+                )
+        );
+
+        if (providerId != null) {
+            imports = imports.stream()
+                    .filter(priceImport -> priceImport.getProvider() != null
+                            && Objects.equals(priceImport.getProvider().getId(), providerId))
+                    .toList();
+        }
+
+        List<Long> importIds = imports.stream().map(InventoryPriceImport::getId).toList();
+        Map<Long, List<InventoryPriceImportJobResponse>> jobsByImport = jobService.listByImportIds(importIds);
+
+        return imports.stream()
+                .map(priceImport -> toActivity(
+                        priceImport,
+                        jobsByImport.getOrDefault(priceImport.getId(), List.of())
+                ))
+                .toList();
     }
 
     @Transactional
@@ -779,6 +817,30 @@ public class InventoryPriceImportService {
                               + " veces en la lista con precios diferentes.";
         }
         return conflictReason;
+    }
+
+    private InventoryPriceImportActivityResponse toActivity(
+            InventoryPriceImport priceImport,
+            List<InventoryPriceImportJobResponse> jobs
+    ) {
+        return new InventoryPriceImportActivityResponse(
+                priceImport.getId(),
+                priceImport.getFormat() != null ? priceImport.getFormat().getId() : null,
+                priceImport.getFormat() != null ? priceImport.getFormat().getName() : null,
+                priceImport.getProvider() != null ? priceImport.getProvider().getId() : null,
+                priceImport.getProvider() != null ? priceImport.getProvider().getName() : null,
+                priceImport.getSourceName(),
+                priceImport.getOriginalFilename(),
+                priceImport.getEffectiveFrom(),
+                priceImport.getStatus(),
+                summary(priceImport),
+                priceImport.getCreatedAt(),
+                priceImport.getAppliedAt(),
+                priceImport.getProcessingStartedAt(),
+                priceImport.getProcessingFinishedAt(),
+                priceImport.getProcessingError(),
+                jobs
+        );
     }
 
     private InventoryPriceImportHistoryResponse toHistory(InventoryPriceImport priceImport) {

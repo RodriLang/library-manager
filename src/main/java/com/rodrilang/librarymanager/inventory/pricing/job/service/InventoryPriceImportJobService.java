@@ -14,7 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -110,6 +113,20 @@ public class InventoryPriceImportJobService {
     @Transactional(readOnly = true)
     public List<InventoryPriceImportJobResponse> list(long importId) {
         return repository.findAllByPriceImportIdOrderByIdAsc(importId).stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, List<InventoryPriceImportJobResponse>> listByImportIds(Collection<Long> importIds) {
+        if (importIds == null || importIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, List<InventoryPriceImportJobResponse>> grouped = new LinkedHashMap<>();
+        repository.findAllByPriceImportIdInOrderByImportAndId(importIds).forEach(job ->
+                grouped.computeIfAbsent(job.getPriceImport().getId(), ignored -> new java.util.ArrayList<>())
+                        .add(toResponse(job))
+        );
+        return grouped;
     }
 
     private InventoryPriceImportJobResponse toResponse(InventoryPriceImportJob j) {

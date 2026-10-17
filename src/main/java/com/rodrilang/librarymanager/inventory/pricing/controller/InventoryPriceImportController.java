@@ -87,6 +87,13 @@ public class InventoryPriceImportController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/active")
+    public List<InventoryPriceImportActivityResponse> active(
+            @RequestParam(required = false) Long providerId
+    ) {
+        return service.active(providerId);
+    }
+
     @GetMapping
     public PageResponse<InventoryPriceImportHistoryResponse> history(
             @RequestParam(required = false) Long providerId,
