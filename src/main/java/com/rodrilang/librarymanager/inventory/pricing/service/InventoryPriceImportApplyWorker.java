@@ -1,92 +1,63 @@
 package com.rodrilang.librarymanager.inventory.pricing.service;
 
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport;
-import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportClassification;
-import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportItem;
-import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportProviderRow;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportStatus;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
-import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
-import com.rodrilang.librarymanager.provider.model.Provider;
-import com.rodrilang.librarymanager.purchasing.service.BookstoreProviderPriceListService;
+import com.rodrilang.librarymanager.inventory.pricing.job.service.InventoryPriceImportJobService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class InventoryPriceImportApplyWorker {
+    private static final int BATCH_SIZE = 250;
 
     private final InventoryPriceImportRepository importRepository;
     private final InventoryPriceImportItemRepository itemRepository;
-    private final InventoryPriceImportProviderRowRepository providerRowRepository;
-    private final InventoryPriceService priceService;
-    private final BookstoreProviderPriceListService providerPriceListService;
+    private final InventoryPriceImportApplyBatchService batchService;
+    private final InventoryPriceImportJobService jobService;
 
-    @Transactional
     public void process(Long importId, Long userId) {
-        InventoryPriceImport priceImport = importRepository.findById(importId)
+        process(importId, userId, null, 0L);
+    }
+
+    public void process(Long importId, Long userId, Long jobId, long initialCursor) {
+        InventoryPriceImport snapshot = importRepository.findDetailedById(importId)
                 .orElseThrow(() -> new IllegalStateException("No se encontró la importación " + importId + "."));
+        if (snapshot.getStatus() != InventoryPriceImportStatus.PROCESSING) return;
 
-        if (priceImport.getStatus() != InventoryPriceImportStatus.PROCESSING) {
-            return;
+        long cursor = initialCursor;
+
+        while (true) {
+            var batch = itemRepository.findSelectedBatch(importId, cursor, PageRequest.of(0, BATCH_SIZE));
+            if (batch.isEmpty()) break;
+            long started = System.nanoTime();
+            var result = batchService.process(importId, userId, batch);
+            cursor = batch.getLast().getId();
+            if (jobId != null) {
+                jobService.batchCompleted(jobId, cursor, batch.size(), result.applied(), result.skipped(), 0);
+            }
+            log.info("PRICE INVENTORY APPLY PHASE importId={} cursor={} batch={} applied={} skipped={} timeMs={}",
+                    importId, cursor, batch.size(), result.applied(), result.skipped(),
+                    (System.nanoTime() - started) / 1_000_000);
         }
+        int applied = Math.toIntExact(itemRepository.countByPriceImportIdAndAppliedTrue(importId));
+        int considered = Math.toIntExact(itemRepository.countByPriceImportIdAndDiscardedFalse(importId));
+        complete(importId, applied, Math.max(0, considered - applied));
+    }
 
-        List<InventoryPriceImportItem> items =
-                itemRepository.findAllByPriceImportIdOrderByRowNumberAsc(importId);
-
-        int applied = 0;
-        int skipped = 0;
-
-        for (InventoryPriceImportItem item : items) {
-            if (item.isDiscarded()) {
-                continue;
-            }
-
-            if (item.getInventory() == null) {
-                skipped++;
-                continue;
-            }
-
-            if (!item.isSelectedForApply()) {
-                skipped++;
-                continue;
-            }
-
-            if (item.getIncomingPrice() == null || item.getIncomingPrice().signum() <= 0) {
-                skipped++;
-                continue;
-            }
-
-            if (isBlocked(item.getClassification())) {
-                skipped++;
-                continue;
-            }
-
-            priceService.upsertImported(
-                    item.getInventory(),
-                    item.getIncomingPrice(),
-                    priceImport.getEffectiveFrom(),
-                    priceImport,
-                    userId
-            );
-
-            item.setApplied(true);
-            applied++;
-        }
-
-        Provider provider = priceImport.getProvider();
-
-        if (provider != null) {
-            List<InventoryPriceImportProviderRow> providerRows =
-                    providerRowRepository.findAllByPriceImportIdOrderByRowNumberAsc(importId);
-            providerPriceListService.apply(priceImport, provider, providerRows);
-        }
-
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void complete(Long importId, int applied, int skipped) {
+        InventoryPriceImport priceImport = importRepository.findById(importId).orElseThrow();
+        if (priceImport.getStatus() != InventoryPriceImportStatus.PROCESSING) return;
         Instant finishedAt = Instant.now();
         priceImport.setAppliedRows(applied);
         priceImport.setSkippedRows(skipped);
@@ -94,17 +65,6 @@ public class InventoryPriceImportApplyWorker {
         priceImport.setProcessingFinishedAt(finishedAt);
         priceImport.setProcessingError(null);
         priceImport.setStatus(InventoryPriceImportStatus.APPLIED);
-
-        itemRepository.saveAll(items);
-
-        // El staging contiene precios del proveedor sólo para diferir efectos
-        // hasta APPLY. Una vez aplicado no se conserva como historial.
-        providerRowRepository.deleteAllByPriceImportId(importId);
-    }
-
-    private boolean isBlocked(InventoryPriceImportClassification classification) {
-        return classification == InventoryPriceImportClassification.DUPLICATE_CONFLICT
-                || classification == InventoryPriceImportClassification.AMBIGUOUS_MATCH
-                || classification == InventoryPriceImportClassification.INVALID_PRICE;
+        importRepository.save(priceImport);
     }
 }

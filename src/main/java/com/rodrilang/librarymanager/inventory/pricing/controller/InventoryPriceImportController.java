@@ -4,6 +4,11 @@ import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.inventory.pricing.dto.*;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceImportApplyService;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceImportService;
+import com.rodrilang.librarymanager.inventory.pricing.job.service.InventoryPriceImportJobService;
+import com.rodrilang.librarymanager.inventory.pricing.job.dto.InventoryPriceImportJobResponse;
+import com.rodrilang.librarymanager.inventory.pricing.job.model.InventoryPriceImportJobType;
+
+import java.util.List;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +26,7 @@ public class InventoryPriceImportController {
 
     private final InventoryPriceImportService service;
     private final InventoryPriceImportApplyService applyService;
+    private final InventoryPriceImportJobService jobService;
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<InventoryPriceImportPreviewStartResponse> preview(
@@ -57,6 +63,22 @@ public class InventoryPriceImportController {
     @GetMapping("/{importId}/status")
     public InventoryPriceImportProcessingStatusResponse status(@PathVariable Long importId) {
         return applyService.status(importId);
+    }
+
+
+    @GetMapping("/{importId}/jobs")
+    public List<InventoryPriceImportJobResponse> jobs(@PathVariable Long importId) {
+        service.assertAccessible(importId);
+        return jobService.list(importId);
+    }
+
+    @PostMapping("/{importId}/jobs/{type}/retry")
+    public InventoryPriceImportJobResponse retryJob(
+            @PathVariable Long importId,
+            @PathVariable InventoryPriceImportJobType type
+    ) {
+        service.assertAccessible(importId);
+        return jobService.retry(importId, type);
     }
 
     @PostMapping("/{importId}/cancel")

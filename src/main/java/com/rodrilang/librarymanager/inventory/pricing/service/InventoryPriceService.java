@@ -23,6 +23,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -118,6 +122,79 @@ public class InventoryPriceService {
         markConfirmed(price, confirmationDate, confirmationSource, true);
         return price;
     }
+
+    @Transactional
+    public void upsertImportedBatch(
+            List<ImportedPriceCommand> commands,
+            InventoryPriceImport priceImport,
+            Long userId
+    ) {
+        if (commands == null || commands.isEmpty()) {
+            return;
+        }
+        LocalDate applicationDate = importApplicationDate(priceImport.getEffectiveFrom());
+        LocalDate confirmationDate = today();
+        String confirmationSource = normalizeConfirmationSource(priceImport.getSourceName());
+        if (confirmationSource == null) confirmationSource = PRICE_LIST_CONFIRMATION_SOURCE;
+
+        Set<Long> inventoryIds = commands.stream().map(c -> c.inventory().getId())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, InventoryPrice> previousCurrent = firstByInventory(
+                priceRepository.findCurrentCandidatesForInventoryIds(inventoryIds, confirmationDate));
+        Map<Long, BigDecimal> previousCurrentAmounts = new HashMap<>();
+        previousCurrent.forEach((inventoryId, price) -> previousCurrentAmounts.put(inventoryId, price.getAmount()));
+        Map<Long, InventoryPrice> applicable = firstByInventory(
+                priceRepository.findCurrentCandidatesForInventoryIds(inventoryIds, applicationDate));
+        Map<Long, InventoryPrice> exact = new HashMap<>();
+        for (InventoryPrice p : priceRepository.findAllByInventoryIdInAndEffectiveFrom(inventoryIds, applicationDate)) {
+            exact.put(p.getInventory().getId(), p);
+        }
+
+        List<InventoryPrice> touched = new ArrayList<>();
+        for (ImportedPriceCommand command : commands) {
+            validateAmount(command.amount());
+            BigDecimal amount = command.amount().setScale(2, java.math.RoundingMode.HALF_UP);
+            InventoryPrice currentAtApplication = applicable.get(command.inventory().getId());
+            if (currentAtApplication != null && currentAtApplication.getAmount().compareTo(amount) == 0) {
+                markConfirmed(currentAtApplication, confirmationDate, confirmationSource, true);
+                touched.add(currentAtApplication);
+                continue;
+            }
+            InventoryPrice price = exact.computeIfAbsent(command.inventory().getId(), ignored -> InventoryPrice.builder()
+                    .inventory(command.inventory()).effectiveFrom(applicationDate).build());
+            price.setAmount(amount);
+            price.setSource(InventoryPriceSource.PRICE_LIST);
+            price.setPriceImport(priceImport);
+            price.setCreatedByUserId(userId);
+            markConfirmed(price, confirmationDate, confirmationSource, true);
+            touched.add(price);
+        }
+        priceRepository.saveAll(touched);
+        priceRepository.flush();
+
+        if (!applicationDate.isAfter(confirmationDate)) {
+            Map<Long, InventoryPrice> newCurrent = firstByInventory(
+                    priceRepository.findCurrentCandidatesForInventoryIds(inventoryIds, confirmationDate));
+            for (ImportedPriceCommand command : commands) {
+                Inventory inventory = command.inventory();
+                BigDecimal before = previousCurrentAmounts.get(inventory.getId());
+                BigDecimal after = newCurrent.get(inventory.getId()) != null ? newCurrent.get(inventory.getId()).getAmount() : null;
+                if (!Objects.equals(before, after)
+                        && inventory.getTiendanubeStatus() == TiendanubeInventoryStatus.LINKED
+                        && Boolean.TRUE.equals(inventory.getTiendanubePriceSyncEnabled())) {
+                    eventPublisher.publishEvent(new TiendanubeSyncRequestedEvent(inventory.getId(), TiendanubeSyncType.PRICE));
+                }
+            }
+        }
+    }
+
+    private Map<Long, InventoryPrice> firstByInventory(List<InventoryPrice> prices) {
+        Map<Long, InventoryPrice> result = new LinkedHashMap<>();
+        for (InventoryPrice price : prices) result.putIfAbsent(price.getInventory().getId(), price);
+        return result;
+    }
+
+    public record ImportedPriceCommand(Inventory inventory, BigDecimal amount) {}
 
     @Transactional
     public InventoryPrice upsertSystem(

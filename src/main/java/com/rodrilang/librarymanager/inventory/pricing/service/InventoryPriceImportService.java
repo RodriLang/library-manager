@@ -19,7 +19,8 @@ import com.rodrilang.librarymanager.inventory.pricing.event.InventoryPriceImport
 import com.rodrilang.librarymanager.inventory.pricing.model.*;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
-import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowRepository;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowJdbcRepository;
+import com.rodrilang.librarymanager.inventory.pricing.job.service.InventoryPriceImportJobService;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceListStorage;
 import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
@@ -70,7 +71,8 @@ public class InventoryPriceImportService {
     private final StreamingConfigurablePriceListParser parser;
     private final NormalizedPriceListStorage normalizedStorage;
     private final CanonicalIsbnResolver canonicalIsbnResolver;
-    private final InventoryPriceImportProviderRowRepository providerRowRepository;
+    private final InventoryPriceImportProviderRowJdbcRepository providerRowJdbcRepository;
+    private final InventoryPriceImportJobService jobService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -161,7 +163,8 @@ public class InventoryPriceImportService {
 
         Map<String, List<InventoryPriceImportItem>> itemsByDuplicateKey = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
-        List<InventoryPriceImportProviderRow> providerRows = new ArrayList<>();
+        List<InventoryPriceImportProviderRowJdbcRepository.StagedRow> providerBatch = new ArrayList<>(500);
+        AtomicInteger providerRowCount = new AtomicInteger();
 
         AtomicInteger total = new AtomicInteger();
         AtomicInteger matched = new AtomicInteger();
@@ -183,14 +186,16 @@ public class InventoryPriceImportService {
                     total.incrementAndGet();
                     writeNormalized(writer, row);
 
-                    InventoryPriceImportProviderRow providerRow = format.getProvider() != null
-                            ? toProviderRow(priceImport, row)
-                            : null;
-                    if (providerRow != null) {
-                        providerRows.add(providerRow);
-                    }
-
                     MatchResult match = match(row, matchIndex);
+                    Long matchedBookId = match.inventory() != null ? match.inventory().getBook().getId() : null;
+                    if (format.getProvider() != null) {
+                        providerBatch.add(toStagedProviderRow(row, matchedBookId));
+                        providerRowCount.incrementAndGet();
+                        if (providerBatch.size() >= 500) {
+                            providerRowJdbcRepository.insertBatch(importId, List.copyOf(providerBatch));
+                            providerBatch.clear();
+                        }
+                    }
                     if (match.inventory() == null) {
                         if (match.ambiguous()) {
                             InventoryPriceImportItem item = buildAmbiguousItem(priceImport, row, match.reason());
@@ -203,9 +208,6 @@ public class InventoryPriceImportService {
 
                     matched.incrementAndGet();
                     Inventory inventory = match.inventory();
-                    if (providerRow != null) {
-                        providerRow.setBook(inventory.getBook());
-                    }
                     InventoryPriceImportItem item = classify(
                             priceImport,
                             inventory,
@@ -248,17 +250,19 @@ public class InventoryPriceImportService {
                     "rows=" + total.get() + " matched=" + matched.get() + " items=" + items.size()
             );
 
+            if (!providerBatch.isEmpty()) {
+                providerRowJdbcRepository.insertBatch(importId, List.copyOf(providerBatch));
+                providerBatch.clear();
+            }
+
             phaseStarted = System.nanoTime();
             itemRepository.saveAll(items);
-            if (!providerRows.isEmpty()) {
-                providerRowRepository.saveAll(providerRows);
-            }
             updateCounters(priceImport, total.get(), matched.get(), unmatched.get(), items);
             logPreviewPhase(
                     importId,
                     "persist-preview",
                     phaseStarted,
-                    "items=" + items.size() + " providerRows=" + providerRows.size()
+                    "items=" + items.size() + " providerRows=" + providerRowCount.get()
             );
 
             phaseStarted = System.nanoTime();
@@ -274,6 +278,9 @@ public class InventoryPriceImportService {
             priceImport.setStatus(InventoryPriceImportStatus.PREVIEW_READY);
             priceImport.setProcessingFinishedAt(Instant.now());
             priceImport.setProcessingError(null);
+            if (format.getProvider() != null && providerRowCount.get() > 0) {
+                jobService.ensureProviderCatalogSync(importId, providerRowCount.get());
+            }
 
             log.info(
                     "PRICE IMPORT PREVIEW COMPLETED importId={} totalMs={} rows={} matched={} unmatched={} items={}",
@@ -308,8 +315,13 @@ public class InventoryPriceImportService {
         priceImport.setStatus(InventoryPriceImportStatus.FAILED);
         priceImport.setProcessingFinishedAt(Instant.now());
         priceImport.setProcessingError(errorMessage(exception));
-        providerRowRepository.deleteAllByPriceImportId(importId);
+        providerRowJdbcRepository.deleteByImportId(importId);
         log.warn("PRICE IMPORT PREVIEW FAILED importId={} error={}", importId, priceImport.getProcessingError());
+    }
+
+    @Transactional(readOnly = true)
+    public void assertAccessible(Long importId) {
+        getImport(importId, bookstoreContext.getCurrentBookstoreId());
     }
 
     @Transactional(readOnly = true)
@@ -344,7 +356,6 @@ public class InventoryPriceImportService {
             throw new BusinessException("Sólo se puede cancelar una importación que todavía no fue aplicada.");
         }
         priceImport.setStatus(InventoryPriceImportStatus.CANCELLED);
-        providerRowRepository.deleteAllByPriceImportId(importId);
     }
 
     @Transactional
@@ -597,21 +608,11 @@ public class InventoryPriceImportService {
         config.getMappings().add(mapping);
     }
 
-    private InventoryPriceImportProviderRow toProviderRow(
-            InventoryPriceImport priceImport,
-            PriceListRow row
-    ) {
-        String externalCode = row.metadata() != null ? trim(row.metadata().externalCode()) : null;
-        return InventoryPriceImportProviderRow.builder()
-                .priceImport(priceImport)
-                .rowNumber(row.rowNumber())
-                .isbn(trim(row.isbn()))
-                .title(trim(row.title()))
-                .author(trim(row.authorName()))
-                .publisher(trim(row.publisherName()))
-                .incomingPrice(row.retailPrice())
-                .externalCode(externalCode)
-                .build();
+    private InventoryPriceImportProviderRowJdbcRepository.StagedRow toStagedProviderRow(PriceListRow row, Long bookId) {
+        return new InventoryPriceImportProviderRowJdbcRepository.StagedRow(
+                row.rowNumber(), trim(row.isbn()), trim(row.title()), trim(row.authorName()), trim(row.publisherName()),
+                row.retailPrice(), row.metadata() != null ? trim(row.metadata().externalCode()) : null, bookId
+        );
     }
 
     private void writeNormalized(BufferedWriter writer, PriceListRow row) {

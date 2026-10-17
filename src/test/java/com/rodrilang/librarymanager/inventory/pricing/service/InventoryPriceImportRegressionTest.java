@@ -18,7 +18,8 @@ import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
-import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowRepository;
+import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowJdbcRepository;
+import com.rodrilang.librarymanager.inventory.pricing.job.service.InventoryPriceImportJobService;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.inventory.pricing.storage.NormalizedPriceListStorage;
 import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
@@ -27,11 +28,11 @@ import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
-import com.rodrilang.librarymanager.purchasing.service.BookstoreProviderPriceListService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
@@ -95,6 +96,9 @@ class InventoryPriceImportRegressionTest {
         when(priceRepository.findCurrentCandidates(eq(10L), any())).thenAnswer(call -> at(call.getArgument(1)));
         when(priceRepository.findByInventoryIdAndEffectiveFrom(eq(10L), any())).thenAnswer(call ->
                 prices.stream().filter(p -> p.getEffectiveFrom().equals(call.getArgument(1))).findFirst());
+        when(priceRepository.findCurrentCandidatesForInventoryIds(any(), any())).thenAnswer(call -> at(call.getArgument(1)));
+        when(priceRepository.findAllByInventoryIdInAndEffectiveFrom(any(), any())).thenAnswer(call ->
+                prices.stream().filter(p -> p.getEffectiveFrom().equals(call.getArgument(1))).toList());
         when(priceRepository.save(any(InventoryPrice.class))).thenAnswer(call -> {
             InventoryPrice price = call.getArgument(0);
             if (!prices.contains(price)) {
@@ -102,6 +106,16 @@ class InventoryPriceImportRegressionTest {
                 prices.add(price);
             }
             return price;
+        });
+        when(priceRepository.saveAll(any())).thenAnswer(call -> {
+            List<InventoryPrice> values = call.getArgument(0);
+            for (InventoryPrice price : values) {
+                if (!prices.contains(price)) {
+                    price.setId(100L + prices.size());
+                    prices.add(price);
+                }
+            }
+            return values;
         });
     }
 
@@ -212,11 +226,16 @@ class InventoryPriceImportRegressionTest {
         InventoryPriceImportItem item = InventoryPriceImportItem.builder().id(40L).inventory(inventory)
                 .incomingPrice(new BigDecimal("43800")).classification(InventoryPriceImportClassification.UNCHANGED)
                 .selectedForApply(true).build();
+        when(imports.findDetailedById(30L)).thenReturn(Optional.of(priceImport));
         when(imports.findById(30L)).thenReturn(Optional.of(priceImport));
-        when(items.findAllByPriceImportIdOrderByRowNumberAsc(30L)).thenReturn(List.of(item));
-        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
-        BookstoreProviderPriceListService providerPrices = mock(BookstoreProviderPriceListService.class);
-        new InventoryPriceImportApplyWorker(imports, items, providerRows, service, providerPrices).process(30L, 5L);
+        when(items.findSelectedBatch(eq(30L), eq(0L), any(Pageable.class))).thenReturn(List.of(item));
+        when(items.findSelectedBatch(eq(30L), eq(40L), any(Pageable.class))).thenReturn(List.of());
+        when(items.countByPriceImportIdAndAppliedTrue(30L)).thenAnswer(call -> item.isApplied() ? 1L : 0L);
+        when(items.countByPriceImportIdAndDiscardedFalse(30L)).thenReturn(1L);
+        when(items.saveAll(any())).thenAnswer(call -> call.getArgument(0));
+        InventoryPriceImportApplyBatchService batchService = new InventoryPriceImportApplyBatchService(imports, items, service);
+        InventoryPriceImportJobService jobs = mock(InventoryPriceImportJobService.class);
+        new InventoryPriceImportApplyWorker(imports, items, batchService, jobs).process(30L, 5L);
         assertEquals(new BigDecimal("43800.00"), service.currentAmount(10L));
         assertTrue(item.isApplied());
         assertEquals(1, priceImport.getAppliedRows());
@@ -268,8 +287,8 @@ class InventoryPriceImportRegressionTest {
         when(imports.findByIdAndBookstoreIdForUpdate(30L, 7L)).thenReturn(Optional.of(importReady));
         when(items.findAllByPriceImportIdOrderByRowNumberAsc(30L)).thenReturn(List.of(unchanged));
 
-        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
-        new InventoryPriceImportApplyService(context, imports, items, providerRows, events)
+        InventoryPriceImportJobService jobs = mock(InventoryPriceImportJobService.class);
+        new InventoryPriceImportApplyService(context, imports, items, jobs)
                 .start(30L, new ApplyInventoryPriceImportRequest(List.of()));
 
         assertTrue(unchanged.isSelectedForApply());
@@ -302,7 +321,8 @@ class InventoryPriceImportRegressionTest {
         StreamingConfigurablePriceListParser parser = mock(StreamingConfigurablePriceListParser.class);
         NormalizedPriceListStorage normalized = mock(NormalizedPriceListStorage.class);
         CanonicalIsbnResolver isbns = mock(CanonicalIsbnResolver.class);
-        InventoryPriceImportProviderRowRepository providerRows = mock(InventoryPriceImportProviderRowRepository.class);
+        InventoryPriceImportProviderRowJdbcRepository providerRowsJdbc = mock(InventoryPriceImportProviderRowJdbcRepository.class);
+        InventoryPriceImportJobService jobs = mock(InventoryPriceImportJobService.class);
         ApplicationEventPublisher previewEvents = mock(ApplicationEventPublisher.class);
 
         BookstorePriceListFormat format = BookstorePriceListFormat.builder()
@@ -380,7 +400,8 @@ class InventoryPriceImportRegressionTest {
                 parser,
                 normalized,
                 isbns,
-                providerRows,
+                providerRowsJdbc,
+                jobs,
                 previewEvents
         );
 

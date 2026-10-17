@@ -6,16 +6,14 @@ import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.inventory.pricing.dto.ApplyInventoryPriceImportRequest;
 import com.rodrilang.librarymanager.inventory.pricing.dto.InventoryPriceImportApplyStartResponse;
 import com.rodrilang.librarymanager.inventory.pricing.dto.InventoryPriceImportProcessingStatusResponse;
-import com.rodrilang.librarymanager.inventory.pricing.event.InventoryPriceImportApplyRequestedEvent;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportItem;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportClassification;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImportStatus;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportItemRepository;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportRepository;
-import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceImportProviderRowRepository;
+import com.rodrilang.librarymanager.inventory.pricing.job.service.InventoryPriceImportJobService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,8 +33,7 @@ public class InventoryPriceImportApplyService {
     private final BookstoreContext bookstoreContext;
     private final InventoryPriceImportRepository importRepository;
     private final InventoryPriceImportItemRepository itemRepository;
-    private final InventoryPriceImportProviderRowRepository providerRowRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final InventoryPriceImportJobService jobService;
 
     @Transactional
     public InventoryPriceImportApplyStartResponse start(
@@ -83,12 +80,8 @@ public class InventoryPriceImportApplyService {
 
         itemRepository.saveAll(items);
 
-        eventPublisher.publishEvent(
-                new InventoryPriceImportApplyRequestedEvent(
-                        importId,
-                        bookstoreContext.getCurrentUserId()
-                )
-        );
+        long selectedRows = items.stream().filter(InventoryPriceImportItem::isSelectedForApply).count();
+        jobService.ensureInventoryApply(importId, Math.toIntExact(selectedRows), bookstoreContext.getCurrentUserId());
 
         return new InventoryPriceImportApplyStartResponse(
                 importId,
@@ -125,7 +118,6 @@ public class InventoryPriceImportApplyService {
         priceImport.setStatus(InventoryPriceImportStatus.FAILED);
         priceImport.setProcessingFinishedAt(Instant.now());
         priceImport.setProcessingError(errorMessage(exception));
-        providerRowRepository.deleteAllByPriceImportId(importId);
     }
 
     private Set<Long> requestedIds(

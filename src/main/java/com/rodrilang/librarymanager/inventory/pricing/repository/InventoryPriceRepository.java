@@ -14,6 +14,11 @@ public interface InventoryPriceRepository extends JpaRepository<InventoryPrice, 
 
     Optional<InventoryPrice> findByInventoryIdAndEffectiveFrom(Long inventoryId, LocalDate effectiveFrom);
 
+    List<InventoryPrice> findAllByInventoryIdInAndEffectiveFrom(
+            Collection<Long> inventoryIds,
+            LocalDate effectiveFrom
+    );
+
     @Query("""
             select p
             from InventoryPrice p
