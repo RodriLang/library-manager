@@ -1,0 +1,49 @@
+package com.rodrilang.librarymanager.store.order.dto;
+
+import com.rodrilang.librarymanager.store.order.model.*;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import com.rodrilang.librarymanager.shipping.shipment.dto.StoreShipmentPublicResponse;
+
+public record StoreOrderPublicResponse(
+        UUID publicId,
+        String orderNumber,
+        UUID trackingToken,
+        StoreOrderStatus status,
+        StorePaymentStatus paymentStatus,
+        StoreFulfillmentStatus fulfillmentStatus,
+        StorePaymentMethod paymentMethod,
+        StoreDeliveryMethod deliveryMethod,
+        String customerName,
+        String customerEmail,
+        BigDecimal subtotal,
+        BigDecimal shippingCost,
+        BigDecimal total,
+        Instant reservationExpiresAt,
+        Instant createdAt,
+        String paymentCheckoutUrl,
+        String paymentStatusDetail,
+        String shippingProvider,
+        String shippingServiceCode,
+        String shippingServiceName,
+        com.rodrilang.librarymanager.shipping.model.ShippingDeliveryType shippingDeliveryType,
+        String shippingPickupPointExternalId,
+        String shippingPickupPointName,
+        String shippingPickupPointAddress,
+        String shippingPickupPointPostalCode,
+        String shippingPickupPointCity,
+        String shippingPickupPointState,
+        Double shippingPickupPointLatitude,
+        Double shippingPickupPointLongitude,
+        String shippingDestinationPostalCode,
+        String shippingDestinationCity,
+        String shippingDestinationState,
+        String shippingDestinationStreet,
+        String shippingDestinationStreetNumber,
+        String shippingDestinationFloorApartment,
+        StoreShipmentPublicResponse shipment,
+        List<StoreShipmentPublicResponse> shipments,
+        List<StoreOrderItemResponse> items
+) {}

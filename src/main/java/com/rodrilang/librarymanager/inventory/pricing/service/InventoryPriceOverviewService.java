@@ -135,6 +135,20 @@ public class InventoryPriceOverviewService {
                 current != null ? current.getAmount() : null,
                 current != null ? current.getEffectiveFrom() : null,
                 current != null ? current.getSource() : null,
+                current != null && current.getPriceImport() != null ? current.getPriceImport().getId() : null,
+                current != null && current.getPriceImport() != null && current.getPriceImport().getProvider() != null
+                        ? current.getPriceImport().getProvider().getId() : null,
+                current != null && current.getPriceImport() != null && current.getPriceImport().getProvider() != null
+                        ? current.getPriceImport().getProvider().getName() : null,
+                current != null && current.getPriceImport() != null ? current.getPriceImport().getSourceName() : null,
+                current != null && current.getPriceImport() != null ? current.getPriceImport().getOriginalFilename() : null,
+                current != null && current.getLastConfirmedPriceImport() != null ? current.getLastConfirmedPriceImport().getId() : null,
+                current != null && current.getLastConfirmedPriceImport() != null && current.getLastConfirmedPriceImport().getProvider() != null
+                        ? current.getLastConfirmedPriceImport().getProvider().getId() : null,
+                current != null && current.getLastConfirmedPriceImport() != null && current.getLastConfirmedPriceImport().getProvider() != null
+                        ? current.getLastConfirmedPriceImport().getProvider().getName() : null,
+                current != null && current.getLastConfirmedPriceImport() != null ? current.getLastConfirmedPriceImport().getSourceName() : null,
+                current != null && current.getLastConfirmedPriceImport() != null ? current.getLastConfirmedPriceImport().getOriginalFilename() : null,
                 lastConfirmedAt,
                 current != null ? current.getLastConfirmedSource() : null,
                 daysSinceConfirmation,
@@ -144,6 +158,7 @@ public class InventoryPriceOverviewService {
                 currentChange,
                 next != null ? next.getAmount() : null,
                 next != null ? next.getEffectiveFrom() : null,
+                nextChange,
                 current == null,
                 stale,
                 currentChange != null && currentChange.signum() > 0,

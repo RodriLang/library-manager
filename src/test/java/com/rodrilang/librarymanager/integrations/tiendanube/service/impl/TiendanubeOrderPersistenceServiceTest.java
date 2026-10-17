@@ -7,6 +7,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubePro
 import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeProductLinkRepository;
 import com.rodrilang.librarymanager.integrations.tiendanube.webhook.repository.TiendanubeProcessedEventClaimRepository;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.notification.service.NotificationService;
 import com.rodrilang.librarymanager.service.InventoryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +36,9 @@ class TiendanubeOrderPersistenceServiceTest {
     @Mock
     private InventoryService inventoryService;
 
+    @Mock
+    private NotificationService notificationService;
+
     @Test
     void duplicateCreatedEventDoesNotApplyStockTwice() {
         TiendanubeWebhookRequest request = new TiendanubeWebhookRequest(10L, "order/created", 20L);
@@ -45,7 +49,9 @@ class TiendanubeOrderPersistenceServiceTest {
         service().applyCreated(request, order);
 
         verify(inventoryService, never()).recordTiendanubeSale(any(), any(), any());
+        verify(notificationService, never()).notifyTiendanubeSaleCreated(any(), any());
         verify(productLinkRepository, never()).findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(any(), any());
+        verify(notificationService, never()).notifyTiendanubeSaleCreated(any(), any());
     }
 
     @Test
@@ -65,6 +71,7 @@ class TiendanubeOrderPersistenceServiceTest {
         service().applyCreated(request, order);
 
         verify(inventoryService).recordTiendanubeSale(40L, 2, "20");
+        verify(notificationService).notifyTiendanubeSaleCreated(10L, 20L);
     }
 
     @Test
@@ -83,7 +90,8 @@ class TiendanubeOrderPersistenceServiceTest {
         return new TiendanubeOrderPersistenceService(
                 productLinkRepository,
                 processedEventClaimRepository,
-                inventoryService
+                inventoryService,
+                notificationService
         );
     }
 

@@ -43,6 +43,8 @@ import com.rodrilang.librarymanager.sales.repository.SalePaymentRepository;
 import com.rodrilang.librarymanager.sales.repository.SaleRepository;
 import com.rodrilang.librarymanager.sales.service.SaleCalculator;
 import com.rodrilang.librarymanager.sales.service.SaleCommandService;
+import com.rodrilang.librarymanager.store.order.model.StoreReservationStatus;
+import com.rodrilang.librarymanager.store.order.repository.StoreStockReservationRepository;
 import com.rodrilang.librarymanager.service.BookstoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -78,6 +80,7 @@ public class SaleCommandServiceImpl implements SaleCommandService {
     private final SaleCalculator calculator;
     private final SaleMapper mapper;
     private final SaleProfitabilityService profitabilityService;
+    private final StoreStockReservationRepository storeStockReservationRepository;
 
     private final BookstoreService bookstoreService;
     private final BookstoreContext bookstoreContext;
@@ -254,6 +257,13 @@ public class SaleCommandServiceImpl implements SaleCommandService {
             throw new BusinessException("La venta ya se encuentra cancelada.");
         }
 
+        if (sale.getOrigin() == SaleOrigin.ANAQUEL_STORE) {
+            throw new BusinessException(
+                    "Las ventas de Tienda Anaquel no pueden cancelarse directamente desde Ventas. "
+                            + "La devolución o reintegro debe gestionarse desde el pedido para mantener sus estados sincronizados."
+            );
+        }
+
         if (consignmentSettlementItemRepository.existsSettledSale(sale.getId().toString())) {
             throw new BusinessException("No se puede cancelar la venta porque contiene unidades consignadas que ya fueron rendidas.");
         }
@@ -401,10 +411,19 @@ public class SaleCommandServiceImpl implements SaleCommandService {
         if (quantity == null || quantity <= 0) {
             throw new BusinessException("La cantidad vendida debe ser mayor a cero.");
         }
-        if (inventory.getStock() < quantity) {
+        int physicalStock = inventory.getStock() == null ? 0 : inventory.getStock();
+        long reserved = java.util.Optional.ofNullable(
+                storeStockReservationRepository.sumActiveReserved(
+                        inventory.getId(),
+                        StoreReservationStatus.ACTIVE,
+                        Instant.now()
+                )
+        ).orElse(0L);
+        int available = Math.max(0, physicalStock - Math.toIntExact(reserved));
+        if (available < quantity) {
             throw new BusinessException(
                     "No hay stock suficiente de \"" + inventory.getBook().getTitle()
-                            + "\". Disponible: " + inventory.getStock() + "."
+                            + "\". Disponible para venta: " + available + "."
             );
         }
     }

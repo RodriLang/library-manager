@@ -1,0 +1,604 @@
+package com.rodrilang.librarymanager.store.service;
+
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.exception.*;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
+import com.rodrilang.librarymanager.media.image.ImageOptimizer;
+import com.rodrilang.librarymanager.media.image.OptimizedImage;
+import com.rodrilang.librarymanager.media.storage.ImageFolderResolver;
+import com.rodrilang.librarymanager.media.storage.ImageStorageService;
+import com.rodrilang.librarymanager.media.storage.ImageUploadRequest;
+import com.rodrilang.librarymanager.media.storage.StoredImage;
+import com.rodrilang.librarymanager.media.validation.ImageValidator;
+import com.rodrilang.librarymanager.media.validation.ValidatedImage;
+import com.rodrilang.librarymanager.model.*;
+import com.rodrilang.librarymanager.repository.*;
+import com.rodrilang.librarymanager.store.channel.SalesChannelType;
+import com.rodrilang.librarymanager.store.dto.*;
+import com.rodrilang.librarymanager.store.model.*;
+import com.rodrilang.librarymanager.store.repository.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.text.Normalizer;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Service @RequiredArgsConstructor
+public class StoreAdminService {
+    private static final Pattern NON_SLUG = Pattern.compile("[^a-z0-9]+");
+    private final BookstoreContext bookstoreContext;
+    private final BookstoreRepository bookstoreRepository;
+    private final InventoryRepository inventoryRepository;
+    private final BookstoreStoreRepository storeRepository;
+    private final StoreDomainRepository domainRepository;
+    private final StorePublicationRepository publicationRepository;
+    private final StoreSocialLinkRepository socialLinkRepository;
+    private final StoreHeroItemRepository heroItemRepository;
+    private final StoreSectionService storeSectionService;
+    private final InventoryPriceService priceService;
+    private final SalesChannelService salesChannelService;
+    private final ImageOptimizer imageOptimizer;
+    private final ImageValidator imageValidator;
+    private final ImageStorageService imageStorageService;
+    private final ImageFolderResolver imageFolderResolver;
+
+    @Value("${app.storefront.base-domain:anaquel.com.ar}") private String baseDomain;
+
+    @Transactional
+    public StoreSettingsResponse getOrCreateSettings() {
+        BookstoreStore store = ensureCurrentStore();
+        storeSectionService.ensureSystemSections(store);
+        return toSettings(store);
+    }
+
+    @Transactional
+    public StoreSettingsResponse updateSettings(StoreSettingsRequest request) {
+        BookstoreStore store = ensureCurrentStore();
+        store.setDisplayName(request.displayName().trim());
+        store.setTitleFormat(request.titleFormat());
+        store.setShowIsbn(request.showIsbn());
+        store.setShowAuthor(request.showAuthor());
+        store.setShowPublisher(request.showPublisher());
+        store.setShowStock(request.showStock());
+        store.setLogoUrl(blankToNull(request.logoUrl()));
+        store.setFaviconUrl(blankToNull(request.faviconUrl()));
+        store.setPrimaryColor(blankToNull(request.primaryColor()));
+        store.setSecondaryColor(blankToNull(request.secondaryColor()));
+        store.setHomeTitleColor(normalizeColor(request.homeTitleColor(), "color de títulos"));
+        store.setHomeAccentColor(normalizeColor(request.homeAccentColor(), "color de subtítulos"));
+        store.setHomeTextColor(normalizeColor(request.homeTextColor(), "color de textos"));
+        if (request.phone() != null) {
+            store.getBookstore().setPhone(blankToNull(request.phone()));
+            bookstoreRepository.save(store.getBookstore());
+        }
+        store.setDescription(blankToNull(request.description()));
+
+        if (request.headerShowLogo() != null) store.setHeaderShowLogo(request.headerShowLogo());
+        if (request.headerShowName() != null) store.setHeaderShowName(request.headerShowName());
+        if (request.headerBrandLayout() != null) store.setHeaderBrandLayout(request.headerBrandLayout());
+        if (request.headerLogoSize() != null) store.setHeaderLogoSize(request.headerLogoSize());
+
+        if (request.heroShowEyebrow() != null) store.setHeroShowEyebrow(request.heroShowEyebrow());
+        if (request.heroEyebrow() != null) store.setHeroEyebrow(defaultIfBlank(request.heroEyebrow(), "LIBRERÍA ONLINE"));
+        if (request.heroShowLogo() != null) store.setHeroShowLogo(request.heroShowLogo());
+        if (request.heroLogoSize() != null) store.setHeroLogoSize(request.heroLogoSize());
+        if (request.heroShowName() != null) store.setHeroShowName(request.heroShowName());
+        if (request.heroNameSize() != null) store.setHeroNameSize(request.heroNameSize());
+        store.setHeroTitle(blankToNull(request.heroTitle()));
+        if (request.heroTitleSize() != null) store.setHeroTitleSize(request.heroTitleSize());
+        store.setHeroDescription(blankToNull(request.heroDescription()));
+        if (request.heroTextAlignment() != null) store.setHeroTextAlignment(request.heroTextAlignment());
+        if (request.heroShowBooks() != null) store.setHeroShowBooks(request.heroShowBooks());
+        if (request.heroBooksMode() != null) store.setHeroBooksMode(request.heroBooksMode());
+        if (request.heroPrimaryButtonEnabled() != null) store.setHeroPrimaryButtonEnabled(request.heroPrimaryButtonEnabled());
+        if (request.heroPrimaryButtonText() != null) store.setHeroPrimaryButtonText(defaultIfBlank(request.heroPrimaryButtonText(), "Explorar catálogo"));
+        if (request.heroSecondaryButtonEnabled() != null) store.setHeroSecondaryButtonEnabled(request.heroSecondaryButtonEnabled());
+        if (request.heroSecondaryButtonText() != null) store.setHeroSecondaryButtonText(defaultIfBlank(request.heroSecondaryButtonText(), "Ver novedades"));
+
+        if (request.discoverEnabled() != null) store.setDiscoverEnabled(request.discoverEnabled());
+        if (request.discoverEyebrow() != null) store.setDiscoverEyebrow(defaultIfBlank(request.discoverEyebrow(), "ENCONTRÁ TU PRÓXIMA LECTURA"));
+        if (request.discoverTitle() != null) store.setDiscoverTitle(defaultIfBlank(request.discoverTitle(), "Todo el catálogo en un solo lugar"));
+        if (request.discoverDescription() != null) store.setDiscoverDescription(defaultIfBlank(request.discoverDescription(), "Buscá por título, autor, editorial o ISBN y filtrá por categorías, géneros, precio y disponibilidad."));
+        if (request.discoverButtonText() != null) store.setDiscoverButtonText(defaultIfBlank(request.discoverButtonText(), "Ver catálogo completo"));
+
+        BookstoreStore saved = storeRepository.save(store);
+        replaceSocialLinks(saved, request.socialLinks());
+        if (request.heroItemInventoryIds() != null) replaceHeroItems(saved, request.heroItemInventoryIds());
+        storeSectionService.ensureSystemSections(saved);
+        return toSettings(saved);
+    }
+
+
+
+    @Transactional
+    public StoreSettingsResponse uploadLogo(MultipartFile file) {
+        return uploadBrandImage(file, true);
+    }
+
+    @Transactional
+    public StoreSettingsResponse uploadFavicon(MultipartFile file) {
+        return uploadBrandImage(file, false);
+    }
+
+    private StoreSettingsResponse uploadBrandImage(MultipartFile file, boolean logo) {
+        BookstoreStore store = ensureCurrentStore();
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("Seleccioná una imagen para subir.");
+        }
+        if (file.getSize() > 10L * 1024 * 1024) {
+            throw new BusinessException("La imagen no puede superar los 10 MB antes del procesamiento.");
+        }
+
+        byte[] raw;
+        try {
+            raw = file.getBytes();
+        } catch (java.io.IOException ex) {
+            throw new BusinessException("No se pudo leer la imagen seleccionada.");
+        }
+
+        OptimizedImage optimized = imageOptimizer.optimize(raw, file.getOriginalFilename(), file.getContentType());
+        ValidatedImage validated = imageValidator.validate(
+                optimized.content(),
+                optimized.filename(),
+                optimized.optimized() ? "image/jpeg" : file.getContentType()
+        );
+
+        String publicId = logo ? "logo" : "favicon";
+        StoredImage stored = imageStorageService.upload(new ImageUploadRequest(
+                validated.content(),
+                validated.originalFilename(),
+                imageFolderResolver.storeBranding(store.getId()),
+                publicId,
+                true
+        ));
+        imageValidator.validateStoredDimensions(stored.width(), stored.height());
+
+        if (logo) {
+            store.setLogoUrl(stored.secureUrl());
+        } else {
+            store.setFaviconUrl(stored.secureUrl());
+        }
+        storeRepository.save(store);
+        return toSettings(store);
+    }
+
+    @Transactional
+    public StoreDomainResponse addCustomDomain(String rawHostname) {
+        BookstoreStore store = ensureCurrentStore();
+        String hostname = normalizeHostname(rawHostname);
+        if (hostname.isBlank() || !hostname.contains(".")) {
+            throw new BusinessException("Ingresá un dominio válido.");
+        }
+        StoreDomain existing = domainRepository.findByHostnameIgnoreCase(hostname).orElse(null);
+        if (existing != null && !existing.getStore().getId().equals(store.getId())) {
+            throw new BusinessException("Ese dominio ya está siendo utilizado por otra tienda.");
+        }
+        StoreDomain domain = existing != null ? existing : StoreDomain.builder()
+                        .store(store)
+                        .hostname(hostname)
+                        .type(StoreDomainType.CUSTOM)
+                        .status(StoreDomainStatus.PENDING)
+                        .verificationToken(UUID.randomUUID().toString().replace("-", ""))
+                        .build();
+        if (domain.getVerificationToken() == null || domain.getVerificationToken().isBlank()) {
+            domain.setVerificationToken(UUID.randomUUID().toString().replace("-", ""));
+        }
+        domain = domainRepository.save(domain);
+        return toDomain(domain);
+    }
+
+    @Transactional
+    public void removeCustomDomain(Long domainId) {
+        BookstoreStore store = ensureCurrentStore();
+        StoreDomain domain = domainRepository.findById(domainId)
+                .filter(d -> d.getStore().getId().equals(store.getId()))
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el dominio."));
+        if (domain.getType() == StoreDomainType.ANAQUEL_SUBDOMAIN) {
+            throw new BusinessException("El subdominio de Anaquel no se puede eliminar.");
+        }
+        domainRepository.delete(domain);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<StoreProductAdminResponse> products(StoreProductAdminFilters filters, Pageable pageable) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        BookstoreStore store = storeRepository.findByBookstoreId(bookstoreId).orElse(null);
+        String query = filters.normalizedQuery();
+
+        Page<Inventory> page = inventoryRepository.findAll((root, cq, cb) -> {
+            var book = root.join("book");
+            var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
+            predicates.add(cb.equal(root.get("bookstore").get("id"), bookstoreId));
+            predicates.add(cb.isTrue(root.<Boolean>get("active")));
+            predicates.add(cb.isTrue(book.<Boolean>get("active")));
+
+            if (!query.isBlank()) {
+                String like = "%" + query + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(book.<String>get("title")), like),
+                        cb.like(cb.lower(book.<String>get("isbn13")), like),
+                        cb.like(cb.lower(book.<String>get("isbn10")), like)
+                ));
+            }
+
+            switch (filters.stock()) {
+                case AVAILABLE -> predicates.add(cb.greaterThan(root.<Integer>get("stock"), root.<Integer>get("minimumStock")));
+                case LOW -> predicates.add(cb.and(
+                        cb.greaterThan(root.<Integer>get("stock"), 0),
+                        cb.lessThanOrEqualTo(root.<Integer>get("stock"), root.<Integer>get("minimumStock"))
+                ));
+                case OUT -> predicates.add(cb.equal(root.<Integer>get("stock"), 0));
+                case ALL -> { }
+            }
+
+            if (filters.condition() != null) {
+                predicates.add(cb.equal(root.get("condition"), filters.condition()));
+            }
+            if (!filters.publisherIds().isEmpty()) {
+                predicates.add(book.get("publisher").get("id").in(filters.publisherIds()));
+            }
+            if (!filters.authorIds().isEmpty()) {
+                var authorSub = cq.subquery(Long.class);
+                var authorBook = authorSub.from(Book.class);
+                var authorJoin = authorBook.join("authors");
+                authorSub.select(authorBook.get("id").as(Long.class));
+                authorSub.where(
+                        cb.equal(authorBook.get("id"), book.get("id")),
+                        authorJoin.get("id").in(filters.authorIds())
+                );
+                predicates.add(cb.exists(authorSub));
+            }
+            if (Boolean.TRUE.equals(filters.consignment())) {
+                predicates.add(cb.greaterThan(root.<Integer>get("consignmentStock"), 0));
+            }
+
+            if (filters.priceMode() != com.rodrilang.librarymanager.enums.InventoryPriceMode.ALL) {
+                var priceSub = cq.subquery(Long.class);
+                var price = priceSub.from(InventoryPrice.class);
+                priceSub.select(price.get("id").as(Long.class));
+                priceSub.where(
+                        cb.equal(price.get("inventory").get("id"), root.get("id")),
+                        cb.lessThanOrEqualTo(price.<LocalDate>get("effectiveFrom"), LocalDate.now(ZoneId.of("America/Argentina/Buenos_Aires")))
+                );
+                var hasCurrentPrice = cb.exists(priceSub);
+                predicates.add(filters.priceMode() == com.rodrilang.librarymanager.enums.InventoryPriceMode.WITH_PRICE
+                        ? hasCurrentPrice
+                        : cb.not(hasCurrentPrice));
+            }
+
+            if (store == null) {
+                if (Boolean.TRUE.equals(filters.published()) || Boolean.TRUE.equals(filters.featured())) {
+                    predicates.add(cb.disjunction());
+                }
+            } else {
+                if (filters.published() != null) {
+                    var publishedSub = cq.subquery(Long.class);
+                    var publishedPub = publishedSub.from(StorePublication.class);
+                    publishedSub.select(publishedPub.get("id").as(Long.class));
+                    publishedSub.where(
+                            cb.equal(publishedPub.get("store").get("id"), store.getId()),
+                            cb.equal(publishedPub.get("inventory").get("id"), root.get("id")),
+                            cb.isTrue(publishedPub.<Boolean>get("published"))
+                    );
+                    var isPublished = cb.exists(publishedSub);
+                    predicates.add(filters.published() ? isPublished : cb.not(isPublished));
+                }
+
+                if (filters.featured() != null) {
+                    var featuredSub = cq.subquery(Long.class);
+                    var featuredPub = featuredSub.from(StorePublication.class);
+                    featuredSub.select(featuredPub.get("id").as(Long.class));
+                    featuredSub.where(
+                            cb.equal(featuredPub.get("store").get("id"), store.getId()),
+                            cb.equal(featuredPub.get("inventory").get("id"), root.get("id")),
+                            cb.isTrue(featuredPub.<Boolean>get("featured"))
+                    );
+                    var isFeatured = cb.exists(featuredSub);
+                    predicates.add(filters.featured() ? isFeatured : cb.not(isFeatured));
+                }
+            }
+
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        }, pageable);
+
+        if (store == null) return page.map(i -> toAdminProduct(i, null, null));
+
+        List<Long> inventoryIds = page.getContent().stream().map(Inventory::getId).toList();
+        Map<Long, InventoryPrice> prices = priceService.currentFor(inventoryIds);
+        Map<Long, StorePublication> pubs = publicationRepository
+                .findAllByStoreIdAndInventoryIdIn(store.getId(), inventoryIds)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(p -> p.getInventory().getId(), p -> p));
+        return page.map(i -> toAdminProduct(i, pubs.get(i.getId()), prices.get(i.getId())));
+    }
+
+    @Transactional
+    public StoreProductAdminResponse updatePublication(Long inventoryId, UpdateStorePublicationRequest request) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        BookstoreStore store = ensureCurrentStore();
+        Inventory inventory = inventoryRepository.findByIdAndBookstoreId(inventoryId, bookstoreId)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el libro en el inventario de esta librería."));
+        StorePublication publication = publicationRepository.findByStoreIdAndInventoryId(store.getId(), inventoryId)
+                .orElseGet(() -> StorePublication.builder().store(store).inventory(inventory).build());
+
+        applyPublicationUpdate(inventory, publication, request.published(), request.featured(), request.featuredOrder());
+        publication.setCustomTitle(blankToNull(request.customTitle()));
+        publication.setCustomDescription(blankToNull(request.customDescription()));
+        publication.setSeoTitle(blankToNull(request.seoTitle()));
+        publication.setSeoDescription(blankToNull(request.seoDescription()));
+        publication = publicationRepository.save(publication);
+        return toAdminProduct(inventory, publication, priceService.current(inventoryId).orElse(null));
+    }
+
+    @Transactional
+    public StorePublicationBulkUpdateResponse bulkUpdatePublications(BulkUpdateStorePublicationsRequest request) {
+        if (request.published() == null && request.featured() == null) {
+            throw new BusinessException("Indicá si querés publicar, ocultar, destacar o quitar de destacados.");
+        }
+
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        BookstoreStore store = ensureCurrentStore();
+        List<Long> requestedIds = request.inventoryIds();
+        List<Inventory> inventories = inventoryRepository.findAllById(requestedIds).stream()
+                .filter(i -> i.getBookstore() != null && Objects.equals(i.getBookstore().getId(), bookstoreId))
+                .toList();
+        Map<Long, Inventory> inventoryById = inventories.stream()
+                .collect(java.util.stream.Collectors.toMap(Inventory::getId, i -> i));
+        Map<Long, InventoryPrice> currentPrices = priceService.currentFor(requestedIds);
+        Map<Long, StorePublication> publicationByInventoryId = publicationRepository
+                .findAllByStoreIdAndInventoryIdIn(store.getId(), requestedIds)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(p -> p.getInventory().getId(), p -> p));
+
+        List<StorePublication> toSave = new ArrayList<>();
+        List<StorePublicationBulkErrorResponse> errors = new ArrayList<>();
+
+        for (Long inventoryId : requestedIds) {
+            Inventory inventory = inventoryById.get(inventoryId);
+            if (inventory == null) {
+                errors.add(new StorePublicationBulkErrorResponse(inventoryId, "No se encontró el libro en el inventario de esta librería."));
+                continue;
+            }
+
+            StorePublication publication = publicationByInventoryId.get(inventoryId);
+            if (publication == null) {
+                publication = StorePublication.builder().store(store).inventory(inventory).build();
+            }
+
+            Boolean resultingPublished = request.published() != null ? request.published() : publication.getPublished();
+            Boolean resultingFeatured = request.featured() != null ? request.featured() : publication.getFeatured();
+
+            if (Boolean.TRUE.equals(resultingPublished)) {
+                if (!Boolean.TRUE.equals(inventory.getActive()) || !Boolean.TRUE.equals(inventory.getBook().getActive())) {
+                    errors.add(new StorePublicationBulkErrorResponse(inventoryId, "El libro debe estar activo para publicarlo."));
+                    continue;
+                }
+                if (!currentPrices.containsKey(inventoryId)) {
+                    errors.add(new StorePublicationBulkErrorResponse(inventoryId, "El libro necesita un precio vigente antes de publicarse."));
+                    continue;
+                }
+            }
+            if (Boolean.TRUE.equals(resultingFeatured) && !Boolean.TRUE.equals(resultingPublished)) {
+                errors.add(new StorePublicationBulkErrorResponse(inventoryId, "El libro debe estar publicado para destacarlo."));
+                continue;
+            }
+
+            applyPublicationUpdateWithoutValidation(publication, request.published(), request.featured(), null);
+            toSave.add(publication);
+        }
+
+        if (!toSave.isEmpty()) publicationRepository.saveAll(toSave);
+        return new StorePublicationBulkUpdateResponse(
+                requestedIds.size(),
+                toSave.size(),
+                errors.size(),
+                List.copyOf(errors)
+        );
+    }
+
+    private void applyPublicationUpdate(
+            Inventory inventory,
+            StorePublication publication,
+            Boolean published,
+            Boolean featured,
+            Integer featuredOrder
+    ) {
+        Boolean resultingPublished = published != null ? published : publication.getPublished();
+        Boolean resultingFeatured = featured != null ? featured : publication.getFeatured();
+
+        if (Boolean.TRUE.equals(resultingPublished)) {
+            if (!Boolean.TRUE.equals(inventory.getActive()) || !Boolean.TRUE.equals(inventory.getBook().getActive())) {
+                throw new BusinessException("El libro debe estar activo para publicarlo.");
+            }
+            if (priceService.current(inventory.getId()).isEmpty()) {
+                throw new BusinessException("El libro necesita un precio vigente antes de publicarse.");
+            }
+        }
+        if (Boolean.TRUE.equals(resultingFeatured) && !Boolean.TRUE.equals(resultingPublished)) {
+            throw new BusinessException("El libro debe estar publicado para destacarlo.");
+        }
+
+        applyPublicationUpdateWithoutValidation(publication, published, featured, featuredOrder);
+    }
+
+    private void applyPublicationUpdateWithoutValidation(
+            StorePublication publication,
+            Boolean published,
+            Boolean featured,
+            Integer featuredOrder
+    ) {
+        if (published != null) {
+            if (published && !Boolean.TRUE.equals(publication.getPublished())) {
+                Instant now = Instant.now();
+                if (publication.getFirstPublishedAt() == null) publication.setFirstPublishedAt(now);
+                publication.setLastPublishedAt(now);
+                publication.setPublishedAt(now);
+            }
+            publication.setPublished(published);
+            if (!published) {
+                publication.setFeatured(false);
+                publication.setFeaturedOrder(null);
+            }
+        }
+        if (featured != null) {
+            publication.setFeatured(featured);
+            if (!featured) publication.setFeaturedOrder(null);
+        }
+        if (featuredOrder != null) publication.setFeaturedOrder(featuredOrder);
+    }
+
+    private BookstoreStore ensureCurrentStore() {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        return storeRepository.findByBookstoreId(bookstoreId).orElseGet(() -> createStore(bookstoreId));
+    }
+
+    private BookstoreStore createStore(Long bookstoreId) {
+        Bookstore bookstore = bookstoreRepository.findById(bookstoreId).orElseThrow(() -> new ResourceNotFoundException("No se encontró la librería."));
+        String base = slugify(bookstore.getName());
+        String slug = uniqueSlug(base.isBlank() ? "libreria-" + bookstoreId : base);
+        BookstoreStore store = storeRepository.save(BookstoreStore.builder()
+                .publicId(UUID.randomUUID()).bookstore(bookstore).slug(slug).displayName(bookstore.getName()).build());
+        domainRepository.save(StoreDomain.builder().store(store).hostname(slug + "." + baseDomain.toLowerCase(Locale.ROOT))
+                .type(StoreDomainType.ANAQUEL_SUBDOMAIN).status(StoreDomainStatus.ACTIVE).verifiedAt(Instant.now()).build());
+        storeSectionService.ensureSystemSections(store);
+        return store;
+    }
+
+    private String uniqueSlug(String base) {
+        String candidate = base; int suffix = 2;
+        while (storeRepository.existsBySlugIgnoreCase(candidate)) candidate = base + "-" + suffix++;
+        return candidate;
+    }
+    private String slugify(String value) {
+        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        return NON_SLUG.matcher(normalized).replaceAll("-").replaceAll("^-|-$", "");
+    }
+    private StoreSettingsResponse toSettings(BookstoreStore store) {
+        boolean enabled = salesChannelService.isEnabled(store.getBookstore().getId(), SalesChannelType.ANAQUEL_STORE);
+        List<StoreDomainResponse> domains = domainRepository.findAllByStoreIdOrderByIdAsc(store.getId()).stream()
+                .map(d -> toDomain(d)).toList();
+        List<StoreSocialLinkResponse> socialLinks = socialLinkRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId()).stream()
+                .map(link -> new StoreSocialLinkResponse(link.getType(), link.getUrl(), Boolean.TRUE.equals(link.getEnabled()), link.getDisplayOrder()))
+                .toList();
+        List<Long> heroItemIds = heroItemRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId()).stream()
+                .map(item -> item.getInventory().getId()).toList();
+        return new StoreSettingsResponse(store.getPublicId(), store.getSlug(), store.getDisplayName(), enabled, store.getTitleFormat(),
+                store.getShowIsbn(), store.getShowAuthor(), store.getShowPublisher(), store.getShowStock(), store.getLogoUrl(), store.getFaviconUrl(),
+                store.getPrimaryColor(), store.getSecondaryColor(), store.getHomeTitleColor(), store.getHomeAccentColor(), store.getHomeTextColor(),
+                store.getBookstore().getPhone(), store.getDescription(), domains, socialLinks,
+                Boolean.TRUE.equals(store.getHeaderShowLogo()), Boolean.TRUE.equals(store.getHeaderShowName()), store.getHeaderBrandLayout(), store.getHeaderLogoSize(),
+                Boolean.TRUE.equals(store.getHeroShowEyebrow()), store.getHeroEyebrow(), Boolean.TRUE.equals(store.getHeroShowLogo()), store.getHeroLogoSize(), Boolean.TRUE.equals(store.getHeroShowName()), store.getHeroNameSize(),
+                store.getHeroTitle(), store.getHeroTitleSize(), store.getHeroDescription(), store.getHeroTextAlignment(), Boolean.TRUE.equals(store.getHeroShowBooks()), store.getHeroBooksMode(), heroItemIds,
+                Boolean.TRUE.equals(store.getHeroPrimaryButtonEnabled()), store.getHeroPrimaryButtonText(), Boolean.TRUE.equals(store.getHeroSecondaryButtonEnabled()), store.getHeroSecondaryButtonText(),
+                Boolean.TRUE.equals(store.getDiscoverEnabled()), store.getDiscoverEyebrow(), store.getDiscoverTitle(), store.getDiscoverDescription(), store.getDiscoverButtonText());
+    }
+
+    private void replaceHeroItems(BookstoreStore store, List<Long> requestedIds) {
+        List<Long> ids = requestedIds == null ? List.of() : requestedIds.stream().filter(Objects::nonNull).distinct().limit(3).toList();
+        List<StorePublication> publications = ids.isEmpty() ? List.of() : publicationRepository.findPublishedByStoreAndInventoryIds(store.getId(), ids);
+        Map<Long, StorePublication> byInventory = publications.stream().collect(Collectors.toMap(p -> p.getInventory().getId(), Function.identity()));
+        if (byInventory.size() != ids.size()) {
+            throw new BusinessException("Los libros de portada deben estar publicados en la tienda.");
+        }
+        heroItemRepository.deleteAllByStoreId(store.getId());
+        heroItemRepository.flush();
+        if (ids.isEmpty()) return;
+        List<StoreHeroItem> items = new ArrayList<>();
+        for (int index = 0; index < ids.size(); index++) {
+            StorePublication publication = byInventory.get(ids.get(index));
+            items.add(StoreHeroItem.builder().store(store).inventory(publication.getInventory()).displayOrder(index).build());
+        }
+        heroItemRepository.saveAll(items);
+    }
+
+    private String normalizeColor(String value, String label) {
+        String normalized = blankToNull(value);
+        if (normalized == null) return null;
+        if (!normalized.matches("(?i)^#[0-9a-f]{6}$")) {
+            throw new BusinessException("El " + label + " debe tener formato hexadecimal #RRGGBB.");
+        }
+        return normalized.toUpperCase(Locale.ROOT);
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        String normalized = blankToNull(value);
+        return normalized == null ? fallback : normalized;
+    }
+
+    private void replaceSocialLinks(BookstoreStore store, List<StoreSocialLinkRequest> requested) {
+        List<StoreSocialLink> existing = socialLinkRepository.findAllByStoreIdOrderByDisplayOrderAscIdAsc(store.getId());
+        Map<StoreSocialLinkType, StoreSocialLink> existingByType = existing.stream()
+                .collect(Collectors.toMap(StoreSocialLink::getType, Function.identity()));
+
+        List<StoreSocialLink> linksToSave = new ArrayList<>();
+        Set<StoreSocialLinkType> requestedTypes = EnumSet.noneOf(StoreSocialLinkType.class);
+        int fallbackOrder = 10;
+
+        if (requested != null) {
+            for (StoreSocialLinkRequest item : requested) {
+                if (item == null || item.type() == null || item.url() == null || item.url().isBlank()
+                        || !requestedTypes.add(item.type())) {
+                    continue;
+                }
+
+                String url = item.url().trim();
+                if (!url.matches("(?i)^https?://.+")) {
+                    throw new BusinessException("Las redes sociales deben usar una URL http o https.");
+                }
+
+                StoreSocialLink link = existingByType.get(item.type());
+                if (link == null) {
+                    link = StoreSocialLink.builder()
+                            .store(store)
+                            .type(item.type())
+                            .build();
+                }
+                link.setUrl(url);
+                link.setEnabled(item.enabled() == null || item.enabled());
+                link.setDisplayOrder(item.displayOrder() == null ? fallbackOrder : item.displayOrder());
+                linksToSave.add(link);
+                fallbackOrder += 10;
+            }
+        }
+
+        if (!linksToSave.isEmpty()) {
+            socialLinkRepository.saveAll(linksToSave);
+        }
+
+        List<StoreSocialLink> linksToDelete = existing.stream()
+                .filter(link -> !requestedTypes.contains(link.getType()))
+                .toList();
+        if (!linksToDelete.isEmpty()) {
+            socialLinkRepository.deleteAll(linksToDelete);
+        }
+    }
+    private StoreDomainResponse toDomain(StoreDomain d) {
+        return new StoreDomainResponse(d.getId(), d.getHostname(), d.getType(), d.getStatus(), d.getVerificationToken());
+    }
+    private String normalizeHostname(String value) {
+        if (value == null) return "";
+        String v = value.trim().toLowerCase(Locale.ROOT);
+        int scheme = v.indexOf("://"); if (scheme >= 0) v = v.substring(scheme + 3);
+        int slash = v.indexOf('/'); if (slash >= 0) v = v.substring(0, slash);
+        int colon = v.indexOf(':'); if (colon >= 0) v = v.substring(0, colon);
+        return v.replaceAll("\\.$", "");
+    }
+    private StoreProductAdminResponse toAdminProduct(Inventory i, StorePublication p, InventoryPrice price) {
+        Book b = i.getBook();
+        return new StoreProductAdminResponse(i.getId(), b.getId(), b.getTitle(), b.getPreferredIsbn(), b.getCoverUrl(), i.getStock(), price == null ? null : price.getAmount(),
+                p != null && Boolean.TRUE.equals(p.getPublished()), p != null && Boolean.TRUE.equals(p.getFeatured()), p == null ? null : p.getFeaturedOrder(),
+                p == null ? null : p.getCustomTitle(), p == null ? null : p.getCustomDescription());
+    }
+    private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
+}

@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.dto.response;
 
 import com.rodrilang.librarymanager.enums.BookCondition;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
 import com.rodrilang.librarymanager.purchasing.preference.dto.response.PreferredProviderResponse;
 
 import java.math.BigDecimal;
@@ -21,6 +22,17 @@ public record InventoryDetailResponse(
         BookCondition condition,
         BigDecimal salePrice,
         LocalDate currentPriceEffectiveFrom,
+        InventoryPriceSource currentPriceSource,
+        Long currentPriceImportId,
+        Long currentPriceImportProviderId,
+        String currentPriceImportProviderName,
+        String currentPriceImportSourceName,
+        String currentPriceImportFilename,
+        Long currentPriceLastConfirmedImportId,
+        Long currentPriceLastConfirmedProviderId,
+        String currentPriceLastConfirmedProviderName,
+        String currentPriceLastConfirmedImportSourceName,
+        String currentPriceLastConfirmedImportFilename,
         LocalDate currentPriceLastConfirmedAt,
         String currentPriceLastConfirmedSource,
         BigDecimal nextSalePrice,

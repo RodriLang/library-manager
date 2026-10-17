@@ -3,5 +3,6 @@ package com.rodrilang.librarymanager.sales.model;
 public enum SaleOrigin {
 
     MANUAL,
-    TIENDANUBE
+    TIENDANUBE,
+    ANAQUEL_STORE
 }

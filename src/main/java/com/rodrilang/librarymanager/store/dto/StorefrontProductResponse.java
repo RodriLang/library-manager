@@ -1,0 +1,24 @@
+package com.rodrilang.librarymanager.store.dto;
+import java.math.BigDecimal;
+import java.util.List;
+public record StorefrontProductResponse(
+        Long inventoryId,
+        Long bookId,
+        String slug,
+        String title,
+        String displayTitle,
+        String isbn,
+        String description,
+        List<StorefrontAuthorResponse> authors,
+        StorefrontPublisherResponse publisher,
+        String category,
+        String genre,
+        String coverUrl,
+        List<String> imageUrls,
+        BigDecimal price,
+        String availability,
+        Integer stock,
+        Integer publicationYear,
+        boolean featured,
+        boolean newArrival
+) {}

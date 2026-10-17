@@ -24,6 +24,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+
+import java.io.IOException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -348,6 +351,49 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(
+            AsyncRequestNotUsableException exception,
+            HttpServletRequest request
+    ) {
+        log.debug(
+                "Conexión HTTP asíncrona cerrada por el cliente en {} {}",
+                request.getMethod(),
+                request.getRequestURI()
+        );
+    }
+
+    @ExceptionHandler(IOException.class)
+    public Object handleIOException(
+            IOException exception,
+            HttpServletRequest request
+    ) {
+        if (isNotificationSseRequest(request)) {
+            log.debug(
+                    "Cliente SSE desconectado en {} {}: {}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    exception.getMessage()
+            );
+            return null;
+        }
+
+        log.error(
+                "Error de E/S procesando {} {}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception
+        );
+
+        return buildError(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "IO_ERROR",
+                "Ocurrió un error de comunicación. Intente nuevamente.",
+                request.getRequestURI(),
+                null
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpectedException(
             Exception exception,
@@ -367,6 +413,10 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 null
         );
+    }
+
+    private boolean isNotificationSseRequest(HttpServletRequest request) {
+        return "/api/notifications/stream".equals(request.getRequestURI());
     }
 
     private ResponseEntity<ErrorResponse> buildError(

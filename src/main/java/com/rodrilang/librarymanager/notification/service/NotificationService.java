@@ -1,0 +1,211 @@
+package com.rodrilang.librarymanager.notification.service;
+
+import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.dto.response.PageResponse;
+import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
+import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeStore;
+import com.rodrilang.librarymanager.integrations.tiendanube.repository.TiendanubeStoreRepository;
+import com.rodrilang.librarymanager.notification.dto.NotificationResponse;
+import com.rodrilang.librarymanager.notification.dto.UnreadNotificationCountResponse;
+import com.rodrilang.librarymanager.notification.event.NotificationCreatedEvent;
+import com.rodrilang.librarymanager.notification.model.*;
+import com.rodrilang.librarymanager.notification.repository.NotificationRepository;
+import com.rodrilang.librarymanager.repository.BookstoreRepository;
+import com.rodrilang.librarymanager.store.order.model.StoreOrder;
+import com.rodrilang.librarymanager.shipping.shipment.model.ShipmentStatus;
+import com.rodrilang.librarymanager.shipping.shipment.model.StoreShipment;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.text.NumberFormat;
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Optional;
+
+@Service
+@RequiredArgsConstructor
+public class NotificationService {
+
+    private static final Locale ARGENTINA = Locale.forLanguageTag("es-AR");
+
+    private final NotificationRepository repository;
+    private final BookstoreRepository bookstoreRepository;
+    private final TiendanubeStoreRepository tiendanubeStoreRepository;
+    private final BookstoreContext bookstoreContext;
+    private final ApplicationEventPublisher eventPublisher;
+    private final NotificationPreferenceService preferenceService;
+    private final NotificationDeliveryOutboxService outboxService;
+
+    @Transactional
+    public Notification notifyStoreOrderCreated(StoreOrder order) {
+        if (order == null || order.getId() == null || order.getBookstore() == null || order.getBookstore().getId() == null) {
+            return null;
+        }
+        String message = "Pedido #" + order.getOrderNumber() + " por " + formatMoney(order.getTotal());
+        return createIfAbsent(
+                order.getBookstore().getId(),
+                NotificationType.STORE_ORDER_CREATED,
+                NotificationSource.ANAQUEL_STORE,
+                "Nuevo pedido en Anaquel Store",
+                message,
+                NotificationEntityType.STORE_ORDER,
+                order.getId()
+        );
+    }
+
+    @Transactional
+    public Notification notifyShipmentDispatched(StoreShipment shipment) {
+        if (shipment == null || shipment.getId() == null || shipment.getOrder() == null || shipment.getBookstore() == null) return null;
+        return createIfAbsent(
+                shipment.getBookstore().getId(),
+                NotificationType.SHIPMENT_DISPATCHED,
+                NotificationSource.ANAQUEL_STORE,
+                "Pedido despachado",
+                "El pedido #" + shipment.getOrder().getOrderNumber() + " fue despachado.",
+                NotificationEntityType.STORE_ORDER,
+                shipment.getOrder().getId()
+        );
+    }
+
+    @Transactional
+    public Notification notifyShipmentStatus(StoreShipment shipment, ShipmentStatus status) {
+        if (shipment == null || shipment.getId() == null || shipment.getOrder() == null || shipment.getBookstore() == null) return null;
+        NotificationType type = switch (status) {
+            case IN_TRANSIT -> NotificationType.SHIPMENT_IN_TRANSIT;
+            case OUT_FOR_DELIVERY -> NotificationType.SHIPMENT_OUT_FOR_DELIVERY;
+            case DELIVERED -> NotificationType.SHIPMENT_DELIVERED;
+            case EXCEPTION -> NotificationType.SHIPMENT_EXCEPTION;
+            default -> null;
+        };
+        if (type == null) return null;
+
+        String orderNumber = shipment.getOrder().getOrderNumber();
+        String title = switch (status) {
+            case IN_TRANSIT -> "Pedido despachado";
+            case OUT_FOR_DELIVERY -> "Pedido en distribución";
+            case DELIVERED -> "Pedido entregado";
+            case EXCEPTION -> "Incidencia en un envío";
+            default -> "Actualización de envío";
+        };
+        String message = switch (status) {
+            case IN_TRANSIT -> "El pedido #" + orderNumber + " está en tránsito.";
+            case OUT_FOR_DELIVERY -> "El pedido #" + orderNumber + " salió a reparto.";
+            case DELIVERED -> "El pedido #" + orderNumber + " fue entregado.";
+            case EXCEPTION -> "El pedido #" + orderNumber + " tiene una incidencia de transporte.";
+            default -> "El envío del pedido #" + orderNumber + " cambió de estado.";
+        };
+        return createIfAbsent(shipment.getBookstore().getId(), type, NotificationSource.ANAQUEL_STORE, title, message,
+                NotificationEntityType.STORE_ORDER, shipment.getOrder().getId());
+    }
+
+    @Transactional
+    public Notification notifyTiendanubeSaleCreated(Long externalStoreId, Long orderId) {
+        if (externalStoreId == null || orderId == null) return null;
+        TiendanubeStore store = tiendanubeStoreRepository.findByStoreId(externalStoreId)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró la tienda de Tiendanube vinculada."));
+        return createIfAbsent(
+                store.getBookstore().getId(),
+                NotificationType.TIENDANUBE_SALE_CREATED,
+                NotificationSource.TIENDANUBE,
+                "Nueva venta en Tiendanube",
+                "Pedido #" + orderId + " recibido desde Tiendanube",
+                NotificationEntityType.TIENDANUBE_ORDER,
+                orderId
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<NotificationResponse> list(Pageable pageable) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        Pageable safe = pageable.getSort().isUnsorted()
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "createdAt"))
+                : pageable;
+        return PageResponse.of(repository.findAllByBookstoreIdAndInAppVisibleTrue(bookstoreId, safe).map(this::toResponse));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<NotificationResponse> findForBookstore(Long notificationId, Long bookstoreId) {
+        if (notificationId == null || bookstoreId == null) return Optional.empty();
+        return repository.findByIdAndBookstoreIdAndInAppVisibleTrue(notificationId, bookstoreId).map(this::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public UnreadNotificationCountResponse unreadCount() {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        return new UnreadNotificationCountResponse(repository.countByBookstoreIdAndInAppVisibleTrueAndReadAtIsNull(bookstoreId));
+    }
+
+    @Transactional
+    public NotificationResponse markRead(Long notificationId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        Notification notification = repository.findByIdAndBookstoreIdAndInAppVisibleTrue(notificationId, bookstoreId)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró la notificación."));
+        if (notification.getReadAt() == null) notification.setReadAt(Instant.now());
+        return toResponse(notification);
+    }
+
+    @Transactional
+    public UnreadNotificationCountResponse markAllRead() {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        repository.markAllRead(bookstoreId, Instant.now());
+        return new UnreadNotificationCountResponse(0);
+    }
+
+    private Notification createIfAbsent(Long bookstoreId,
+                                        NotificationType type,
+                                        NotificationSource source,
+                                        String title,
+                                        String message,
+                                        NotificationEntityType entityType,
+                                        Long entityId) {
+        Notification existing = repository
+                .findByBookstoreIdAndTypeAndSourceAndEntityTypeAndEntityId(bookstoreId, type, source, entityType, entityId)
+                .orElse(null);
+        if (existing != null) return existing;
+
+        NotificationPreferenceService.ResolvedPreference preference = preferenceService.resolve(bookstoreId, type);
+
+        Notification saved = repository.save(Notification.builder()
+                .bookstore(bookstoreRepository.getReferenceById(bookstoreId))
+                .type(type)
+                .source(source)
+                .title(title)
+                .message(message)
+                .entityType(entityType)
+                .entityId(entityId)
+                .inAppVisible(preference.inAppEnabled())
+                .build());
+
+        if (preference.inAppEnabled()) {
+            eventPublisher.publishEvent(new NotificationCreatedEvent(saved.getId(), bookstoreId));
+        }
+        if (preference.emailEnabled()) {
+            outboxService.enqueueEmail(saved, preference.emailAddress());
+        }
+        return saved;
+    }
+
+    private NotificationResponse toResponse(Notification notification) {
+        return new NotificationResponse(
+                notification.getId(),
+                notification.getType(),
+                notification.getSource(),
+                notification.getTitle(),
+                notification.getMessage(),
+                notification.getEntityType(),
+                notification.getEntityId(),
+                notification.getReadAt() != null,
+                notification.getReadAt(),
+                notification.getCreatedAt()
+        );
+    }
+
+    private String formatMoney(BigDecimal value) {
+        NumberFormat format = NumberFormat.getIntegerInstance(ARGENTINA);
+        return "$ " + format.format(value == null ? BigDecimal.ZERO : value);
+    }
+}

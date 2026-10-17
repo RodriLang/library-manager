@@ -103,7 +103,7 @@ public class InventoryPriceService {
         // Re-read at application time: the inventory price or the business day
         // may have changed since the preview was created.
         if (applicablePrice != null && applicablePrice.getAmount().compareTo(amount) == 0) {
-            markConfirmed(applicablePrice, confirmationDate, confirmationSource, true);
+            markConfirmed(applicablePrice, confirmationDate, confirmationSource, priceImport, true);
             return applicablePrice;
         }
 
@@ -119,7 +119,7 @@ public class InventoryPriceService {
 
         // Confirmation date answers "when did we verify this amount?" and is
         // intentionally independent from effectiveFrom, including future lists.
-        markConfirmed(price, confirmationDate, confirmationSource, true);
+        markConfirmed(price, confirmationDate, confirmationSource, priceImport, true);
         return price;
     }
 
@@ -431,6 +431,16 @@ public class InventoryPriceService {
             String confirmedSource,
             boolean preserveLatestConfirmation
     ) {
+        markConfirmed(price, confirmedAt, confirmedSource, null, preserveLatestConfirmation);
+    }
+
+    private void markConfirmed(
+            InventoryPrice price,
+            LocalDate confirmedAt,
+            String confirmedSource,
+            InventoryPriceImport confirmedPriceImport,
+            boolean preserveLatestConfirmation
+    ) {
         Objects.requireNonNull(price, "price");
         Objects.requireNonNull(confirmedAt, "confirmedAt");
 
@@ -442,6 +452,7 @@ public class InventoryPriceService {
 
         price.setLastConfirmedAt(confirmedAt);
         price.setLastConfirmedSource(normalizeConfirmationSource(confirmedSource));
+        price.setLastConfirmedPriceImport(confirmedPriceImport);
     }
 
     public InventoryPricePointResponse toResponse(InventoryPrice price) {

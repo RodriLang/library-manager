@@ -20,6 +20,16 @@ public class CorsConfig {
 
             @Override
             public void addCorsMappings(CorsRegistry registry) {
+                // Public storefronts may live on *.anaquel.com.ar or on arbitrary
+                // verified custom domains. Public catalog and checkout do not use cookie
+                // credentials, so they can be consumed cross-origin.
+                registry.addMapping("/api/storefront/**")
+                        .allowedOriginPatterns("*")
+                        .allowedMethods("GET", "POST", "OPTIONS")
+                        .allowedHeaders("*")
+                        .allowCredentials(false);
+
+                // Administrative/private API remains restricted to configured UIs.
                 registry.addMapping("/**")
                         .allowedOrigins(allowedOrigins)
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")

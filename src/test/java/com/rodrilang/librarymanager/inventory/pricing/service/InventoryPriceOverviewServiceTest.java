@@ -2,11 +2,13 @@ package com.rodrilang.librarymanager.inventory.pricing.service;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPrice;
+import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceImport;
 import com.rodrilang.librarymanager.inventory.pricing.model.InventoryPriceSource;
 import com.rodrilang.librarymanager.inventory.pricing.repository.InventoryPriceRepository;
 import com.rodrilang.librarymanager.model.Book;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageRequest;
@@ -122,4 +124,73 @@ class InventoryPriceOverviewServiceTest {
         assertEquals(1, page.getTotalElements());
         assertEquals(10L, page.getContent().getFirst().inventoryId());
     }
+    @Test
+    void overviewExposesLatestConfirmationImportAndNextChangePercent() {
+        LocalDate today = LocalDate.of(2026, 10, 13);
+        BookstoreContext context = mock(BookstoreContext.class);
+        InventoryRepository inventoryRepository = mock(InventoryRepository.class);
+        InventoryPriceRepository priceRepository = mock(InventoryPriceRepository.class);
+        InventoryPriceService priceService = mock(InventoryPriceService.class);
+
+        Bookstore bookstore = Bookstore.builder().id(7L).build();
+        Book book = Book.builder()
+                .id(20L)
+                .isbn13("9789875669284")
+                .title("Un libro")
+                .build();
+        Inventory inventory = Inventory.builder()
+                .id(10L)
+                .bookstore(bookstore)
+                .book(book)
+                .active(true)
+                .build();
+        Provider provider = Provider.builder().id(4L).name("Luongo").code("LUONGO").build();
+        InventoryPriceImport confirmationImport = InventoryPriceImport.builder()
+                .id(55L)
+                .bookstore(bookstore)
+                .provider(provider)
+                .sourceName("Catálogo completo")
+                .originalFilename("Luongo-Octubre.xlsx")
+                .effectiveFrom(LocalDate.of(2026, 10, 1))
+                .build();
+        InventoryPrice current = InventoryPrice.builder()
+                .id(100L)
+                .inventory(inventory)
+                .amount(new BigDecimal("26000.00"))
+                .effectiveFrom(LocalDate.of(2026, 10, 4))
+                .source(InventoryPriceSource.PRICE_LIST)
+                .lastConfirmedAt(LocalDate.of(2026, 10, 4))
+                .lastConfirmedSource("Catálogo completo")
+                .lastConfirmedPriceImport(confirmationImport)
+                .build();
+        InventoryPrice next = InventoryPrice.builder()
+                .id(101L)
+                .inventory(inventory)
+                .amount(new BigDecimal("29900.00"))
+                .effectiveFrom(LocalDate.of(2026, 11, 1))
+                .source(InventoryPriceSource.PRICE_LIST)
+                .build();
+
+        when(context.getCurrentBookstoreId()).thenReturn(7L);
+        when(priceService.today()).thenReturn(today);
+        when(inventoryRepository.findAllByBookstoreIdAndActiveTrue(7L)).thenReturn(List.of(inventory));
+        when(priceRepository.findAllByBookstoreId(7L)).thenReturn(List.of(current, next));
+
+        InventoryPriceOverviewService service = new InventoryPriceOverviewService(
+                inventoryRepository,
+                priceRepository,
+                context,
+                priceService
+        );
+
+        var row = service.find(null, "ALL", 90, PageRequest.of(0, 20)).getContent().getFirst();
+
+        assertEquals(55L, row.currentPriceLastConfirmedImportId());
+        assertEquals(4L, row.currentPriceLastConfirmedProviderId());
+        assertEquals("Luongo", row.currentPriceLastConfirmedProviderName());
+        assertEquals("Catálogo completo", row.currentPriceLastConfirmedImportSourceName());
+        assertEquals("Luongo-Octubre.xlsx", row.currentPriceLastConfirmedImportFilename());
+        assertEquals(new BigDecimal("15.00"), row.nextChangePercent());
+    }
+
 }

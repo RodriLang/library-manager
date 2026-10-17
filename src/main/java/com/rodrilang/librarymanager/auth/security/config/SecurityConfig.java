@@ -1,5 +1,6 @@
 package com.rodrilang.librarymanager.auth.security.config;
 
+import jakarta.servlet.DispatcherType;
 import com.rodrilang.librarymanager.auth.security.filter.JwtAuthenticationFilter;
 import com.rodrilang.librarymanager.admin.audit.filter.AdminAuditFilter;
 import com.rodrilang.librarymanager.auth.security.handler.JwtAuthenticationEntryPoint;
@@ -53,12 +54,18 @@ public class SecurityConfig {
                 .authenticationProvider(daoAuthenticationProvider)
 
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(
+                                DispatcherType.ASYNC,
+                                DispatcherType.ERROR
+                        ).permitAll()
+
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/refresh",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
-                                "/api/integrations/tiendanube/oauth/callback"
+                                "/api/integrations/tiendanube/oauth/callback",
+                                "/api/store/payments/mercado-pago/oauth/callback"
                         ).permitAll()
 
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
@@ -66,6 +73,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/invitations/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/invitations/*/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/integrations/tiendanube/webhooks").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/storefront/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/storefront/*/checkout").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/storefront/*/shipping/quotes").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/storefront/payments/mercado-pago/webhook").permitAll()
                         .anyRequest().authenticated()
                 )
 
