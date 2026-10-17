@@ -51,4 +51,27 @@ public interface BookstoreProviderBookTermRepository extends JpaRepository<Books
             Long bookstoreId,
             Collection<Long> bookIds
     );
+
+    @EntityGraph(attributePaths = {"book", "provider", "lastPriceImport"})
+    @Query("""
+            select term
+            from BookstoreProviderBookTerm term
+            where term.bookstore.id = :bookstoreId
+              and term.book.id in :bookIds
+              and term.latestListPrice is not null
+              and term.latestListEffectiveFrom is not null
+              and term.provider.active = true
+              and exists (
+                    select bp.id
+                    from BookstoreProvider bp
+                    where bp.bookstore.id = :bookstoreId
+                      and bp.provider.id = term.provider.id
+                      and bp.active = true
+              )
+            order by term.book.id asc, term.latestListEffectiveFrom desc, term.provider.name asc
+            """)
+    List<BookstoreProviderBookTerm> findPriceReferencesForBooks(
+            @Param("bookstoreId") Long bookstoreId,
+            @Param("bookIds") Collection<Long> bookIds
+    );
 }

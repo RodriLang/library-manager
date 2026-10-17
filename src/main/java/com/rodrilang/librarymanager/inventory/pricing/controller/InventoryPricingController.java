@@ -4,6 +4,7 @@ import com.rodrilang.librarymanager.dto.response.PageResponse;
 import com.rodrilang.librarymanager.inventory.pricing.dto.*;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceOverviewService;
 import com.rodrilang.librarymanager.inventory.pricing.service.InventoryPriceService;
+import com.rodrilang.librarymanager.inventory.pricing.service.ProviderPriceSuggestionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +20,7 @@ public class InventoryPricingController {
 
     private final InventoryPriceService priceService;
     private final InventoryPriceOverviewService overviewService;
+    private final ProviderPriceSuggestionService providerPriceSuggestionService;
 
     @GetMapping("/api/inventory/prices")
     public PageResponse<InventoryPriceOverviewResponse> find(
@@ -35,6 +37,19 @@ public class InventoryPricingController {
             @RequestParam(required = false) Integer staleDays
     ) {
         return overviewService.summary(staleDays);
+    }
+
+
+    @GetMapping("/api/inventory/price-suggestions/books/{bookId}")
+    public ProviderPriceSuggestionResponse providerPriceSuggestion(@PathVariable Long bookId) {
+        return providerPriceSuggestionService.findForBook(bookId);
+    }
+
+    @PostMapping("/api/inventory/price-suggestions/batch")
+    public List<ProviderPriceSuggestionResponse> providerPriceSuggestions(
+            @Valid @RequestBody ProviderPriceSuggestionsRequest request
+    ) {
+        return providerPriceSuggestionService.findForBooks(request.bookIds());
     }
 
     @GetMapping("/api/inventory/{inventoryId}/prices")
