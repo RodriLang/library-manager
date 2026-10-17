@@ -19,35 +19,19 @@ public class BookstoreProviderCatalogJdbcRepository {
     private final JdbcTemplate jdbcTemplate;
     private final NamedParameterJdbcTemplate namedJdbcTemplate;
 
-    public Map<String, Long> findBooksByExternalCodes(
-            long providerId,
-            Collection<String> externalCodes
-    ) {
-        if (externalCodes == null || externalCodes.isEmpty()) {
-            return Map.of();
-        }
-
+    public Map<String, Long> findBooksByExternalCodes(long providerId, Collection<String> externalCodes) {
+        if (externalCodes == null || externalCodes.isEmpty()) return Map.of();
         Map<String, Long> result = new HashMap<>();
-
-        RowCallbackHandler handler = rs ->
-                result.put(
-                        rs.getString("external_code"),
-                        rs.getLong("book_id")
-                );
-
-        namedJdbcTemplate.query(
-                """
-                        SELECT external_code, book_id
-                        FROM provider_books
-                        WHERE provider_id = :providerId
-                          AND external_code IN (:codes)
-                        """,
-                new MapSqlParameterSource()
-                        .addValue("providerId", providerId)
-                        .addValue("codes", externalCodes),
-                handler
+        RowCallbackHandler handler = rs -> result.put(
+                rs.getString("external_code"),
+                rs.getLong("book_id")
         );
-
+        namedJdbcTemplate.query("""
+                SELECT external_code, book_id
+                FROM provider_books
+                WHERE provider_id = :providerId AND external_code IN (:codes)
+                """, new MapSqlParameterSource().addValue("providerId", providerId).addValue("codes", externalCodes),
+                handler);
         return result;
     }
 
@@ -75,12 +59,10 @@ public class BookstoreProviderCatalogJdbcRepository {
             ps.setString(4, row.reportedIsbn());
             ps.setString(5, row.identifierStatus().name());
             Timestamp ts = Timestamp.from(now);
-            ps.setTimestamp(6, ts);
-            ps.setTimestamp(7, ts);
-            ps.setTimestamp(8, ts);
-            ps.setTimestamp(9, ts);
+            ps.setTimestamp(6, ts); ps.setTimestamp(7, ts); ps.setTimestamp(8, ts); ps.setTimestamp(9, ts);
         });
     }
+
 
 
     public int upsertBookstoreTermsFromStaging(long bookstoreId, long providerId, long importId, LocalDate effectiveFrom) {
@@ -136,6 +118,5 @@ public class BookstoreProviderCatalogJdbcRepository {
     }
 
     public record ProviderBookUpsert(long bookId, String externalCode, String reportedIsbn,
-                                     ProviderBookIdentifierStatus identifierStatus) {
-    }
+                                     ProviderBookIdentifierStatus identifierStatus) {}
 }

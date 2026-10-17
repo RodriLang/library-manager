@@ -30,6 +30,18 @@ public class ProviderPriceSuggestionService {
 
     @Transactional(readOnly = true)
     public ProviderPriceSuggestionResponse findForBook(Long bookId) {
+        if (bookId == null || bookId <= 0) {
+            return new ProviderPriceSuggestionResponse(
+                    bookId,
+                    null,
+                    false,
+                    ProviderPriceSuggestionStatus.NO_DATA,
+                    null,
+                    null,
+                    List.of()
+            );
+        }
+
         return findForBooks(List.of(bookId)).getFirst();
     }
 
