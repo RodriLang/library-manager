@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 
 public record TiendanubeImportAnalysisCreateInventoryRequest(
         @NotNull Long bookId,
-        @NotNull @DecimalMin("0.01") BigDecimal salePrice,
+        @DecimalMin("0.01") BigDecimal salePrice,
         @NotNull @PositiveOrZero Integer initialStock,
         @NotNull @PositiveOrZero Integer minimumStock,
         Boolean syncStock

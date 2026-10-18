@@ -72,13 +72,15 @@ public class TiendanubeImportAnalysisInventoryService {
                 .build();
 
         Inventory saved = inventoryRepository.save(inventory);
-        inventoryPriceService.upsertSystem(
-                saved,
-                request.salePrice(),
-                inventoryPriceService.today(),
-                InventoryPriceSource.TIENDANUBE_IMPORT,
-                null
-        );
+        if (request.salePrice() != null) {
+            inventoryPriceService.upsertSystem(
+                    saved,
+                    request.salePrice(),
+                    inventoryPriceService.today(),
+                    InventoryPriceSource.TIENDANUBE_IMPORT,
+                    null
+            );
+        }
 
         if (request.initialStock() == 0) {
             return saved;
@@ -122,13 +124,16 @@ public class TiendanubeImportAnalysisInventoryService {
         inventory.setMinimumStock(request.minimumStock());
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.NOT_PUBLISHED);
         inventory.setTiendanubePriceSyncEnabled(false);
-        inventoryPriceService.upsertSystem(
-                inventory,
-                request.salePrice(),
-                inventoryPriceService.today(),
-                InventoryPriceSource.TIENDANUBE_IMPORT,
-                null
-        );
+        // Sin precio informado, conservamos cualquier precio previo del inventario reactivado.
+        if (request.salePrice() != null) {
+            inventoryPriceService.upsertSystem(
+                    inventory,
+                    request.salePrice(),
+                    inventoryPriceService.today(),
+                    InventoryPriceSource.TIENDANUBE_IMPORT,
+                    null
+            );
+        }
 
         return inventoryStockService.adjustStockTo(
                 inventory.getId(),
