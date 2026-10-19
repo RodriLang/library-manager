@@ -57,6 +57,11 @@ public class TiendanubeManagementController {
         return publicationContentService.completeIdentifiers(inventoryId);
     }
 
+    @GetMapping("/publication-quality")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse> publicationQuality() {
+        return publicationContentService.auditPublicationQuality();
+    }
+
     @GetMapping("/publication-duplicates")
     public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubeDuplicatePairResponse> publicationDuplicates() {
         return publicationContentService.findGlobalDuplicates();

@@ -77,6 +77,29 @@ public class TiendanubePublicationContentService {
         return response(context, client.getProduct(storeId, productId));
     }
 
+    /** Auditoría de solo lectura: incluye productos no vinculados con el inventario. */
+    public List<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse> auditPublicationQuality() {
+        TiendanubeStore store = storeRepository.findByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Tiendanube no conectada"));
+        return client.getProducts(store.getStoreId()).stream()
+                .filter(product -> product.id() != null)
+                .map(product -> {
+                    boolean missingIdentifier = product.variants() == null || product.variants().isEmpty()
+                            || product.variants().stream().noneMatch(variant -> isIsbn(variant.sku()) || isIsbn(variant.barcode()));
+                    boolean missingSynopsis = product.description() == null || product.description().values().stream()
+                            .noneMatch(value -> hasValue(value) && !value.replaceAll("(?s)<[^>]*>", "").replace("&nbsp;", " ").isBlank());
+                    boolean missingCover = product.images() == null || product.images().stream()
+                            .noneMatch(image -> hasValue(image.src()));
+                    List<String> issues = new ArrayList<>();
+                    if (missingIdentifier) issues.add("MISSING_IDENTIFIER");
+                    if (missingSynopsis) issues.add("MISSING_SYNOPSIS");
+                    if (missingCover) issues.add("MISSING_COVER");
+                    return new com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse(
+                            product.id(), displayName(product), Boolean.TRUE.equals(product.published()),
+                            missingIdentifier, missingSynopsis, missingCover, issues);
+                }).toList();
+    }
+
     /** Análisis global de las publicaciones remotas; no depende de inventarios vinculados. */
     public List<TiendanubeDuplicatePairResponse> findGlobalDuplicates() {
         TiendanubeStore store = storeRepository.findByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId())
@@ -138,6 +161,12 @@ public class TiendanubePublicationContentService {
         jdbcTemplate.update("INSERT INTO tiendanube_duplicate_dismissals(tiendanube_store_id, product_id_low, product_id_high) "
                 + "VALUES (?, ?, ?) ON CONFLICT (tiendanube_store_id, product_id_low, product_id_high) DO NOTHING",
                 store.getStoreId(), Math.min(first, second), Math.max(first, second));
+    }
+
+    private static boolean isIsbn(String value) {
+        if (!hasValue(value)) return false;
+        String digits = value.replaceAll("[^0-9Xx]", "").toUpperCase(java.util.Locale.ROOT);
+        return digits.matches("[0-9]{13}|[0-9]{9}[0-9X]");
     }
 
     private static boolean hasValue(String text) { return text != null && !text.isBlank(); }
