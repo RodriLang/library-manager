@@ -10,6 +10,10 @@ import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.respo
 import com.rodrilang.librarymanager.integrations.tiendanube.management.enums.TiendanubeAdminPublicationFilter;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.enums.TiendanubeAdminStockFilter;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeManagementService;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationContentService;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.request.TiendanubePublicationContentRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationContentResponse;
+import org.springframework.web.bind.annotation.PutMapping;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +39,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class TiendanubeManagementController {
 
     private final TiendanubeManagementService managementService;
+    private final TiendanubePublicationContentService publicationContentService;
+
+    @GetMapping("/inventories/{inventoryId}/publication-content")
+    public TiendanubePublicationContentResponse getPublicationContent(@PathVariable Long inventoryId) {
+        return publicationContentService.get(inventoryId);
+    }
+
+    @PutMapping("/inventories/{inventoryId}/publication-content")
+    public TiendanubePublicationContentResponse updatePublicationContent(
+            @PathVariable Long inventoryId, @Valid @RequestBody TiendanubePublicationContentRequest request) {
+        return publicationContentService.update(inventoryId, request);
+    }
 
     @GetMapping("/summary")
     public TiendanubeManagementSummaryResponse getSummary() {
