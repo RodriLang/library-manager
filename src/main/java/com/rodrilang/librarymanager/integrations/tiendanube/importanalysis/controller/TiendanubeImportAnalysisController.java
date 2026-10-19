@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.controller;
 
 import com.rodrilang.librarymanager.dto.response.PageResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisCreateBookRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisBulkResolveRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisBulkResolveResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisCreateInventoryRequest;
@@ -99,6 +100,15 @@ public class TiendanubeImportAnalysisController {
             @Valid @RequestBody TiendanubeImportAnalysisCreateInventoryRequest request
     ) {
         return resolutionService.createInventoryAndResolve(runId, itemId, request);
+    }
+
+    @PostMapping("/{runId}/items/{itemId}/create-book-and-resolve")
+    public TiendanubeImportAnalysisItemResponse createBookAndResolve(
+            @PathVariable Long runId,
+            @PathVariable Long itemId,
+            @Valid @RequestBody TiendanubeImportAnalysisCreateBookRequest request
+    ) {
+        return resolutionService.createBookInventoryAndResolve(runId, itemId, request);
     }
 
     @PostMapping("/{runId}/items/{itemId}/ignore")
