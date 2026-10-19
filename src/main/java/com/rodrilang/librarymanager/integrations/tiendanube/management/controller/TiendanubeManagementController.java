@@ -52,6 +52,22 @@ public class TiendanubeManagementController {
         return publicationContentService.update(inventoryId, request);
     }
 
+    @PostMapping("/inventories/{inventoryId}/complete-identifiers")
+    public TiendanubePublicationContentResponse completeIdentifiers(@PathVariable Long inventoryId) {
+        return publicationContentService.completeIdentifiers(inventoryId);
+    }
+
+    @GetMapping("/publication-duplicates")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubeDuplicatePairResponse> publicationDuplicates() {
+        return publicationContentService.findGlobalDuplicates();
+    }
+
+    @PostMapping("/publication-duplicates/dismiss")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void dismissDuplicate(@RequestBody java.util.Map<String, Long> request) {
+        publicationContentService.dismissDuplicate(request.get("productIdA"), request.get("productIdB"));
+    }
+
     private final com.rodrilang.librarymanager.bookstore.BookstoreContext bookstoreContext;
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationTemplateService templateService;
 

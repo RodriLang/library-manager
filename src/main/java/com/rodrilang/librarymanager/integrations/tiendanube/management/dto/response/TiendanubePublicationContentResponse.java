@@ -7,5 +7,7 @@ public record TiendanubePublicationContentResponse(
         String isbn,
         String existingHtml,
         boolean hasDescription,
-        String anaquelSynopsis
+        String anaquelSynopsis,
+        Long variantId,
+        com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse variant
 ) {}
