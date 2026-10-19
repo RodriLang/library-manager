@@ -41,6 +41,29 @@ public class TiendanubeManagementController {
     private final TiendanubeManagementService managementService;
     private final TiendanubePublicationContentService publicationContentService;
 
+    @GetMapping("/publications/{productId}")
+    public TiendanubePublicationContentResponse getRemotePublication(@PathVariable Long productId) {
+        return publicationContentService.getRemote(productId);
+    }
+
+    @PutMapping("/publications/{productId}/content")
+    public TiendanubePublicationContentResponse updateRemotePublication(
+            @PathVariable Long productId, @Valid @RequestBody TiendanubePublicationContentRequest request) {
+        return publicationContentService.updateRemote(productId, request);
+    }
+
+    @PostMapping("/publications/{productId}/cover")
+    public TiendanubePublicationContentResponse addRemoteCover(
+            @PathVariable Long productId,
+            @Valid @RequestBody com.rodrilang.librarymanager.integrations.tiendanube.management.dto.request.TiendanubePublicationCoverRequest request) {
+        return publicationContentService.addRemoteCover(productId, request.url(), request.useAnaquelCover());
+    }
+
+    @PostMapping("/publications/{productId}/complete-identifiers")
+    public TiendanubePublicationContentResponse completeRemoteIdentifiers(@PathVariable Long productId) {
+        return publicationContentService.completeRemoteIdentifiers(productId);
+    }
+
     @GetMapping("/inventories/{inventoryId}/publication-content")
     public TiendanubePublicationContentResponse getPublicationContent(@PathVariable Long inventoryId) {
         return publicationContentService.get(inventoryId);

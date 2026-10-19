@@ -3,6 +3,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.management.service;
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateProductRequest;
+import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeCreateImageRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateVariantRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse;
 import com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeProductResponse;
@@ -53,6 +54,77 @@ public class TiendanubePublicationContentService {
         localized.put(locale, html);
         client.updateProduct(storeId, productId, new TiendanubeUpdateProductRequest(null, localized));
         return response(context, client.getProduct(storeId, productId));
+    }
+
+    /** Detalle remoto: funciona aun cuando la publicación no esté vinculada con el inventario. */
+    public TiendanubePublicationContentResponse getRemote(Long productId) {
+        TiendanubeStore store = activeStore();
+        TiendanubeProductResponse product = client.getProduct(store.getStoreId(), productId);
+        return remoteResponse(store, product);
+    }
+
+    public TiendanubePublicationContentResponse updateRemote(Long productId, TiendanubePublicationContentRequest request) {
+        TiendanubeStore store = activeStore();
+        TiendanubeProductResponse original = client.getProduct(store.getStoreId(), productId);
+        TiendanubePublicationContentResponse previous = remoteResponse(store, original);
+        String html = buildHtml(request, previous.isbn());
+        Map<String, String> localized = new LinkedHashMap<>(original.description() == null ? Map.of() : original.description());
+        String locale = localized.containsKey("es") ? "es" : localized.keySet().stream().findFirst().orElse("es");
+        localized.put(locale, html);
+        client.updateProduct(store.getStoreId(), productId, new TiendanubeUpdateProductRequest(null, localized));
+        return remoteResponse(store, client.getProduct(store.getStoreId(), productId));
+    }
+
+    public TiendanubePublicationContentResponse completeRemoteIdentifiers(Long productId) {
+        TiendanubePublicationContentResponse publication = getRemote(productId);
+        if (publication.inventoryId() == null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Primero vinculá esta publicación con un libro de Anaquel");
+        return completeIdentifiers(publication.inventoryId());
+    }
+
+    /** Agrega una portada sin borrar las imágenes existentes. Una imagen de Anaquel exige vínculo confirmado. */
+    public TiendanubePublicationContentResponse addRemoteCover(Long productId, String requestedUrl, boolean useAnaquelCover) {
+        TiendanubeStore store = activeStore();
+        TiendanubeProductResponse product = client.getProduct(store.getStoreId(), productId);
+        TiendanubePublicationContentResponse current = remoteResponse(store, product);
+        if (product.images() != null && product.images().stream().anyMatch(i -> hasValue(i.src())))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La publicación ya tiene imágenes. Revisalas en Tiendanube antes de agregar otra portada.");
+        String url = requestedUrl;
+        if (useAnaquelCover) {
+            if (current.inventoryId() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "Vinculá la publicación antes de usar la portada de Anaquel");
+            Context ctx = context(current.inventoryId());
+            url = ctx.link().getInventory().getBook().getCoverUrl();
+        }
+        if (!hasValue(url) || !url.trim().matches("(?i)^https://[^\\s]+$"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ingresá una URL HTTPS válida para la portada");
+        client.createProductImage(store.getStoreId(), productId, new TiendanubeCreateImageRequest(url.trim(), 1));
+        return remoteResponse(store, client.getProduct(store.getStoreId(), productId));
+    }
+
+    private TiendanubeStore activeStore() {
+        return storeRepository.findByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Tiendanube no conectada"));
+    }
+
+    private TiendanubePublicationContentResponse remoteResponse(TiendanubeStore store, TiendanubeProductResponse product) {
+        TiendanubeProductLink link = product.variants() == null ? null : product.variants().stream()
+                .map(v -> linkRepository.findByTiendanubeStoreIdAndTiendanubeVariantIdAndActiveTrue(store.getStoreId(), v.id()).orElse(null))
+                .filter(Objects::nonNull)
+                .filter(l -> Objects.equals(l.getTiendanubeProductId(), product.id()))
+                .filter(l -> Objects.equals(l.getInventory().getBookstore().getId(), bookstoreContext.getCurrentBookstoreId()))
+                .findFirst().orElse(null);
+        String html = product.description() == null ? "" : product.description().getOrDefault("es",
+                product.description().values().stream().findFirst().orElse(""));
+        TiendanubeVariantResponse variant = link == null
+                ? (product.variants() == null || product.variants().isEmpty() ? null : product.variants().get(0))
+                : findVariant(product, link.getTiendanubeVariantId());
+        return new TiendanubePublicationContentResponse(
+                link == null ? null : link.getInventory().getId(), product.id(), displayName(product),
+                link == null ? null : isbn(link), html, !html.isBlank(),
+                link == null ? null : link.getInventory().getBook().getDescription(),
+                variant == null ? null : variant.id(), variant,
+                product.images() == null ? null : product.images().stream().map(i -> i.src()).filter(TiendanubePublicationContentService::hasValue).findFirst().orElse(null),
+                link == null ? null : link.getInventory().getBook().getCoverUrl());
     }
 
     /** Nunca sobreescribe identificadores distintos: se deben resolver manualmente. */
@@ -196,7 +268,9 @@ public class TiendanubePublicationContentService {
                 context.link().getInventory().getBook().getTitle(),
                 isbn(context.link()), html, !html.isBlank(),
                 context.link().getInventory().getBook().getDescription(),
-                context.link().getTiendanubeVariantId(), findVariant(product, context.link().getTiendanubeVariantId()));
+                context.link().getTiendanubeVariantId(), findVariant(product, context.link().getTiendanubeVariantId()),
+                product.images() == null ? null : product.images().stream().map(i -> i.src()).filter(TiendanubePublicationContentService::hasValue).findFirst().orElse(null),
+                context.link().getInventory().getBook().getCoverUrl());
     }
 
     private static TiendanubeVariantResponse findVariant(TiendanubeProductResponse product, Long variantId) {

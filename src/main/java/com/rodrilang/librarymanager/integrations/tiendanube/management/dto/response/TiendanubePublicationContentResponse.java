@@ -9,5 +9,7 @@ public record TiendanubePublicationContentResponse(
         boolean hasDescription,
         String anaquelSynopsis,
         Long variantId,
-        com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse variant
+        com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse variant,
+        String remoteCoverUrl,
+        String anaquelCoverUrl
 ) {}
