@@ -75,6 +75,19 @@ public class TiendanubePublicationContentService {
         return remoteResponse(store, client.getProduct(store.getStoreId(), productId));
     }
 
+    /** Actualiza sólo una descripción vacía, preservando contenido HTML existente. */
+    public void updateRemoteHtmlIfEmpty(Long productId, String html) {
+        TiendanubeStore store = activeStore();
+        var product = client.getProduct(store.getStoreId(), productId);
+        boolean hasText = product.description() != null && product.description().values().stream()
+            .anyMatch(value -> hasValue(value) && !value.replaceAll("(?s)<[^>]*>", "").replace("&nbsp;", " ").isBlank());
+        if (hasText || !hasValue(html)) throw new ResponseStatusException(HttpStatus.CONFLICT, "La descripción ya no está vacía");
+        Map<String,String> localized = new LinkedHashMap<>(product.description()==null?Map.of():product.description());
+        String locale = localized.containsKey("es")?"es":localized.keySet().stream().findFirst().orElse("es");
+        localized.put(locale, html);
+        client.updateProduct(store.getStoreId(),productId,new TiendanubeUpdateProductRequest(null,localized));
+    }
+
     public TiendanubePublicationContentResponse completeRemoteIdentifiers(Long productId) {
         TiendanubePublicationContentResponse publication = getRemote(productId);
         if (publication.inventoryId() == null)

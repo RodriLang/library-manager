@@ -38,6 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class TiendanubeManagementController {
 
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationCorrectionService corrections;
     private final TiendanubeManagementService managementService;
     private final TiendanubePublicationContentService publicationContentService;
 
@@ -78,6 +79,20 @@ public class TiendanubeManagementController {
     @PostMapping("/inventories/{inventoryId}/complete-identifiers")
     public TiendanubePublicationContentResponse completeIdentifiers(@PathVariable Long inventoryId) {
         return publicationContentService.completeIdentifiers(inventoryId);
+    }
+
+    @PostMapping("/publication-corrections/preview")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationCorrectionService.Job previewCorrections(
+        @RequestBody com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationCorrectionService.Request request) {
+        return corrections.preview(request);
+    }
+    @GetMapping("/publication-corrections/{id}")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationCorrectionService.Job correctionJob(@PathVariable Long id) {
+        return corrections.get(id);
+    }
+    @PostMapping("/publication-corrections/{id}/execute")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationCorrectionService.Job executeCorrections(@PathVariable Long id) {
+        return corrections.execute(id);
     }
 
     @GetMapping("/publication-quality")
