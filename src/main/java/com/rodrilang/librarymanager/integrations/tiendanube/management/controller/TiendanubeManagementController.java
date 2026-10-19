@@ -52,6 +52,20 @@ public class TiendanubeManagementController {
         return publicationContentService.update(inventoryId, request);
     }
 
+    private final com.rodrilang.librarymanager.bookstore.BookstoreContext bookstoreContext;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationTemplateService templateService;
+
+    @GetMapping("/publication-template")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationTemplateResponse getTemplate() {
+        return templateService.get(bookstoreContext.getCurrentBookstoreId());
+    }
+
+    @PutMapping("/publication-template")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationTemplateResponse updateTemplate(
+            @Valid @RequestBody com.rodrilang.librarymanager.integrations.tiendanube.management.dto.request.TiendanubePublicationTemplateRequest request) {
+        return templateService.save(bookstoreContext.getCurrentBookstoreId(), request);
+    }
+
     @GetMapping("/summary")
     public TiendanubeManagementSummaryResponse getSummary() {
         return managementService.getSummary();
