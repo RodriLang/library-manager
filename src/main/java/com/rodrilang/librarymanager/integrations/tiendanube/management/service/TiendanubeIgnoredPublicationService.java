@@ -21,6 +21,14 @@ public class TiendanubeIgnoredPublicationService {
                 Long.class, bookstoreContext.getCurrentBookstoreId());
     }
 
+    /** Returns the current bookstore's ignored IDs in one query (never cross-tenant). */
+    @Transactional(readOnly = true)
+    public java.util.Set<Long> ignoredIds(Long bookstoreId) {
+        return new java.util.HashSet<>(jdbc.queryForList(
+                "SELECT product_id FROM tiendanube_ignored_publications WHERE bookstore_id = ?",
+                Long.class, bookstoreId));
+    }
+
     @Transactional
     public void ignore(long productId) {
         requireValidProduct(productId);

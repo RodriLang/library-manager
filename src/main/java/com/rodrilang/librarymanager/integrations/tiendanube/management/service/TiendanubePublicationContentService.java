@@ -36,6 +36,7 @@ public class TiendanubePublicationContentService {
     private final TiendanubeProductLinkRepository linkRepository;
     private final TiendanubeClient client;
     private final JdbcTemplate jdbcTemplate;
+    private final TiendanubeIgnoredPublicationService ignoredPublications;
 
     public TiendanubePublicationContentResponse get(Long inventoryId) {
         Context context = context(inventoryId);
@@ -162,11 +163,83 @@ public class TiendanubePublicationContentService {
         return response(context, client.getProduct(storeId, productId));
     }
 
+    /**
+     * Deletes an unlinked remote product only. Never deletes an inventory or a
+     * linked product, including products with multiple variants.
+     * Remote side effects cannot be rolled back with the local DB transaction.
+     */
+    public void deleteUnlinkedRemoteProduct(Long productId, String confirmation) {
+        if (productId == null || productId <= 0 || !"DELETE".equals(confirmation)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Es necesario confirmar la eliminación escribiendo DELETE");
+        }
+        TiendanubeStore store = activeStore();
+        TiendanubeProductResponse product = client.getProduct(store.getStoreId(), productId);
+        if (product.variants() == null || product.variants().isEmpty()) {
+            // No variants: no inventory link can exist for the product in this integration.
+        } else {
+            List<Long> variantIds = product.variants().stream().map(TiendanubeVariantResponse::id)
+                    .filter(Objects::nonNull).distinct().toList();
+            if (!variantIds.isEmpty() && !linkRepository
+                    .findAllByTiendanubeStoreIdAndTiendanubeVariantIdInAndActiveTrue(store.getId(), variantIds)
+                    .isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La publicación tiene variantes vinculadas a Anaquel; primero resolvé esos vínculos");
+            }
+        }
+        // Explicit product-id guard also catches legacy/stale variant relations.
+        Integer linkedCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM tiendanube_product_links WHERE tiendanube_store_id = ? AND tiendanube_product_id = ? AND active = true",
+                Integer.class, store.getId(), productId);
+        if (linkedCount != null && linkedCount > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La publicación todavía tiene vínculos activos");
+        }
+        client.deleteProduct(store.getStoreId(), productId);
+        ignoredPublications.restore(productId);
+    }
+
+    /**
+     * Read-only catalog view. This response is page-limited; the Tiendanube client
+     * currently fetches the complete remote collection before filtering locally.
+     */
+    public org.springframework.data.domain.Page<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse>
+    searchPublications(String query, Boolean ignoredOnly, org.springframework.data.domain.Pageable pageable) {
+        TiendanubeStore store = activeStore();
+        Set<Long> ignoredIds = ignoredPublications.ignoredIds(bookstoreContext.getCurrentBookstoreId());
+        String term = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
+        List<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse> results =
+                client.getProducts(store.getStoreId()).stream()
+                        .filter(p -> p.id() != null)
+                        .filter(p -> ignoredOnly == null || ignoredIds.contains(p.id()) == ignoredOnly)
+                        .filter(p -> term.isEmpty() || displayName(p).toLowerCase(java.util.Locale.ROOT).contains(term)
+                                || (p.variants() != null && p.variants().stream().anyMatch(v ->
+                                   (v.sku() != null && v.sku().toLowerCase(java.util.Locale.ROOT).contains(term))
+                                   || (v.barcode() != null && v.barcode().toLowerCase(java.util.Locale.ROOT).contains(term)))))
+                        .map(p -> {
+                            boolean missingId = p.variants() == null || p.variants().isEmpty() ||
+                                    p.variants().stream().noneMatch(v -> isIsbn(v.sku()) || isIsbn(v.barcode()));
+                            boolean missingDescription = p.description() == null || p.description().values().stream()
+                                    .noneMatch(v -> hasValue(v) && !v.replaceAll("(?s)<[^>]*>", "").replace("&nbsp;", " ").isBlank());
+                            boolean missingImage = p.images() == null || p.images().stream().noneMatch(i -> hasValue(i.src()));
+                            List<String> issues = new ArrayList<>();
+                            if (missingId) issues.add("MISSING_IDENTIFIER");
+                            if (missingDescription) issues.add("MISSING_SYNOPSIS");
+                            if (missingImage) issues.add("MISSING_COVER");
+                            return new com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse(
+                                    p.id(), displayName(p), Boolean.TRUE.equals(p.published()), missingId,
+                                    missingDescription, missingImage, issues);
+                        }).toList();
+        int from = (int) Math.min((long) results.size(), pageable.getOffset());
+        int to = (int) Math.min((long) results.size(), (long) from + pageable.getPageSize());
+        return new org.springframework.data.domain.PageImpl<>(results.subList(from, to), pageable, results.size());
+    }
+
     /** Auditoría de solo lectura: incluye productos no vinculados con el inventario. */
     public List<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse> auditPublicationQuality() {
         TiendanubeStore store = storeRepository.findByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Tiendanube no conectada"));
+        Set<Long> ignored = ignoredPublications.ignoredIds(bookstoreContext.getCurrentBookstoreId());
         return client.getProducts(store.getStoreId()).stream()
+                .filter(product -> !ignored.contains(product.id()))
                 .filter(product -> product.id() != null)
                 .map(product -> {
                     boolean missingIdentifier = product.variants() == null || product.variants().isEmpty()
@@ -193,7 +266,10 @@ public class TiendanubePublicationContentService {
         Set<String> dismissed = new HashSet<>(jdbcTemplate.query(
                 "SELECT product_id_low, product_id_high FROM tiendanube_duplicate_dismissals WHERE tiendanube_store_id = ?",
                 (rs, row) -> pairKey(rs.getLong(1), rs.getLong(2)), storeId));
-        List<TiendanubeProductResponse> products = client.getProducts(storeId);
+        Set<Long> ignored = ignoredPublications.ignoredIds(bookstoreContext.getCurrentBookstoreId());
+        List<TiendanubeProductResponse> products = client.getProducts(storeId).stream()
+                .filter(product -> product.id() != null && !ignored.contains(product.id()))
+                .toList();
         Map<String, List<TiendanubeProductResponse>> byIsbn = new LinkedHashMap<>();
         Map<String, List<TiendanubeProductResponse>> byTitle = new LinkedHashMap<>();
         for (TiendanubeProductResponse product : products) {

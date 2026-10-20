@@ -43,6 +43,21 @@ public class TiendanubeManagementController {
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeIgnoredPublicationService ignoredPublications;
     private final TiendanubePublicationContentService publicationContentService;
 
+    @GetMapping("/publications")
+    public PageResponse<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse>
+    searchPublications(@RequestParam(required = false) String q,
+                       @RequestParam(required = false) Boolean ignored,
+                       @PageableDefault(size = 25) Pageable pageable) {
+        return PageResponse.of(publicationContentService.searchPublications(q, ignored, pageable));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/publications/{productId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteUnlinkedPublication(@PathVariable Long productId,
+            @RequestParam String confirm) {
+        publicationContentService.deleteUnlinkedRemoteProduct(productId, confirm);
+    }
+
     @GetMapping("/publications/ignored")
     public java.util.List<Long> ignoredPublications() {
         return ignoredPublications.list();

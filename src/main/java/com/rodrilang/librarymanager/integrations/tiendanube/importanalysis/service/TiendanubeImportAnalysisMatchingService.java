@@ -23,6 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TiendanubeImportAnalysisMatchingService {
 
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeIgnoredPublicationService ignoredPublications;
     private final TiendanubeImportAnalysisContextService contextService;
     private final TiendanubeImportAnalysisIdentifierService identifierService;
     private final TiendanubeImportAnalysisTextMatcher textMatcher;
@@ -34,10 +35,16 @@ public class TiendanubeImportAnalysisMatchingService {
             Long storeId,
             List<TiendanubeProductResponse> products
     ) {
-        TiendanubeImportAnalysisMatchContext context = contextService.build(bookstoreId, storeId, products);
+        // Ignore entire products (all variants) persistently for this bookstore.
+        // A linked item is intentionally not deleted or unlinked here.
+        java.util.Set<Long> ignored = ignoredPublications.ignoredIds(bookstoreId);
+        List<TiendanubeProductResponse> eligible = products.stream()
+                .filter(p -> p.id() != null && !ignored.contains(p.id()))
+                .toList();
+        TiendanubeImportAnalysisMatchContext context = contextService.build(bookstoreId, storeId, eligible);
         List<TiendanubeImportAnalysisItemData> result = new ArrayList<>();
 
-        for (TiendanubeProductResponse product : products) {
+        for (TiendanubeProductResponse product : eligible) {
             if (product.variants() == null || product.variants().isEmpty()) {
                 continue;
             }
