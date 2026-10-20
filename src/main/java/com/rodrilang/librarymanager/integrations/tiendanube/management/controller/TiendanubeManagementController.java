@@ -40,7 +40,25 @@ public class TiendanubeManagementController {
 
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationCorrectionService corrections;
     private final TiendanubeManagementService managementService;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeIgnoredPublicationService ignoredPublications;
     private final TiendanubePublicationContentService publicationContentService;
+
+    @GetMapping("/publications/ignored")
+    public java.util.List<Long> ignoredPublications() {
+        return ignoredPublications.list();
+    }
+
+    @PutMapping("/publications/{productId}/ignored")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void ignorePublication(@PathVariable long productId) {
+        ignoredPublications.ignore(productId);
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/publications/{productId}/ignored")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void restorePublication(@PathVariable long productId) {
+        ignoredPublications.restore(productId);
+    }
 
     @GetMapping("/publications/{productId}")
     public TiendanubePublicationContentResponse getRemotePublication(@PathVariable Long productId) {
