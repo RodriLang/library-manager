@@ -114,14 +114,18 @@ public class BookstorePriceListFormatService {
         entity.setActive(false);
     }
 
+    @Transactional(readOnly = true)
+    public Provider resolveImportProvider(Long providerId) {
+        return providerAccessService.requireUsableByBookstore(providerId, bookstoreContext.getCurrentBookstoreId());
+    }
+
     @Transactional
     public BookstorePriceListFormat getForCurrentBookstore(Long id) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         ensureStandard(bookstoreId);
         BookstorePriceListFormat format = getEntity(id, bookstoreId);
-        if (format.getProvider() != null) {
-            providerAccessService.requireUsableByBookstore(format.getProvider().getId(), bookstoreId);
-        }
+        // Un formato describe columnas: no exige trabajar con su proveedor original.
+        // La autorización del proveedor seleccionado se valida al iniciar la importación.
         return format;
     }
 

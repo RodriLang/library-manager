@@ -29,6 +29,7 @@ import com.rodrilang.librarymanager.isbn.service.CanonicalIsbnResolver;
 import com.rodrilang.librarymanager.model.Author;
 import com.rodrilang.librarymanager.model.Bookstore;
 import com.rodrilang.librarymanager.model.Inventory;
+import com.rodrilang.librarymanager.provider.model.Provider;
 import com.rodrilang.librarymanager.repository.BookstoreRepository;
 import com.rodrilang.librarymanager.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -84,12 +85,27 @@ public class InventoryPriceImportService {
             LocalDate effectiveFrom,
             MultipartFile file
     ) {
+        return startPreview(formatId, sourceName, effectiveFrom, file, null, true);
+    }
+
+    /**
+     * La procedencia pertenece a cada importación, no a la estructura del archivo.
+     * useFormatProvider mantiene compatibilidad con clientes anteriores.
+     */
+    @Transactional
+    public InventoryPriceImportPreviewStartResponse startPreview(
+            Long formatId, String sourceName, LocalDate effectiveFrom, MultipartFile file,
+            Long providerId, boolean useFormatProvider
+    ) {
         validateEffectiveFrom(effectiveFrom);
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         Bookstore bookstore = bookstoreRepository.findById(bookstoreId)
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontró la librería seleccionada."));
         BookstorePriceListFormat format = formatService.getForCurrentBookstore(formatId);
+        Provider importProvider = providerId != null
+                ? formatService.resolveImportProvider(providerId)
+                : useFormatProvider ? format.getProvider() : null;
 
         Path source = fileStorage.store(file);
         try {
@@ -97,8 +113,8 @@ public class InventoryPriceImportService {
             InventoryPriceImport priceImport = importRepository.save(InventoryPriceImport.builder()
                     .bookstore(bookstore)
                     .format(format)
-                    .provider(format.getProvider())
-                    .sourceName(resolveSourceName(sourceName, format))
+                    .provider(importProvider)
+                    .sourceName(resolveSourceName(sourceName, importProvider))
                     .originalFilename(resolveFilename(file))
                     .effectiveFrom(effectiveFrom)
                     .status(InventoryPriceImportStatus.PREVIEW_PROCESSING)
@@ -147,7 +163,7 @@ public class InventoryPriceImportService {
 
         log.info("PRICE IMPORT PREVIEW START importId={} bookstoreId={} formatId={} providerId={} effectiveFrom={} fileBytes={}",
                 importId, bookstoreId, format.getId(),
-                format.getProvider() == null ? null : format.getProvider().getId(),
+                priceImport.getProvider() == null ? null : priceImport.getProvider().getId(),
                 priceImport.getEffectiveFrom(), safePreviewFileSize(source));
 
         long phaseStarted = System.nanoTime();
@@ -194,7 +210,7 @@ public class InventoryPriceImportService {
 
                     MatchResult match = match(row, matchIndex);
                     Long matchedBookId = match.inventory() != null ? match.inventory().getBook().getId() : null;
-                    if (format.getProvider() != null) {
+                    if (priceImport.getProvider() != null) {
                         providerRows.add(toStagedProviderRow(row, matchedBookId));
                     }
                     if (match.inventory() == null) {
@@ -291,7 +307,7 @@ public class InventoryPriceImportService {
             priceImport.setStatus(InventoryPriceImportStatus.PREVIEW_READY);
             priceImport.setProcessingFinishedAt(Instant.now());
             priceImport.setProcessingError(null);
-            if (format.getProvider() != null && !providerRows.isEmpty()) {
+            if (priceImport.getProvider() != null && !providerRows.isEmpty()) {
                 log.info("PRICE IMPORT PREVIEW CATALOG JOB START importId={} providerRows={}", importId, providerRows.size());
                 jobService.ensureProviderCatalogSync(importId, providerRows.size());
                 log.info("PRICE IMPORT PREVIEW CATALOG JOB READY importId={}", importId);
@@ -1110,13 +1126,13 @@ public class InventoryPriceImportService {
         return value == null || value.isBlank();
     }
 
-    private String resolveSourceName(String value, BookstorePriceListFormat format) {
+    private String resolveSourceName(String value, Provider provider) {
         String normalized = normalizeSourceName(value);
         if (normalized != null) {
             return normalized;
         }
-        return format != null && format.getProvider() != null
-                ? normalizeSourceName(format.getProvider().getName())
+        return provider != null
+                ? normalizeSourceName(provider.getName())
                 : null;
     }
 

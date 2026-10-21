@@ -56,10 +56,10 @@ class TiendanubePublishJobHandlerTest {
     private TiendanubePublicationSyncService publicationSyncService;
 
     @Mock
-    private TiendanubePublicationTemplateService publicationTemplateService;
+    private TiendanubeClient client;
 
     @Mock
-    private TiendanubeClient client;
+    private TiendanubePublicationTemplateService publicationTemplateService;
 
     @Mock
     private TiendanubePublicationSnapshot publicationSnapshot;
@@ -82,7 +82,8 @@ class TiendanubePublishJobHandlerTest {
 
     @Test
     void createsProductWithoutImagesAndThenCompletesPublicationSync() {
-        mockDisabledPublicationTemplate();
+        when(publicationTemplateService.get(10L))
+                .thenReturn(new TiendanubePublicationTemplateResponse(false, null, false));
         TiendanubePublishSnapshot snapshot = snapshot();
         TiendanubeProductResponse created = product(50L, 60L, "9789500000001");
         when(dataService.preparePublish(4L, 3L)).thenReturn(Optional.of(snapshot));
@@ -116,12 +117,7 @@ class TiendanubePublishJobHandlerTest {
 
     private TiendanubePublishJobHandler handler() {
         return new TiendanubePublishJobHandler(
-                connectionGuard,
-                dataService,
-                resultService,
-                matchingService,
-                publicationSyncService,
-                client,
+                connectionGuard, dataService, resultService, matchingService, publicationSyncService, client,
                 publicationTemplateService
         );
     }
@@ -158,14 +154,5 @@ class TiendanubePublishJobHandlerTest {
         return new TiendanubeProductResponse(
                 productId, Map.of("es", "Libro - Autor"), Map.of(), true, List.of(variant), List.of()
         );
-    }
-
-    private void mockDisabledPublicationTemplate() {
-        when(publicationTemplateService.get(10L))
-                .thenReturn(new TiendanubePublicationTemplateResponse(
-                        false,
-                        null,
-                        false
-                ));
     }
 }
