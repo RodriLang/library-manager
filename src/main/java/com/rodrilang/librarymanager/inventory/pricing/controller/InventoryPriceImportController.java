@@ -102,6 +102,12 @@ public class InventoryPriceImportController {
         return jobService.retry(importId, type);
     }
 
+    @PostMapping("/{importId}/finalize-no-changes")
+    public ResponseEntity<Void> finalizeNoChanges(@PathVariable Long importId) {
+        service.finalizeWithoutInventoryChanges(importId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{importId}/cancel")
     public ResponseEntity<Void> cancel(@PathVariable Long importId) {
         service.cancel(importId);

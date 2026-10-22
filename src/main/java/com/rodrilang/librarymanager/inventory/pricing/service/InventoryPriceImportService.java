@@ -444,6 +444,30 @@ public class InventoryPriceImportService {
                 .toList();
     }
 
+    /** Close an analyzed list without applying inventory prices. A completed provider catalog sync remains untouched. */
+    @Transactional
+    public void finalizeWithoutInventoryChanges(Long importId) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        InventoryPriceImport priceImport = importRepository.findByIdAndBookstoreIdForUpdate(importId, bookstoreId)
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró la importación solicitada."));
+        if (priceImport.getStatus() == InventoryPriceImportStatus.FINALIZED_NO_CHANGES) {
+            return; // Idempotent for double clicks and retries.
+        }
+        if (priceImport.getStatus() != InventoryPriceImportStatus.PREVIEW_READY) {
+            throw new BusinessException("Solo se puede finalizar una importación pendiente de aplicación.");
+        }
+        if (priceImport.getMatchedRows() != 0) {
+            throw new BusinessException("Hay coincidencias con el inventario: revisá los precios antes de finalizar.");
+        }
+        List<InventoryPriceImportJobResponse> jobs = jobService.list(importId);
+        if (jobs.stream().anyMatch(job -> job.status() != InventoryPriceImportJobStatus.COMPLETED)) {
+            throw new BusinessException("Hay tareas del proveedor pendientes o con errores. Revisalas antes de finalizar.");
+        }
+        priceImport.setStatus(InventoryPriceImportStatus.FINALIZED_NO_CHANGES);
+        priceImport.setProcessingFinishedAt(Instant.now());
+        priceImport.setAppliedRows(0);
+    }
+
     @Transactional
     public void cancel(Long importId) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
