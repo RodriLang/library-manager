@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import com.rodrilang.librarymanager.importer.price.configuration.parser.StreamingExcelDataFormatter;
 import org.apache.poi.util.XMLHelper;
 import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
 import org.apache.poi.xssf.eventusermodel.XSSFReader;
@@ -67,7 +68,7 @@ public class StreamingPriceListWorkbookReader {
                     new ReadOnlySharedStringsTable(opcPackage);
 
             DataFormatter formatter =
-                    new DataFormatter(
+                    new StreamingExcelDataFormatter(
                             Locale.forLanguageTag("es-AR")
                     );
 
