@@ -25,8 +25,17 @@ import java.time.LocalDate;
 public class InventoryPriceImportController {
 
     private final InventoryPriceImportService service;
+    private final com.rodrilang.librarymanager.inventory.pricing.service.PriceImportProviderSuggestionService providerSuggestionService;
     private final InventoryPriceImportApplyService applyService;
     private final InventoryPriceImportJobService jobService;
+
+    @GetMapping("/provider-suggestions")
+    public com.rodrilang.librarymanager.inventory.pricing.service.PriceImportProviderSuggestionService.Suggestions providerSuggestions(
+            @RequestParam(required = false) Long formatId,
+            @RequestParam(required = false) String filename
+    ) {
+        return providerSuggestionService.suggest(formatId, filename);
+    }
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<InventoryPriceImportPreviewStartResponse> preview(

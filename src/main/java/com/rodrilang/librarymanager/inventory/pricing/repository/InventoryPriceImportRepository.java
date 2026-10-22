@@ -21,6 +21,9 @@ import java.util.Optional;
 
 public interface InventoryPriceImportRepository extends JpaRepository<InventoryPriceImport, Long> {
     @EntityGraph(attributePaths = {"format", "provider"})
+    List<InventoryPriceImport> findTop100ByBookstoreIdAndProviderIsNotNullOrderByCreatedAtDesc(Long bookstoreId);
+
+    @EntityGraph(attributePaths = {"format", "provider"})
     Page<InventoryPriceImport> findAllByBookstoreIdOrderByCreatedAtDesc(Long bookstoreId, Pageable pageable);
 
     @EntityGraph(attributePaths = {"format", "provider"})
