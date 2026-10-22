@@ -34,10 +34,11 @@ public class InventoryPriceImportController {
             @RequestParam(required = false) String sourceName,
             @RequestParam(required = false) Long providerId,
             @RequestParam(defaultValue = "true") boolean useFormatProvider,
+            @RequestParam(defaultValue = "true") boolean syncProviderCatalog,
             @RequestParam LocalDate effectiveFrom,
             @RequestParam MultipartFile file
     ) {
-        return ResponseEntity.accepted().body(service.startPreview(formatId, sourceName, effectiveFrom, file, providerId, useFormatProvider));
+        return ResponseEntity.accepted().body(service.startPreview(formatId, sourceName, effectiveFrom, file, providerId, useFormatProvider, syncProviderCatalog));
     }
 
     @PostMapping("/{importId}/duplicates/{inventoryId}/resolve")

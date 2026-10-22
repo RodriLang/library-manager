@@ -34,6 +34,10 @@ public class InventoryPriceImport extends AuditableEntity {
     @JoinColumn(name = "provider_id")
     private Provider provider;
 
+    @Column(name = "sync_provider_catalog", nullable = false)
+    @Builder.Default
+    private boolean syncProviderCatalog = true;
+
     @Column(name = "source_name", length = 150)
     private String sourceName;
 

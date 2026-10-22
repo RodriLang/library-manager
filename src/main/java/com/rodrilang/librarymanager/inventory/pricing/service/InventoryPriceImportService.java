@@ -97,6 +97,14 @@ public class InventoryPriceImportService {
             Long formatId, String sourceName, LocalDate effectiveFrom, MultipartFile file,
             Long providerId, boolean useFormatProvider
     ) {
+        return startPreview(formatId, sourceName, effectiveFrom, file, providerId, useFormatProvider, true);
+    }
+
+    @Transactional
+    public InventoryPriceImportPreviewStartResponse startPreview(
+            Long formatId, String sourceName, LocalDate effectiveFrom, MultipartFile file,
+            Long providerId, boolean useFormatProvider, boolean syncProviderCatalog
+    ) {
         validateEffectiveFrom(effectiveFrom);
 
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
@@ -114,6 +122,7 @@ public class InventoryPriceImportService {
                     .bookstore(bookstore)
                     .format(format)
                     .provider(importProvider)
+                    .syncProviderCatalog(syncProviderCatalog && importProvider != null)
                     .sourceName(resolveSourceName(sourceName, importProvider))
                     .originalFilename(resolveFilename(file))
                     .effectiveFrom(effectiveFrom)
@@ -307,7 +316,7 @@ public class InventoryPriceImportService {
             priceImport.setStatus(InventoryPriceImportStatus.PREVIEW_READY);
             priceImport.setProcessingFinishedAt(Instant.now());
             priceImport.setProcessingError(null);
-            if (priceImport.getProvider() != null && !providerRows.isEmpty()) {
+            if (priceImport.isSyncProviderCatalog() && priceImport.getProvider() != null && !providerRows.isEmpty()) {
                 log.info("PRICE IMPORT PREVIEW CATALOG JOB START importId={} providerRows={}", importId, providerRows.size());
                 jobService.ensureProviderCatalogSync(importId, providerRows.size());
                 log.info("PRICE IMPORT PREVIEW CATALOG JOB READY importId={}", importId);
