@@ -30,7 +30,8 @@ public class InventoryPriceImportController {
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<InventoryPriceImportPreviewStartResponse> preview(
-            @RequestParam Long formatId,
+            @RequestParam(required = false) Long formatId,
+            @RequestParam(required = false) String mapping,
             @RequestParam(required = false) String sourceName,
             @RequestParam(required = false) Long providerId,
             @RequestParam(defaultValue = "true") boolean useFormatProvider,
@@ -38,7 +39,15 @@ public class InventoryPriceImportController {
             @RequestParam LocalDate effectiveFrom,
             @RequestParam MultipartFile file
     ) {
-        return ResponseEntity.accepted().body(service.startPreview(formatId, sourceName, effectiveFrom, file, providerId, useFormatProvider, syncProviderCatalog));
+        BookstorePriceListFormatRequest temporaryMapping = null;
+        if (mapping != null && !mapping.isBlank()) {
+            try {
+                temporaryMapping = new com.fasterxml.jackson.databind.ObjectMapper().readValue(mapping, BookstorePriceListFormatRequest.class);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new com.rodrilang.librarymanager.exception.BusinessException("La correspondencia de columnas no es válida.");
+            }
+        }
+        return ResponseEntity.accepted().body(service.startPreviewWithMapping(formatId, temporaryMapping, sourceName, effectiveFrom, file, providerId, useFormatProvider, syncProviderCatalog));
     }
 
     @PostMapping("/{importId}/duplicates/{inventoryId}/resolve")

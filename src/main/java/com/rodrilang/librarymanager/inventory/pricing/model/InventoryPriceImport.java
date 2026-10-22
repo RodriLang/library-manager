@@ -30,6 +30,9 @@ public class InventoryPriceImport extends AuditableEntity {
     @JoinColumn(name = "format_id")
     private BookstorePriceListFormat format;
 
+    @Column(name = "mapping_snapshot", columnDefinition = "TEXT")
+    private String mappingSnapshot;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "provider_id")
     private Provider provider;
