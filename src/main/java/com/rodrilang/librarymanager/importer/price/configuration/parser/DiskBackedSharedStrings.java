@@ -16,6 +16,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Streams the XLSX shared-string table to a temporary random-access file.
@@ -23,11 +27,25 @@ import java.util.Arrays;
  * Must be closed after the sheet parser finishes.
  */
 final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(DiskBackedSharedStrings.class);
     private static final int MAX_STRING_CHARS = 1_048_576;
+    // Strict heap budget: cache only small strings, never the entire XLSX dictionary.
+    private static final int CACHE_MAX_ENTRIES = 1024;
+    private static final long CACHE_MAX_BYTES = 2L * 1024 * 1024;
+    private static final int CACHE_MAX_VALUE_CHARS = 8192;
     private final Path path;
     private final RandomAccessFile file;
     private long[] offsets = new long[4096];
     private int count;
+    private final LinkedHashMap<Integer, String> cache = new LinkedHashMap<>(128, .75f, true);
+    private long cachedBytes;
+    private long cacheHits;
+    private long cacheMisses;
+    private long diskReadNanos;
+    private long diskReads;
+    private long bytesRead;
+    private long oversizedValues;
+    private long evictions;
 
     private DiskBackedSharedStrings(Path path, RandomAccessFile file) {
         this.path = path;
@@ -94,15 +112,54 @@ final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
 
     @Override public synchronized RichTextString getItemAt(int index) {
         if (index < 0 || index >= count) throw new IndexOutOfBoundsException("Shared string index " + index);
+        String value = cache.get(index);
+        if (value != null) {
+            cacheHits++;
+            return new XSSFRichTextString(value);
+        }
+        cacheMisses++;
+        long started = System.nanoTime();
         try {
             file.seek(offsets[index]);
             int length = file.readInt();
             if (length < 0 || length > MAX_STRING_CHARS * 4) throw new IOException("Invalid shared string length");
             byte[] bytes = new byte[length];
             file.readFully(bytes);
-            return new XSSFRichTextString(new String(bytes, StandardCharsets.UTF_8));
+            value = new String(bytes, StandardCharsets.UTF_8);
+            diskReads++;
+            bytesRead += length;
+            if (value.length() <= CACHE_MAX_VALUE_CHARS) {
+                long weight = (long) value.length() * 2L;
+                while (!cache.isEmpty() && (cache.size() >= CACHE_MAX_ENTRIES || cachedBytes + weight > CACHE_MAX_BYTES)) {
+                    Map.Entry<Integer, String> eldest = cache.entrySet().iterator().next();
+                    cachedBytes -= (long) eldest.getValue().length() * 2L;
+                    cache.remove(eldest.getKey());
+                    evictions++;
+                }
+                if (weight <= CACHE_MAX_BYTES) {
+                    cache.put(index, value);
+                    cachedBytes += weight;
+                }
+            } else {
+                oversizedValues++;
+            }
+            return new XSSFRichTextString(value);
         } catch (IOException exception) {
             throw new IllegalStateException("No se pudo leer una cadena del Excel.", exception);
+        } finally {
+            diskReadNanos += System.nanoTime() - started;
+        }
+    }
+
+    synchronized Stats stats() {
+        return new Stats(cacheHits, cacheMisses, diskReads, bytesRead,
+                diskReadNanos / 1_000_000L, cache.size(), cachedBytes, evictions, oversizedValues);
+    }
+
+    record Stats(long hits, long misses, long diskReads, long bytesRead,
+                 long diskReadMs, int entries, long cacheBytes, long evictions, long oversizedValues) {
+        long hitPercent() {
+            return hits + misses == 0 ? 0 : (100 * hits / (hits + misses));
         }
     }
 
@@ -110,6 +167,10 @@ final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
     @Override public int getUniqueCount() { return count; }
 
     @Override public void close() throws IOException {
+        Stats result = stats();
+        log.info("PRICE LIST PARSER SST STATS entries={} cacheHits={} cacheMisses={} hitPercent={} diskReads={} bytesRead={} diskReadMs={} cacheEntries={} cacheBytes={} evictions={} oversizedValues={}",
+                count, result.hits(), result.misses(), result.hitPercent(), result.diskReads(), result.bytesRead(),
+                result.diskReadMs(), result.entries(), result.cacheBytes(), result.evictions(), result.oversizedValues());
         try { file.close(); } finally { Files.deleteIfExists(path); }
     }
 }
