@@ -361,8 +361,10 @@ public class InventoryPriceImportService {
                 NormalizedPriceListStorage.StoredRawFile stored = normalizedStorage.upload(bookstoreId, normalizedFile);
                 priceImport.setNormalizedFilePublicId(stored.publicId());
                 priceImport.setNormalizedFileUrl(stored.secureUrl());
+                log.info("PRICE IMPORT PREVIEW BACKUP importId={} status=STORED format=csv.gz", importId);
             } catch (RuntimeException storageException) {
-                log.warn("No se pudo guardar la copia normalizada de la lista {}", priceImport.getId(), storageException);
+                log.warn("PRICE IMPORT PREVIEW BACKUP importId={} status=FAILED (preview continues): {}",
+                        importId, storageException.getMessage(), storageException);
             }
             logPreviewPhase(importId, "upload-normalized", phaseStarted, "");
 
