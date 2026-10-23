@@ -9,7 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.util.XMLHelper;
-import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
+import org.apache.poi.xssf.model.SharedStrings;
 import org.apache.poi.xssf.eventusermodel.XSSFReader;
 import org.apache.poi.xssf.eventusermodel.XSSFSheetXMLHandler;
 import org.apache.poi.xssf.model.StylesTable;
@@ -48,8 +48,9 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
 
             StylesTable styles = reader.getStylesTable();
 
-            ReadOnlySharedStringsTable sharedStrings =
-                    new ReadOnlySharedStringsTable(opcPackage);
+            log.info("PRICE LIST PARSER SST ENGINE=DISK_BACKED_V1");
+            try (InputStream stringsStream = reader.getSharedStringsData();
+                 DiskBackedSharedStrings sharedStrings = DiskBackedSharedStrings.load(stringsStream)) {
 
             log.info("PRICE LIST PARSER SETUP DONE timeMs={}", millisSince(setupStarted));
 
@@ -112,6 +113,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
                 );
             }
 
+            } // Close and delete the temporary shared-string index.
         } catch (BusinessException exception) {
             log.warn("PRICE LIST PARSER FAILED totalMs={} errorType={}", millisSince(overallStarted),
                     exception.getClass().getSimpleName());
@@ -141,7 +143,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
 
     private void parseSheetFast(
             InputStream sheetStream,
-            ReadOnlySharedStringsTable sharedStrings,
+            SharedStrings sharedStrings,
             PriceListImportConfig config,
             Consumer<PriceListRow> consumer
     ) throws Exception {
@@ -182,7 +184,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
     private void parseSheet(
             InputStream sheetStream,
             StylesTable styles,
-            ReadOnlySharedStringsTable sharedStrings,
+            SharedStrings sharedStrings,
             PriceListImportConfig config,
             Consumer<PriceListRow> consumer
     ) throws Exception {

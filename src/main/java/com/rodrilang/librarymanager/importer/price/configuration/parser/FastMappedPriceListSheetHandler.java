@@ -3,7 +3,7 @@ package com.rodrilang.librarymanager.importer.price.configuration.parser;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
-import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
+import org.apache.poi.xssf.model.SharedStrings;
 import lombok.extern.slf4j.Slf4j;
 import org.xml.sax.Attributes;
 import org.xml.sax.helpers.DefaultHandler;
@@ -28,7 +28,7 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
     private final PriceListImportConfig config;
     private final ConfigurableStreamingRowMapper rowMapper;
     private final Consumer<PriceListRow> consumer;
-    private final ReadOnlySharedStringsTable sharedStrings;
+    private final SharedStrings sharedStrings;
     private final BitSet selectedColumns;
     private final int maxSelectedColumn;
 
@@ -54,7 +54,7 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
             PriceListImportConfig config,
             ConfigurableStreamingRowMapper rowMapper,
             Consumer<PriceListRow> consumer,
-            ReadOnlySharedStringsTable sharedStrings
+            SharedStrings sharedStrings
     ) {
         this.config = config;
         this.rowMapper = rowMapper;
