@@ -212,6 +212,9 @@ public class InventoryPriceImportService {
         AtomicInteger total = new AtomicInteger();
         AtomicInteger matched = new AtomicInteger();
         AtomicInteger unmatched = new AtomicInteger();
+        // Per-preview, single parser thread: no per-row logging or shared metrics.
+        final long[] rowPhaseNanos = new long[5]; // csv, match, stage, classify, duplicate
+        final long[] rowPhaseCounts = new long[5];
 
         Path normalizedFile = null;
         try {
@@ -227,12 +230,31 @@ public class InventoryPriceImportService {
                         return;
                     }
                     total.incrementAndGet();
-                    writeNormalized(writer, row);
+                    long rowPhaseStarted = System.nanoTime();
+                    try {
+                        writeNormalized(writer, row);
+                    } finally {
+                        rowPhaseNanos[0] += System.nanoTime() - rowPhaseStarted;
+                        rowPhaseCounts[0]++;
+                    }
 
-                    MatchResult match = match(row, matchIndex);
+                    rowPhaseStarted = System.nanoTime();
+                    MatchResult match;
+                    try {
+                        match = match(row, matchIndex);
+                    } finally {
+                        rowPhaseNanos[1] += System.nanoTime() - rowPhaseStarted;
+                        rowPhaseCounts[1]++;
+                    }
                     Long matchedBookId = match.inventory() != null ? match.inventory().getBook().getId() : null;
                     if (priceImport.getProvider() != null) {
-                        providerRows.add(toStagedProviderRow(row, matchedBookId));
+                        rowPhaseStarted = System.nanoTime();
+                        try {
+                            providerRows.add(toStagedProviderRow(row, matchedBookId));
+                        } finally {
+                            rowPhaseNanos[2] += System.nanoTime() - rowPhaseStarted;
+                            rowPhaseCounts[2]++;
+                        }
                     }
                     if (match.inventory() == null) {
                         if (match.ambiguous()) {
@@ -246,14 +268,23 @@ public class InventoryPriceImportService {
 
                     matched.incrementAndGet();
                     Inventory inventory = match.inventory();
-                    InventoryPriceImportItem item = classify(
-                            priceImport,
-                            inventory,
-                            row,
-                            applicationDate,
-                            currentPrices.get(inventory.getId()),
-                            scheduledPrices.get(inventory.getId())
-                    );
+                    rowPhaseStarted = System.nanoTime();
+                    InventoryPriceImportItem item;
+                    try {
+                        item = classify(
+                                priceImport,
+                                inventory,
+                                row,
+                                applicationDate,
+                                currentPrices.get(inventory.getId()),
+                                scheduledPrices.get(inventory.getId())
+                        );
+                    } finally {
+                        rowPhaseNanos[3] += System.nanoTime() - rowPhaseStarted;
+                        rowPhaseCounts[3]++;
+                    }
+                    rowPhaseStarted = System.nanoTime();
+                    try {
 
                     String duplicateKey = duplicateKey(row, inventory);
                     List<InventoryPriceImportItem> existingItems =
@@ -279,8 +310,18 @@ public class InventoryPriceImportService {
 
                     existingItems.add(item);
                     items.add(item);
+                    } finally {
+                        rowPhaseNanos[4] += System.nanoTime() - rowPhaseStarted;
+                        rowPhaseCounts[4]++;
+                    }
                 });
             }
+            log.info("PRICE IMPORT PREVIEW ROW PROFILE importId={} rows={} normalizedMs={} normalizedCount={} matchMs={} matchCount={} providerStageMs={} providerStageCount={} classifyMs={} classifyCount={} duplicateMs={} duplicateCount={} (exclusive nested callback phases)",
+                    importId, total.get(), rowPhaseNanos[0] / 1_000_000L, rowPhaseCounts[0],
+                    rowPhaseNanos[1] / 1_000_000L, rowPhaseCounts[1],
+                    rowPhaseNanos[2] / 1_000_000L, rowPhaseCounts[2],
+                    rowPhaseNanos[3] / 1_000_000L, rowPhaseCounts[3],
+                    rowPhaseNanos[4] / 1_000_000L, rowPhaseCounts[4]);
             logPreviewPhase(
                     importId,
                     "parse-match-classify",

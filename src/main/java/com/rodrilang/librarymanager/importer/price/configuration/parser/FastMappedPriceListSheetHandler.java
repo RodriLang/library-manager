@@ -34,6 +34,10 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
 
     private long emittedRows;
     private long callbackNanos;
+    private long mappingNanos;
+    private long consumerNanos;
+    private long decodeNanos;
+    private long decodedCells;
     private final long startedNanos = System.nanoTime();
 
     private List<String> currentCells;
@@ -156,7 +160,13 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
 
     private void endCell() {
         if (selectedCell) {
-            currentCells.set(currentColumnIndex, decodeCellValue());
+            long decodeStarted = System.nanoTime();
+            try {
+                currentCells.set(currentColumnIndex, decodeCellValue());
+            } finally {
+                decodeNanos += System.nanoTime() - decodeStarted;
+                decodedCells++;
+            }
         }
         currentColumnIndex = -1;
         currentCellType = null;
@@ -171,23 +181,35 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
         }
         long callbackStarted = System.nanoTime();
         try {
-            consumer.accept(rowMapper.map(currentRowIndex, currentCells, config));
+            long mappingStarted = System.nanoTime();
+            PriceListRow row = rowMapper.map(currentRowIndex, currentCells, config);
+            mappingNanos += System.nanoTime() - mappingStarted;
+            long consumerStarted = System.nanoTime();
+            try {
+                consumer.accept(row);
+            } finally {
+                consumerNanos += System.nanoTime() - consumerStarted;
+            }
         } finally {
             callbackNanos += System.nanoTime() - callbackStarted;
             emittedRows++;
             if (emittedRows % 5_000 == 0) {
-                log.info("PRICE LIST PARSER PROGRESS mode=FAST_SAX rows={} elapsedMs={} callbackMs={} rowIndex={}",
+                log.info("PRICE LIST PARSER PROGRESS mode=FAST_SAX rows={} elapsedMs={} callbackMs={} mappingMs={} consumerMs={} decodeMs={} decodedCells={} rowIndex={}",
                         emittedRows, (System.nanoTime() - startedNanos) / 1_000_000L,
-                        callbackNanos / 1_000_000L, currentRowIndex);
+                        callbackNanos / 1_000_000L, mappingNanos / 1_000_000L,
+                        consumerNanos / 1_000_000L, decodeNanos / 1_000_000L, decodedCells, currentRowIndex);
             }
         }
     }
 
     @Override
     public void endDocument() {
-        log.info("PRICE LIST PARSER ROWS DONE mode=FAST_SAX rows={} elapsedMs={} callbackMs={}",
-                emittedRows, (System.nanoTime() - startedNanos) / 1_000_000L,
-                callbackNanos / 1_000_000L);
+        long elapsed = System.nanoTime() - startedNanos;
+        log.info("PRICE LIST PARSER ROWS DONE mode=FAST_SAX rows={} elapsedMs={} callbackMs={} mappingMs={} consumerMs={} decodeMs={} otherSaxMs={} decodedCells={}",
+                emittedRows, elapsed / 1_000_000L,
+                callbackNanos / 1_000_000L, mappingNanos / 1_000_000L,
+                consumerNanos / 1_000_000L, decodeNanos / 1_000_000L,
+                Math.max(0L, (elapsed - callbackNanos - decodeNanos)) / 1_000_000L, decodedCells);
     }
 
     private String decodeCellValue() {

@@ -12,6 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.LongAdder;
 
 @Repository
 @RequiredArgsConstructor
@@ -28,6 +29,9 @@ public class InventoryPriceImportProviderRowJdbcRepository {
         log.info("PRICE IMPORT STAGING INSERT START importId={} rows={} batchSize={}",
                 importId, rows.size(), INSERT_BATCH_SIZE);
         Timestamp createdAt = Timestamp.from(Instant.now());
+        LongAdder bindingNanos = new LongAdder();
+        LongAdder boundRows = new LongAdder();
+        long jdbcStarted = System.nanoTime();
         jdbcTemplate.batchUpdate("""
                 INSERT INTO inventory_price_import_provider_rows
                     (import_id, row_number, isbn, title, author, publisher, incoming_price, external_code, book_id, created_at)
@@ -40,9 +44,21 @@ public class InventoryPriceImportProviderRowJdbcRepository {
                     incoming_price = EXCLUDED.incoming_price,
                     external_code = EXCLUDED.external_code,
                     book_id = COALESCE(EXCLUDED.book_id, inventory_price_import_provider_rows.book_id)
-                """, rows, INSERT_BATCH_SIZE, (ps, row) -> bindInsert(ps, importId, row, createdAt));
-        log.info("PRICE IMPORT STAGING INSERT DONE importId={} rows={} timeMs={}",
-                importId, rows.size(), (System.nanoTime() - started) / 1_000_000L);
+                """, rows, INSERT_BATCH_SIZE, (ps, row) -> {
+            long bindStarted = System.nanoTime();
+            try {
+                bindInsert(ps, importId, row, createdAt);
+            } finally {
+                bindingNanos.add(System.nanoTime() - bindStarted);
+                boundRows.increment();
+            }
+        });
+        long jdbcNanos = System.nanoTime() - jdbcStarted;
+        log.info("PRICE IMPORT STAGING INSERT DONE importId={} rows={} batchesApprox={} timeMs={} jdbcTotalMs={} bindMs={} dbAndDriverMs={} boundRows={}",
+                importId, rows.size(), (rows.size() + INSERT_BATCH_SIZE - 1) / INSERT_BATCH_SIZE,
+                (System.nanoTime() - started) / 1_000_000L, jdbcNanos / 1_000_000L,
+                bindingNanos.sum() / 1_000_000L,
+                Math.max(0L, jdbcNanos - bindingNanos.sum()) / 1_000_000L, boundRows.sum());
     }
 
     public List<StoredRow> findBatch(long importId, long afterId, int limit) {
