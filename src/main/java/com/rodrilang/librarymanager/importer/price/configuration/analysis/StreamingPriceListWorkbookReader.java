@@ -60,6 +60,10 @@ public class StreamingPriceListWorkbookReader {
                                 PackageAccess.READ
                         )
         ) {
+            log.info("PRICE LIST ANALYSIS ENGINE=SELECTIVE_SST_V2 fileBytes={} maxSheets={} maxPreviewRows={} maxColumns={}",
+                    java.nio.file.Files.size(filePath), properties.maxSheets(),
+                    properties.maxPreviewRows(), properties.maxColumns());
+
             XSSFReader reader =
                     new XSSFReader(opcPackage);
 
@@ -80,11 +84,13 @@ public class StreamingPriceListWorkbookReader {
                 }
                 sampledSheets++;
             }
+            log.info("PRICE LIST ANALYSIS INDEX COLLECTED sampledSheets={} referencedIndices={}",
+                    sampledSheets, neededStrings.size());
             SharedStrings sharedStrings;
             try (InputStream stringsStream = reader.getSharedStringsData()) {
                 sharedStrings = SampledSharedStrings.read(stringsStream, neededStrings);
             }
-            log.info("PRICE LIST ANALYSIS SHARED STRINGS sampledSheets={} requiredStrings={}",
+            log.info("PRICE LIST ANALYSIS SELECTIVE SST READY sampledSheets={} requiredStrings={}",
                     sampledSheets, neededStrings.size());
 
             DataFormatter formatter =

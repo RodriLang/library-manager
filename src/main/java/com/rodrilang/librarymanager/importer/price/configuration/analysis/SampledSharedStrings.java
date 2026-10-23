@@ -16,6 +16,7 @@ import java.util.Set;
 
 /** Only retains shared strings referenced by the bounded header preview. */
 final class SampledSharedStrings implements SharedStrings {
+    private static final int MAX_PREVIEW_STRING_CHARS = 16_384;
     private final Map<Integer, RichTextString> values;
 
     private SampledSharedStrings(Map<Integer, RichTextString> values) {
@@ -46,7 +47,9 @@ final class SampledSharedStrings implements SharedStrings {
                 }
             }
             @Override public void characters(char[] ch, int start, int length) {
-                if (inText && text != null) text.append(ch, start, length);
+                if (inText && text != null && text.length() < MAX_PREVIEW_STRING_CHARS) {
+                    text.append(ch, start, Math.min(length, MAX_PREVIEW_STRING_CHARS - text.length()));
+                }
             }
             @Override public void endElement(String uri, String local, String qName) {
                 String name = local.isEmpty() ? qName : local;

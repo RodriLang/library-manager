@@ -37,4 +37,15 @@ class SampledSharedStringsTest {
                 new ByteArrayInputStream(sheet.getBytes(StandardCharsets.UTF_8)), 1, 2);
         assertEquals(Set.of(17), indices);
     }
+    @Test
+    void ignoresLargeUnusedStringAndBoundsSelectedText() throws Exception {
+        String huge = "X".repeat(100_000);
+        String xml = "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                + "<si><t>" + huge + "</t></si><si><t>" + huge + "</t></si></sst>";
+        var result = SampledSharedStrings.read(
+                new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)), Set.of(1));
+        assertEquals(16_384, result.getItemAt(1).getString().length());
+        assertThrows(IllegalArgumentException.class, () -> result.getItemAt(0));
+    }
+
 }
