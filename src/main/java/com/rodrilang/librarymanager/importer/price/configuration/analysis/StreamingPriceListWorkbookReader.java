@@ -10,7 +10,7 @@ import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import com.rodrilang.librarymanager.importer.price.configuration.parser.StreamingExcelDataFormatter;
 import org.apache.poi.util.XMLHelper;
-import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
+import org.apache.poi.xssf.model.SharedStrings;
 import org.apache.poi.xssf.eventusermodel.XSSFReader;
 import org.apache.poi.xssf.eventusermodel.XSSFSheetXMLHandler;
 import org.apache.poi.xssf.model.StylesTable;
@@ -23,6 +23,8 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Locale;
 
 @Slf4j
@@ -64,8 +66,26 @@ public class StreamingPriceListWorkbookReader {
             StylesTable styles =
                     reader.getStylesTable();
 
-            ReadOnlySharedStringsTable sharedStrings =
-                    new ReadOnlySharedStringsTable(opcPackage);
+            // Two bounded sheet passes: find only the shared-string indices used by
+            // preview rows, then materialize only those strings. A full shared
+            // strings table can exhaust the heap for large supplier XLSX files.
+            Set<Integer> neededStrings = new HashSet<>();
+            XSSFReader.SheetIterator sampleIterator =
+                    (XSSFReader.SheetIterator) reader.getSheetsData();
+            int sampledSheets = 0;
+            while (sampleIterator.hasNext() && sampledSheets < properties.maxSheets()) {
+                try (InputStream sheet = sampleIterator.next()) {
+                    neededStrings.addAll(PreviewSharedStringIndexCollector.collect(
+                            sheet, properties.maxPreviewRows(), properties.maxColumns()));
+                }
+                sampledSheets++;
+            }
+            SharedStrings sharedStrings;
+            try (InputStream stringsStream = reader.getSharedStringsData()) {
+                sharedStrings = SampledSharedStrings.read(stringsStream, neededStrings);
+            }
+            log.info("PRICE LIST ANALYSIS SHARED STRINGS sampledSheets={} requiredStrings={}",
+                    sampledSheets, neededStrings.size());
 
             DataFormatter formatter =
                     new StreamingExcelDataFormatter(
@@ -132,7 +152,7 @@ public class StreamingPriceListWorkbookReader {
             String sheetName,
             InputStream sheetStream,
             StylesTable styles,
-            ReadOnlySharedStringsTable sharedStrings,
+            SharedStrings sharedStrings,
             DataFormatter formatter
     ) throws Exception {
 
