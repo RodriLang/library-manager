@@ -21,13 +21,21 @@ public class InventoryPriceImportPreviewListener {
     public void onPreviewRequested(InventoryPriceImportPreviewRequestedEvent event) {
         try {
             worker.process(event.importId(), event.sourcePath());
-        } catch (Exception exception) {
+        } catch (Throwable exception) {
             log.error(
                     "Failed to generate inventory price import preview importId={}",
                     event.importId(),
                     exception
             );
-            importService.markPreviewFailed(event.importId(), exception);
+            try {
+                importService.markPreviewFailed(event.importId(), exception);
+            } catch (Throwable statusFailure) {
+                log.error("Could not mark failed preview importId={}; stale-job recovery will handle it",
+                        event.importId(), statusFailure);
+            }
+            if (exception instanceof Error error) {
+                throw error;
+            }
         }
     }
 }

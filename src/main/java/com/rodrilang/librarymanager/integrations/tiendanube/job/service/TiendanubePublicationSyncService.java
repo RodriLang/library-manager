@@ -18,11 +18,15 @@ public class TiendanubePublicationSyncService {
     private final TiendanubeCoverSyncService coverSyncService;
     private final TiendanubeJobResultService resultService;
 
+
     public void sync(TiendanubePublicationSnapshot snapshot) {
         var linked = snapshot.linkedInventory();
 
         try {
-            client.updateProduct(linked.storeId(), linked.productId(), snapshot.productRequest());
+            // Descripciones editadas manualmente o generadas por la plantilla no se sobrescriben al sincronizar.
+            var metadata = snapshot.productRequest();
+            client.updateProduct(linked.storeId(), linked.productId(),
+                    new com.rodrilang.librarymanager.integrations.tiendanube.dto.request.TiendanubeUpdateProductRequest(metadata.name(), null));
             client.updateVariant(linked.storeId(), linked.productId(), linked.variantId(), linked.fullVariantRequest());
 
             TiendanubeCoverSyncResult cover = coverSyncService.sync(

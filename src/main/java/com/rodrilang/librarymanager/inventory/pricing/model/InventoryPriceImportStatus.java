@@ -5,6 +5,7 @@ public enum InventoryPriceImportStatus {
     PREVIEW_READY,
     PROCESSING,
     APPLIED,
+    FINALIZED_NO_CHANGES,
     CANCELLED,
     FAILED
 }

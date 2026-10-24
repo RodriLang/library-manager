@@ -30,9 +30,16 @@ public class InventoryPriceImport extends AuditableEntity {
     @JoinColumn(name = "format_id")
     private BookstorePriceListFormat format;
 
+    @Column(name = "mapping_snapshot", columnDefinition = "TEXT")
+    private String mappingSnapshot;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "provider_id")
     private Provider provider;
+
+    @Column(name = "sync_provider_catalog", nullable = false)
+    @Builder.Default
+    private boolean syncProviderCatalog = true;
 
     @Column(name = "source_name", length = 150)
     private String sourceName;
@@ -52,6 +59,16 @@ public class InventoryPriceImport extends AuditableEntity {
 
     @Column(name = "normalized_file_url", columnDefinition = "TEXT")
     private String normalizedFileUrl;
+
+    @Column(name = "preview_phase", length = 40)
+    private String previewPhase;
+
+    @Column(name = "preview_processed_rows", nullable = false)
+    @Builder.Default
+    private Integer previewProcessedRows = 0;
+
+    @Column(name = "preview_progress_at")
+    private Instant previewProgressAt;
 
     @Column(name = "total_rows", nullable = false)
     @Builder.Default

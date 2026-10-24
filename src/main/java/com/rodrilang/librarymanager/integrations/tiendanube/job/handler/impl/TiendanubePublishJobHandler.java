@@ -34,6 +34,7 @@ public class TiendanubePublishJobHandler implements TiendanubeJobHandler {
     private final TiendanubeProductMatchingService matchingService;
     private final TiendanubePublicationSyncService publicationSyncService;
     private final TiendanubeClient client;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationTemplateService templateService;
 
     @Override
     public TiendanubeJobType type() {
@@ -68,7 +69,7 @@ public class TiendanubePublishJobHandler implements TiendanubeJobHandler {
                 resultService.markPublishing(snapshot.inventoryId());
                 TiendanubeProductResponse product = client.createProduct(
                         snapshot.storeId(),
-                        withoutImages(snapshot.productRequest())
+                        withoutImages(withTemplate(snapshot))
                 );
                 TiendanubeVariantResponse variant = getMainVariant(product);
 
@@ -150,6 +151,15 @@ public class TiendanubePublishJobHandler implements TiendanubeJobHandler {
                 ));
 
         publicationSyncService.sync(publication);
+    }
+
+    private TiendanubeCreateProductRequest withTemplate(TiendanubePublishSnapshot snapshot) {
+        var template = templateService.get(snapshot.bookstoreId());
+        if (!template.enabled()) return snapshot.productRequest();
+        var request = snapshot.productRequest();
+        String source = request.description() == null ? "" : request.description().getOrDefault("es", "");
+        var description = java.util.Map.of("es", templateService.render(source, snapshot.isbn(), template));
+        return new TiendanubeCreateProductRequest(request.name(), description, request.variants(), request.images(), request.published());
     }
 
     private TiendanubeCreateProductRequest withoutImages(TiendanubeCreateProductRequest request) {

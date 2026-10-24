@@ -15,6 +15,8 @@ import com.rodrilang.librarymanager.integrations.tiendanube.job.service.Tiendanu
 import com.rodrilang.librarymanager.integrations.tiendanube.job.service.TiendanubeJobExecutionDataService;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.service.TiendanubeJobResultService;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.service.TiendanubePublicationSyncService;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationTemplateResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationTemplateService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductMatchingService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,6 +59,9 @@ class TiendanubePublishJobHandlerTest {
     private TiendanubeClient client;
 
     @Mock
+    private TiendanubePublicationTemplateService publicationTemplateService;
+
+    @Mock
     private TiendanubePublicationSnapshot publicationSnapshot;
 
     @Test
@@ -77,6 +82,8 @@ class TiendanubePublishJobHandlerTest {
 
     @Test
     void createsProductWithoutImagesAndThenCompletesPublicationSync() {
+        when(publicationTemplateService.get(10L))
+                .thenReturn(new TiendanubePublicationTemplateResponse(false, null, false));
         TiendanubePublishSnapshot snapshot = snapshot();
         TiendanubeProductResponse created = product(50L, 60L, "9789500000001");
         when(dataService.preparePublish(4L, 3L)).thenReturn(Optional.of(snapshot));
@@ -110,7 +117,8 @@ class TiendanubePublishJobHandlerTest {
 
     private TiendanubePublishJobHandler handler() {
         return new TiendanubePublishJobHandler(
-                connectionGuard, dataService, resultService, matchingService, publicationSyncService, client
+                connectionGuard, dataService, resultService, matchingService, publicationSyncService, client,
+                publicationTemplateService
         );
     }
 

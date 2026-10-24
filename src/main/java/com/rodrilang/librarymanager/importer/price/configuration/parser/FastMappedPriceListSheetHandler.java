@@ -3,7 +3,7 @@ package com.rodrilang.librarymanager.importer.price.configuration.parser;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListColumnMapping;
 import com.rodrilang.librarymanager.importer.price.configuration.model.PriceListImportConfig;
 import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
-import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
+import org.apache.poi.xssf.model.SharedStrings;
 import lombok.extern.slf4j.Slf4j;
 import org.xml.sax.Attributes;
 import org.xml.sax.helpers.DefaultHandler;
@@ -28,12 +28,17 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
     private final PriceListImportConfig config;
     private final ConfigurableStreamingRowMapper rowMapper;
     private final Consumer<PriceListRow> consumer;
-    private final ReadOnlySharedStringsTable sharedStrings;
+    private final SharedStrings sharedStrings;
     private final BitSet selectedColumns;
     private final int maxSelectedColumn;
 
+    private final PriceParserRuntimeMetrics runtimeMetrics = new PriceParserRuntimeMetrics();
     private long emittedRows;
     private long callbackNanos;
+    private long mappingNanos;
+    private long consumerNanos;
+    private long decodeNanos;
+    private long decodedCells;
     private final long startedNanos = System.nanoTime();
 
     private List<String> currentCells;
@@ -50,7 +55,7 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
             PriceListImportConfig config,
             ConfigurableStreamingRowMapper rowMapper,
             Consumer<PriceListRow> consumer,
-            ReadOnlySharedStringsTable sharedStrings
+            SharedStrings sharedStrings
     ) {
         this.config = config;
         this.rowMapper = rowMapper;
@@ -156,7 +161,13 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
 
     private void endCell() {
         if (selectedCell) {
-            currentCells.set(currentColumnIndex, decodeCellValue());
+            long decodeStarted = System.nanoTime();
+            try {
+                currentCells.set(currentColumnIndex, decodeCellValue());
+            } finally {
+                decodeNanos += System.nanoTime() - decodeStarted;
+                decodedCells++;
+            }
         }
         currentColumnIndex = -1;
         currentCellType = null;
@@ -171,23 +182,45 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
         }
         long callbackStarted = System.nanoTime();
         try {
-            consumer.accept(rowMapper.map(currentRowIndex, currentCells, config));
+            long mappingStarted = System.nanoTime();
+            PriceListRow row = rowMapper.map(currentRowIndex, currentCells, config);
+            mappingNanos += System.nanoTime() - mappingStarted;
+            long consumerStarted = System.nanoTime();
+            try {
+                consumer.accept(row);
+            } finally {
+                consumerNanos += System.nanoTime() - consumerStarted;
+            }
         } finally {
             callbackNanos += System.nanoTime() - callbackStarted;
             emittedRows++;
             if (emittedRows % 5_000 == 0) {
-                log.info("PRICE LIST PARSER PROGRESS mode=FAST_SAX rows={} elapsedMs={} callbackMs={} rowIndex={}",
+                PriceParserRuntimeMetrics.Sample runtime = runtimeMetrics.sample();
+                log.info("PRICE LIST PARSER RUNTIME rows={} intervalWallMs={} intervalThreadCpuMs={} intervalJvmGcMs={} heapUsedMiB={} heapMaxMiB={}",
+                        emittedRows, runtime.wallMs(), runtime.threadCpuMs(), runtime.jvmGcMs(),
+                        runtime.heapUsedMiB(), runtime.heapMaxMiB());
+                if (sharedStrings instanceof DiskBackedSharedStrings diskStrings) {
+                    DiskBackedSharedStrings.Stats sst = diskStrings.stats();
+                    log.info("PRICE LIST PARSER SST PROGRESS rows={} cacheHits={} cacheMisses={} hitPercent={} diskReads={} diskReadMs={} bytesRead={} evictions={}",
+                            emittedRows, sst.hits(), sst.misses(), sst.hitPercent(), sst.diskReads(),
+                            sst.diskReadMs(), sst.bytesRead(), sst.evictions());
+                }
+                log.info("PRICE LIST PARSER PROGRESS mode=FAST_SAX rows={} elapsedMs={} callbackMs={} mappingMs={} consumerMs={} decodeMs={} decodedCells={} rowIndex={}",
                         emittedRows, (System.nanoTime() - startedNanos) / 1_000_000L,
-                        callbackNanos / 1_000_000L, currentRowIndex);
+                        callbackNanos / 1_000_000L, mappingNanos / 1_000_000L,
+                        consumerNanos / 1_000_000L, decodeNanos / 1_000_000L, decodedCells, currentRowIndex);
             }
         }
     }
 
     @Override
     public void endDocument() {
-        log.info("PRICE LIST PARSER ROWS DONE mode=FAST_SAX rows={} elapsedMs={} callbackMs={}",
-                emittedRows, (System.nanoTime() - startedNanos) / 1_000_000L,
-                callbackNanos / 1_000_000L);
+        long elapsed = System.nanoTime() - startedNanos;
+        log.info("PRICE LIST PARSER ROWS DONE mode=FAST_SAX rows={} elapsedMs={} callbackMs={} mappingMs={} consumerMs={} decodeMs={} otherSaxMs={} decodedCells={}",
+                emittedRows, elapsed / 1_000_000L,
+                callbackNanos / 1_000_000L, mappingNanos / 1_000_000L,
+                consumerNanos / 1_000_000L, decodeNanos / 1_000_000L,
+                Math.max(0L, (elapsed - callbackNanos - decodeNanos)) / 1_000_000L, decodedCells);
     }
 
     private String decodeCellValue() {
@@ -203,7 +236,9 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
         if ("s".equals(currentCellType)) {
             try {
                 int index = Integer.parseInt(raw);
-                return sharedStrings.getItemAt(index).getString().strip();
+                return (sharedStrings instanceof DiskBackedSharedStrings diskStrings
+                        ? diskStrings.getStringAt(index)
+                        : sharedStrings.getItemAt(index).getString()).strip();
             } catch (RuntimeException exception) {
                 return "";
             }

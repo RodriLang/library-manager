@@ -1,6 +1,8 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.service;
 
 import com.rodrilang.librarymanager.enums.BookCondition;
+import com.rodrilang.librarymanager.service.BookService;
+import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisCreateBookRequest;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.integrations.tiendanube.entity.TiendanubeProductLink;
 import com.rodrilang.librarymanager.integrations.tiendanube.enums.TiendanubeInventoryStatus;
@@ -30,6 +32,7 @@ public class TiendanubeImportAnalysisResolutionItemService {
     private final TiendanubeProductLinkRepository productLinkRepository;
     private final TiendanubeJobRequestService jobRequestService;
     private final TiendanubeImportAnalysisInventoryService analysisInventoryService;
+    private final BookService bookService;
 
     @Transactional
     public Long resolve(
@@ -91,6 +94,28 @@ public class TiendanubeImportAnalysisResolutionItemService {
                 true
         );
 
+        return inventory.getId();
+    }
+
+    /** Atomic local creation of book, inventory and link, with a locked analysis item. */
+    @Transactional
+    public Long createBookInventoryAndResolve(
+            Long runId, Long itemId, Long bookstoreId,
+            TiendanubeImportAnalysisCreateBookRequest request
+    ) {
+        TiendanubeImportAnalysisItemLock item = itemWriteRepository
+                .lockItem(runId, itemId, bookstoreId)
+                .orElseThrow(() -> new BusinessException("No se encontró el caso de Tiendanube"));
+        validateItemStatus(item.status());
+
+        Long bookId = bookService.create(request.book()).id();
+        var inventoryRequest = new TiendanubeImportAnalysisCreateInventoryRequest(
+                bookId, request.salePrice(), request.initialStock(),
+                request.minimumStock(), request.syncStock());
+        Inventory inventory = analysisInventoryService.createOrReactivate(bookstoreId, inventoryRequest);
+        validateInventory(inventory, bookstoreId);
+        validateCanLink(item, inventory);
+        linkAndResolve(runId, item, inventory, request.shouldSyncStock(), true);
         return inventory.getId();
     }
 

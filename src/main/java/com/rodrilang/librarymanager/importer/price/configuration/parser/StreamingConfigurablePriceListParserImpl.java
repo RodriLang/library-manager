@@ -9,7 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.util.XMLHelper;
-import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
+import org.apache.poi.xssf.model.SharedStrings;
 import org.apache.poi.xssf.eventusermodel.XSSFReader;
 import org.apache.poi.xssf.eventusermodel.XSSFSheetXMLHandler;
 import org.apache.poi.xssf.model.StylesTable;
@@ -36,6 +36,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
             Consumer<PriceListRow> rowConsumer
     ) {
         long overallStarted = System.nanoTime();
+        PriceParserRuntimeMetrics runtimeMetrics = new PriceParserRuntimeMetrics();
         log.info("PRICE LIST PARSER OPEN START fileBytes={} sheetStrategy={} firstDataRow={} mappings={}",
                 safeFileSize(filePath), config.getSheetStrategy(), config.getFirstDataRowIndex(),
                 config.getMappings() == null ? 0 : config.getMappings().size());
@@ -48,10 +49,14 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
 
             StylesTable styles = reader.getStylesTable();
 
-            ReadOnlySharedStringsTable sharedStrings =
-                    new ReadOnlySharedStringsTable(opcPackage);
+            log.info("PRICE LIST PARSER SST ENGINE=DISK_BACKED_V1");
+            try (InputStream stringsStream = reader.getSharedStringsData();
+                 DiskBackedSharedStrings sharedStrings = DiskBackedSharedStrings.load(stringsStream)) {
 
-            log.info("PRICE LIST PARSER SETUP DONE timeMs={}", millisSince(setupStarted));
+            PriceParserRuntimeMetrics.Sample setupRuntime = runtimeMetrics.sample();
+            log.info("PRICE LIST PARSER SETUP DONE timeMs={} threadCpuMs={} jvmGcMs={} heapUsedMiB={} heapMaxMiB={}",
+                    millisSince(setupStarted), setupRuntime.threadCpuMs(), setupRuntime.jvmGcMs(),
+                    setupRuntime.heapUsedMiB(), setupRuntime.heapMaxMiB());
 
             XSSFReader.SheetIterator iterator =
                     (XSSFReader.SheetIterator)
@@ -93,6 +98,10 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
                                 rowConsumer
                         );
                     }
+                    PriceParserRuntimeMetrics.Sample phaseRuntime = runtimeMetrics.sample();
+                    log.info("PRICE LIST PARSER RUNTIME phase=sheet wallMs={} threadCpuMs={} jvmGcMs={} heapUsedMiB={} heapMaxMiB={}",
+                            phaseRuntime.wallMs(), phaseRuntime.threadCpuMs(), phaseRuntime.jvmGcMs(),
+                            phaseRuntime.heapUsedMiB(), phaseRuntime.heapMaxMiB());
                     log.info(
                             "PRICE LIST PARSER mode={} sheet={} timeMs={}",
                             fastPath ? "FAST_SAX" : "FORMATTED",
@@ -112,6 +121,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
                 );
             }
 
+            } // Close and delete the temporary shared-string index.
         } catch (BusinessException exception) {
             log.warn("PRICE LIST PARSER FAILED totalMs={} errorType={}", millisSince(overallStarted),
                     exception.getClass().getSimpleName());
@@ -141,7 +151,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
 
     private void parseSheetFast(
             InputStream sheetStream,
-            ReadOnlySharedStringsTable sharedStrings,
+            SharedStrings sharedStrings,
             PriceListImportConfig config,
             Consumer<PriceListRow> consumer
     ) throws Exception {
@@ -182,7 +192,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
     private void parseSheet(
             InputStream sheetStream,
             StylesTable styles,
-            ReadOnlySharedStringsTable sharedStrings,
+            SharedStrings sharedStrings,
             PriceListImportConfig config,
             Consumer<PriceListRow> consumer
     ) throws Exception {

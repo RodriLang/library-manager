@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.service;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisCreateBookRequest;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.exception.ResourceNotFoundException;
 import com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.dto.TiendanubeImportAnalysisBulkFailureResponse;
@@ -63,6 +64,14 @@ public class TiendanubeImportAnalysisResolutionService {
                 request
         );
 
+        return requireItem(runId, itemId, bookstoreId);
+    }
+
+    public TiendanubeImportAnalysisItemResponse createBookInventoryAndResolve(
+            Long runId, Long itemId, TiendanubeImportAnalysisCreateBookRequest request
+    ) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        itemService.createBookInventoryAndResolve(runId, itemId, bookstoreId, request);
         return requireItem(runId, itemId, bookstoreId);
     }
 

@@ -36,8 +36,9 @@ public class ControllerLoggingAspect {
         String methodName = joinPoint.getSignature().getName();
         String httpMethod = request.getMethod();
         String uri = request.getRequestURI();
-        String queryString = request.getQueryString();
-        String fullPath = queryString == null ? uri : uri + "?" + queryString;
+        // Query strings may contain tokens, passwords or invitation secrets.
+        // Do not log them; URI path identifies the endpoint sufficiently.
+        String fullPath = uri;
 
         String clientIp = getClientIp();
 
@@ -49,7 +50,7 @@ public class ControllerLoggingAspect {
                 controllerName,
                 methodName,
                 clientIp,
-                sanitizeArgs(joinPoint.getArgs())
+                sanitizeArgs(joinPoint.getArgs(), uri)
         );
 
         try {
@@ -109,7 +110,11 @@ public class ControllerLoggingAspect {
         return request.getRemoteAddr();
     }
 
-    private String sanitizeArgs(Object[] args) {
+    private String sanitizeArgs(Object[] args, String uri) {
+        // Never log credentials or authentication DTOs, including their toString().
+        if (uri.startsWith("/api/auth/") || uri.contains("/oauth/") || uri.contains("/callback")) {
+            return "[REDACTED]";
+        }
         return Arrays.stream(args)
                 .map(this::sanitizeArg)
                 .toList()
@@ -140,6 +145,11 @@ public class ControllerLoggingAspect {
                     );
         }
 
-        return arg;
+        // Request DTOs, maps, collections and arbitrary objects can contain secrets.
+        // Only primitive metadata with an explicitly known safe representation is logged.
+        if (arg instanceof Number || arg instanceof Boolean || arg instanceof Enum<?>) {
+            return arg;
+        }
+        return "[REDACTED:" + arg.getClass().getSimpleName() + "]";
     }
 }

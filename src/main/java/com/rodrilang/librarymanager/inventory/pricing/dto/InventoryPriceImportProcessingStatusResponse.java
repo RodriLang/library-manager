@@ -11,6 +11,9 @@ public record InventoryPriceImportProcessingStatusResponse(
         Instant finishedAt,
         Integer appliedRows,
         Integer skippedRows,
-        String errorMessage
+        String errorMessage,
+        String previewPhase,
+        Integer previewProcessedRows,
+        Instant previewProgressAt
 ) {
 }

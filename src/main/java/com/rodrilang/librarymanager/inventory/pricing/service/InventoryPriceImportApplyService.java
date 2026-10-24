@@ -102,7 +102,10 @@ public class InventoryPriceImportApplyService {
                 priceImport.getProcessingFinishedAt(),
                 priceImport.getAppliedRows(),
                 priceImport.getSkippedRows(),
-                priceImport.getProcessingError()
+                priceImport.getProcessingError(),
+                priceImport.getPreviewPhase(),
+                priceImport.getPreviewProcessedRows(),
+                priceImport.getPreviewProgressAt()
         );
     }
 
@@ -149,6 +152,7 @@ public class InventoryPriceImportApplyService {
             case PREVIEW_PROCESSING -> "El preview de la importación todavía se está generando.";
             case PROCESSING -> "La importación ya se está procesando.";
             case APPLIED -> "La importación ya fue aplicada.";
+            case FINALIZED_NO_CHANGES -> "La importación fue finalizada sin aplicar precios.";
             case CANCELLED -> "La importación fue cancelada y no puede aplicarse.";
             case FAILED -> "La importación falló y no puede volver a aplicarse desde este estado.";
             case PREVIEW_READY -> "La importación no se puede iniciar en su estado actual.";
