@@ -62,6 +62,7 @@ import java.util.stream.Collectors;
 public class InventoryPriceImportService {
 
     private static final BigDecimal LARGE_CHANGE_PERCENT = BigDecimal.valueOf(50);
+    private static final int PROVIDER_STAGING_BATCH_SIZE = 500;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final BookstoreContext bookstoreContext;
@@ -208,7 +209,8 @@ public class InventoryPriceImportService {
 
         Map<String, List<InventoryPriceImportItem>> itemsByDuplicateKey = new HashMap<>();
         List<InventoryPriceImportItem> items = new ArrayList<>();
-        List<InventoryPriceImportProviderRowJdbcRepository.StagedRow> providerRows = new ArrayList<>();
+        List<InventoryPriceImportProviderRowJdbcRepository.StagedRow> providerRows = new ArrayList<>(PROVIDER_STAGING_BATCH_SIZE);
+        AtomicInteger providerRowsStaged = new AtomicInteger();
 
         AtomicInteger total = new AtomicInteger();
         AtomicInteger matched = new AtomicInteger();
@@ -261,6 +263,11 @@ public class InventoryPriceImportService {
                         rowPhaseStarted = System.nanoTime();
                         try {
                             providerRows.add(toStagedProviderRow(row, matchedBookId));
+                            if (providerRows.size() == PROVIDER_STAGING_BATCH_SIZE) {
+                                providerRowJdbcRepository.insertAll(importId, providerRows);
+                                providerRowsStaged.addAndGet(providerRows.size());
+                                providerRows.clear();
+                            }
                         } finally {
                             rowPhaseNanos[2] += System.nanoTime() - rowPhaseStarted;
                             rowPhaseCounts[2]++;
@@ -326,6 +333,12 @@ public class InventoryPriceImportService {
                     }
                 });
             }
+            // Flush the final partial batch; the staging list never grows with the Excel size.
+            if (!providerRows.isEmpty()) {
+                providerRowJdbcRepository.insertAll(importId, providerRows);
+                providerRowsStaged.addAndGet(providerRows.size());
+                providerRows.clear();
+            }
             progressService.update(importId, "SAVING_RESULTS", total.get());
             log.info("PRICE IMPORT PREVIEW ROW PROFILE importId={} rows={} normalizedMs={} normalizedCount={} matchMs={} matchCount={} providerStageMs={} providerStageCount={} classifyMs={} classifyCount={} duplicateMs={} duplicateCount={} (exclusive nested callback phases)",
                     importId, total.get(), rowPhaseNanos[0] / 1_000_000L, rowPhaseCounts[0],
@@ -340,19 +353,8 @@ public class InventoryPriceImportService {
                     "rows=" + total.get() + " matched=" + matched.get() + " items=" + items.size()
             );
 
-            log.info("PRICE IMPORT PREVIEW PARSED importId={} rows={} matches={} providerRows={} elapsedMs={}",
-                    importId, total.get(), matched.get(), providerRows.size(), elapsedMillis(totalStarted));
-            if (!providerRows.isEmpty()) {
-                phaseStarted = System.nanoTime();
-                log.info("PRICE IMPORT PREVIEW PROVIDER INSERT START importId={} rows={}", importId, providerRows.size());
-                providerRowJdbcRepository.insertAll(importId, providerRows);
-                logPreviewPhase(
-                        importId,
-                        "persist-provider-rows",
-                        phaseStarted,
-                        "providerRows=" + providerRows.size()
-                );
-            }
+            log.info("PRICE IMPORT PREVIEW PARSED importId={} rows={} matches={} providerRowsStaged={} elapsedMs={}",
+                    importId, total.get(), matched.get(), providerRowsStaged.get(), elapsedMillis(totalStarted));
 
             phaseStarted = System.nanoTime();
             log.info("PRICE IMPORT PREVIEW ITEMS SAVE START importId={} items={}", importId, items.size());
@@ -362,7 +364,7 @@ public class InventoryPriceImportService {
                     importId,
                     "persist-preview",
                     phaseStarted,
-                    "items=" + items.size() + " providerRows=" + providerRows.size()
+                    "items=" + items.size() + " providerRows=" + providerRowsStaged.get()
             );
 
             progressService.update(importId, "UPLOADING_BACKUP", total.get());
@@ -386,9 +388,9 @@ public class InventoryPriceImportService {
             priceImport.setStatus(InventoryPriceImportStatus.PREVIEW_READY);
             priceImport.setProcessingFinishedAt(Instant.now());
             priceImport.setProcessingError(null);
-            if (priceImport.isSyncProviderCatalog() && priceImport.getProvider() != null && !providerRows.isEmpty()) {
-                log.info("PRICE IMPORT PREVIEW CATALOG JOB START importId={} providerRows={}", importId, providerRows.size());
-                jobService.ensureProviderCatalogSync(importId, providerRows.size());
+            if (priceImport.isSyncProviderCatalog() && priceImport.getProvider() != null && providerRowsStaged.get() > 0) {
+                log.info("PRICE IMPORT PREVIEW CATALOG JOB START importId={} providerRows={}", importId, providerRowsStaged.get());
+                jobService.ensureProviderCatalogSync(importId, providerRowsStaged.get());
                 log.info("PRICE IMPORT PREVIEW CATALOG JOB READY importId={}", importId);
             }
 
