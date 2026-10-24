@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
 
 import java.time.Instant;
+import java.sql.Timestamp;
 
 /** Updates only progress columns, in independent JDBC statements, without flushing preview entities. */
 @Service
@@ -20,6 +21,6 @@ public class InventoryPriceImportProgressService {
                 UPDATE inventory_price_imports
                    SET preview_phase = ?, preview_processed_rows = ?, preview_progress_at = ?
                  WHERE id = ? AND status = 'PREVIEW_PROCESSING'
-                """, phase, processedRows, Instant.now(), importId);
+                """, phase, processedRows, Timestamp.from(Instant.now()), importId);
     }
 }
