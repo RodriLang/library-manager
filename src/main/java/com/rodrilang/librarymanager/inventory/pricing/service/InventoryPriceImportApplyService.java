@@ -102,7 +102,10 @@ public class InventoryPriceImportApplyService {
                 priceImport.getProcessingFinishedAt(),
                 priceImport.getAppliedRows(),
                 priceImport.getSkippedRows(),
-                priceImport.getProcessingError()
+                priceImport.getProcessingError(),
+                priceImport.getPreviewPhase(),
+                priceImport.getPreviewProcessedRows(),
+                priceImport.getPreviewProgressAt()
         );
     }
 

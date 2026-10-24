@@ -79,6 +79,7 @@ public class InventoryPriceImportService {
     private final InventoryPriceImportProviderRowJdbcRepository providerRowJdbcRepository;
     private final InventoryPriceImportJobService jobService;
     private final ApplicationEventPublisher eventPublisher;
+    private final InventoryPriceImportProgressService progressService;
 
     @Transactional
     public InventoryPriceImportPreviewStartResponse startPreview(
@@ -216,6 +217,7 @@ public class InventoryPriceImportService {
         final long[] rowPhaseNanos = new long[5]; // csv, match, stage, classify, duplicate
         final long[] rowPhaseCounts = new long[5];
 
+        progressService.update(importId, "PREPARING", 0);
         Path normalizedFile = null;
         try {
             normalizedFile = Files.createTempFile("anaquel-price-list-", ".csv");
@@ -225,11 +227,19 @@ public class InventoryPriceImportService {
                 writer.newLine();
 
                 PriceListImportConfig parserConfig = toParserConfig(format);
+                progressService.update(importId, "READING_ROWS", 0);
                 parser.parse(source, parserConfig, row -> {
                     if (isCompletelyEmpty(row)) {
                         return;
                     }
-                    total.incrementAndGet();
+                    int processed = total.incrementAndGet();
+                    if (processed % 5_000 == 0) {
+                        try {
+                            progressService.update(importId, "READING_ROWS", processed);
+                        } catch (org.springframework.dao.TransientDataAccessException transientFailure) {
+                            log.warn("PRICE IMPORT PROGRESS UPDATE FAILED importId={} rows={}", importId, processed, transientFailure);
+                        }
+                    }
                     long rowPhaseStarted = System.nanoTime();
                     try {
                         writeNormalized(writer, row);
@@ -316,6 +326,7 @@ public class InventoryPriceImportService {
                     }
                 });
             }
+            progressService.update(importId, "SAVING_RESULTS", total.get());
             log.info("PRICE IMPORT PREVIEW ROW PROFILE importId={} rows={} normalizedMs={} normalizedCount={} matchMs={} matchCount={} providerStageMs={} providerStageCount={} classifyMs={} classifyCount={} duplicateMs={} duplicateCount={} (exclusive nested callback phases)",
                     importId, total.get(), rowPhaseNanos[0] / 1_000_000L, rowPhaseCounts[0],
                     rowPhaseNanos[1] / 1_000_000L, rowPhaseCounts[1],
@@ -354,6 +365,7 @@ public class InventoryPriceImportService {
                     "items=" + items.size() + " providerRows=" + providerRows.size()
             );
 
+            progressService.update(importId, "UPLOADING_BACKUP", total.get());
             phaseStarted = System.nanoTime();
             log.info("PRICE IMPORT PREVIEW UPLOAD START importId={} bytes={}",
                     importId, safePreviewFileSize(normalizedFile));
@@ -368,6 +380,9 @@ public class InventoryPriceImportService {
             }
             logPreviewPhase(importId, "upload-normalized", phaseStarted, "");
 
+            priceImport.setPreviewPhase("COMPLETED");
+            priceImport.setPreviewProcessedRows(total.get());
+            priceImport.setPreviewProgressAt(Instant.now());
             priceImport.setStatus(InventoryPriceImportStatus.PREVIEW_READY);
             priceImport.setProcessingFinishedAt(Instant.now());
             priceImport.setProcessingError(null);

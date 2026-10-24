@@ -30,14 +30,15 @@ final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(DiskBackedSharedStrings.class);
     private static final int MAX_STRING_CHARS = 1_048_576;
     // Strict heap budget: cache only small strings, never the entire XLSX dictionary.
-    private static final int CACHE_MAX_ENTRIES = 1024;
+    private static final int CACHE_MAX_ENTRIES = Math.max(128,
+            Math.min(4096, Integer.getInteger("anaquel.prices.sst-cache-entries", 1024)));
     private static final long CACHE_MAX_BYTES = 2L * 1024 * 1024;
     private static final int CACHE_MAX_VALUE_CHARS = 8192;
     private final Path path;
     private final RandomAccessFile file;
     private long[] offsets = new long[4096];
     private int count;
-    private final LinkedHashMap<Integer, String> cache = new LinkedHashMap<>(128, .75f, true);
+    private final LinkedHashMap<Integer, RichTextString> cache = new LinkedHashMap<>(128, .75f, true);
     private long cachedBytes;
     private long cacheHits;
     private long cacheMisses;
@@ -112,11 +113,12 @@ final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
 
     @Override public synchronized RichTextString getItemAt(int index) {
         if (index < 0 || index >= count) throw new IndexOutOfBoundsException("Shared string index " + index);
-        String value = cache.get(index);
-        if (value != null) {
+        RichTextString cached = cache.get(index);
+        if (cached != null) {
             cacheHits++;
-            return new XSSFRichTextString(value);
+            return cached;
         }
+        String value;
         cacheMisses++;
         long started = System.nanoTime();
         try {
@@ -128,22 +130,23 @@ final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
             value = new String(bytes, StandardCharsets.UTF_8);
             diskReads++;
             bytesRead += length;
+            RichTextString result = new XSSFRichTextString(value);
             if (value.length() <= CACHE_MAX_VALUE_CHARS) {
                 long weight = (long) value.length() * 2L;
                 while (!cache.isEmpty() && (cache.size() >= CACHE_MAX_ENTRIES || cachedBytes + weight > CACHE_MAX_BYTES)) {
-                    Map.Entry<Integer, String> eldest = cache.entrySet().iterator().next();
-                    cachedBytes -= (long) eldest.getValue().length() * 2L;
+                    Map.Entry<Integer, RichTextString> eldest = cache.entrySet().iterator().next();
+                    cachedBytes -= (long) eldest.getValue().getString().length() * 2L;
                     cache.remove(eldest.getKey());
                     evictions++;
                 }
                 if (weight <= CACHE_MAX_BYTES) {
-                    cache.put(index, value);
+                    cache.put(index, result);
                     cachedBytes += weight;
                 }
             } else {
                 oversizedValues++;
             }
-            return new XSSFRichTextString(value);
+            return result;
         } catch (IOException exception) {
             throw new IllegalStateException("No se pudo leer una cadena del Excel.", exception);
         } finally {

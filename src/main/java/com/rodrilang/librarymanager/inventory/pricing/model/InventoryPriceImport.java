@@ -60,6 +60,16 @@ public class InventoryPriceImport extends AuditableEntity {
     @Column(name = "normalized_file_url", columnDefinition = "TEXT")
     private String normalizedFileUrl;
 
+    @Column(name = "preview_phase", length = 40)
+    private String previewPhase;
+
+    @Column(name = "preview_processed_rows", nullable = false)
+    @Builder.Default
+    private Integer previewProcessedRows = 0;
+
+    @Column(name = "preview_progress_at")
+    private Instant previewProgressAt;
+
     @Column(name = "total_rows", nullable = false)
     @Builder.Default
     private Integer totalRows = 0;
