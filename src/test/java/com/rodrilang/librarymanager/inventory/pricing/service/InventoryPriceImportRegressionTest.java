@@ -324,6 +324,7 @@ class InventoryPriceImportRegressionTest {
         InventoryPriceImportProviderRowJdbcRepository providerRowsJdbc = mock(InventoryPriceImportProviderRowJdbcRepository.class);
         InventoryPriceImportJobService jobs = mock(InventoryPriceImportJobService.class);
         ApplicationEventPublisher previewEvents = mock(ApplicationEventPublisher.class);
+        InventoryPriceImportProgressService progress = mock(InventoryPriceImportProgressService.class);
 
         BookstorePriceListFormat format = BookstorePriceListFormat.builder()
                 .id(1L)
@@ -402,7 +403,8 @@ class InventoryPriceImportRegressionTest {
                 isbns,
                 providerRowsJdbc,
                 jobs,
-                previewEvents
+                previewEvents,
+                progress
         );
 
         var started = importer.startPreview(
@@ -417,6 +419,12 @@ class InventoryPriceImportRegressionTest {
         importer.processPreview(started.importId(), source);
 
         assertEquals(InventoryPriceImportStatus.PREVIEW_READY, storedImport.get().getStatus());
+        assertEquals("COMPLETED", storedImport.get().getPreviewPhase());
+        assertEquals(1, storedImport.get().getPreviewProcessedRows());
+        verify(progress).update(30L, "PREPARING", 0);
+        verify(progress).update(30L, "READING_ROWS", 0);
+        verify(progress).update(30L, "SAVING_RESULTS", 1);
+        verify(progress).update(30L, "UPLOADING_BACKUP", 1);
         return importer.get(started.importId());
     }
 }
