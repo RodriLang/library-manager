@@ -32,6 +32,7 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
     private final BitSet selectedColumns;
     private final int maxSelectedColumn;
 
+    private final PriceParserRuntimeMetrics runtimeMetrics = new PriceParserRuntimeMetrics();
     private long emittedRows;
     private long callbackNanos;
     private long mappingNanos;
@@ -194,6 +195,16 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
             callbackNanos += System.nanoTime() - callbackStarted;
             emittedRows++;
             if (emittedRows % 5_000 == 0) {
+                PriceParserRuntimeMetrics.Sample runtime = runtimeMetrics.sample();
+                log.info("PRICE LIST PARSER RUNTIME rows={} intervalWallMs={} intervalThreadCpuMs={} intervalJvmGcMs={} heapUsedMiB={} heapMaxMiB={}",
+                        emittedRows, runtime.wallMs(), runtime.threadCpuMs(), runtime.jvmGcMs(),
+                        runtime.heapUsedMiB(), runtime.heapMaxMiB());
+                if (sharedStrings instanceof DiskBackedSharedStrings diskStrings) {
+                    DiskBackedSharedStrings.Stats sst = diskStrings.stats();
+                    log.info("PRICE LIST PARSER SST PROGRESS rows={} cacheHits={} cacheMisses={} hitPercent={} diskReads={} diskReadMs={} bytesRead={} evictions={}",
+                            emittedRows, sst.hits(), sst.misses(), sst.hitPercent(), sst.diskReads(),
+                            sst.diskReadMs(), sst.bytesRead(), sst.evictions());
+                }
                 log.info("PRICE LIST PARSER PROGRESS mode=FAST_SAX rows={} elapsedMs={} callbackMs={} mappingMs={} consumerMs={} decodeMs={} decodedCells={} rowIndex={}",
                         emittedRows, (System.nanoTime() - startedNanos) / 1_000_000L,
                         callbackNanos / 1_000_000L, mappingNanos / 1_000_000L,

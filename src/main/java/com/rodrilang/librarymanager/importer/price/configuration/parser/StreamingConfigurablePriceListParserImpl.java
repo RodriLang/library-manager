@@ -36,6 +36,7 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
             Consumer<PriceListRow> rowConsumer
     ) {
         long overallStarted = System.nanoTime();
+        PriceParserRuntimeMetrics runtimeMetrics = new PriceParserRuntimeMetrics();
         log.info("PRICE LIST PARSER OPEN START fileBytes={} sheetStrategy={} firstDataRow={} mappings={}",
                 safeFileSize(filePath), config.getSheetStrategy(), config.getFirstDataRowIndex(),
                 config.getMappings() == null ? 0 : config.getMappings().size());
@@ -52,7 +53,10 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
             try (InputStream stringsStream = reader.getSharedStringsData();
                  DiskBackedSharedStrings sharedStrings = DiskBackedSharedStrings.load(stringsStream)) {
 
-            log.info("PRICE LIST PARSER SETUP DONE timeMs={}", millisSince(setupStarted));
+            PriceParserRuntimeMetrics.Sample setupRuntime = runtimeMetrics.sample();
+            log.info("PRICE LIST PARSER SETUP DONE timeMs={} threadCpuMs={} jvmGcMs={} heapUsedMiB={} heapMaxMiB={}",
+                    millisSince(setupStarted), setupRuntime.threadCpuMs(), setupRuntime.jvmGcMs(),
+                    setupRuntime.heapUsedMiB(), setupRuntime.heapMaxMiB());
 
             XSSFReader.SheetIterator iterator =
                     (XSSFReader.SheetIterator)
@@ -94,6 +98,10 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
                                 rowConsumer
                         );
                     }
+                    PriceParserRuntimeMetrics.Sample phaseRuntime = runtimeMetrics.sample();
+                    log.info("PRICE LIST PARSER RUNTIME phase=sheet wallMs={} threadCpuMs={} jvmGcMs={} heapUsedMiB={} heapMaxMiB={}",
+                            phaseRuntime.wallMs(), phaseRuntime.threadCpuMs(), phaseRuntime.jvmGcMs(),
+                            phaseRuntime.heapUsedMiB(), phaseRuntime.heapMaxMiB());
                     log.info(
                             "PRICE LIST PARSER mode={} sheet={} timeMs={}",
                             fastPath ? "FAST_SAX" : "FORMATTED",
