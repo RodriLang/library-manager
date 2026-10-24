@@ -14,11 +14,12 @@ class DiskBackedSharedStringsTest {
         for (int i = 0; i < 1100; i++) xml.append("<si><t>Value_").append(i).append("</t></si>");
         xml.append("</sst>");
         try (var index = DiskBackedSharedStrings.load(new ByteArrayInputStream(xml.toString().getBytes(StandardCharsets.UTF_8)))) {
-            assertEquals("Value_0", index.getItemAt(0).getString());
+            assertEquals("Value_0", index.getStringAt(0));
+            assertEquals("Value_0", index.getStringAt(0));
             assertEquals("Value_0", index.getItemAt(0).getString());
             for (int i = 1; i < 1100; i++) assertEquals("Value_" + i, index.getItemAt(i).getString());
             var stats = index.stats();
-            assertEquals(1, stats.hits());
+            assertEquals(2, stats.hits());
             assertEquals(1100, stats.misses());
             assertEquals(1100, stats.diskReads());
             assertTrue(stats.entries() <= 1024);
@@ -40,6 +41,7 @@ class DiskBackedSharedStringsTest {
         try (var index = DiskBackedSharedStrings.load(
                 new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)))) {
             assertEquals(3, index.getUniqueCount());
+            assertEquals("Árbol & río", index.getStringAt(0));
             assertEquals("Árbol & río", index.getItemAt(0).getString());
             assertEquals("Buenos Aires", index.getItemAt(1).getString());
             assertEquals("Visible", index.getItemAt(2).getString());

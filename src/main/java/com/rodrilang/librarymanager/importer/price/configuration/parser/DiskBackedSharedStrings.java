@@ -38,7 +38,9 @@ final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
     private final RandomAccessFile file;
     private long[] offsets = new long[4096];
     private int count;
-    private final LinkedHashMap<Integer, RichTextString> cache = new LinkedHashMap<>(128, .75f, true);
+    private final LinkedHashMap<Integer, String> cache = new LinkedHashMap<>(128, .75f, true);
+    // Reused by the single SAX parsing thread. Never retain one byte[] per SST entry.
+    private byte[] readBuffer = new byte[256];
     private long cachedBytes;
     private long cacheHits;
     private long cacheMisses;
@@ -111,42 +113,49 @@ final class DiskBackedSharedStrings implements SharedStrings, AutoCloseable {
         file.write(bytes);
     }
 
-    @Override public synchronized RichTextString getItemAt(int index) {
+    @Override public RichTextString getItemAt(int index) {
+        // Compatibility with POI readers. FAST_SAX calls getStringAt directly
+        // and avoids allocating XSSFRichTextString for every selected cell.
+        return new XSSFRichTextString(getStringAt(index));
+    }
+
+    synchronized String getStringAt(int index) {
         if (index < 0 || index >= count) throw new IndexOutOfBoundsException("Shared string index " + index);
-        RichTextString cached = cache.get(index);
+        String cached = cache.get(index);
         if (cached != null) {
             cacheHits++;
             return cached;
         }
-        String value;
         cacheMisses++;
         long started = System.nanoTime();
         try {
             file.seek(offsets[index]);
             int length = file.readInt();
             if (length < 0 || length > MAX_STRING_CHARS * 4) throw new IOException("Invalid shared string length");
-            byte[] bytes = new byte[length];
-            file.readFully(bytes);
-            value = new String(bytes, StandardCharsets.UTF_8);
+            if (readBuffer.length < length) {
+                int capacity = Math.max(length, Math.min(MAX_STRING_CHARS * 4, Math.max(256, readBuffer.length * 2)));
+                readBuffer = new byte[capacity];
+            }
+            file.readFully(readBuffer, 0, length);
+            String value = new String(readBuffer, 0, length, StandardCharsets.UTF_8);
             diskReads++;
             bytesRead += length;
-            RichTextString result = new XSSFRichTextString(value);
             if (value.length() <= CACHE_MAX_VALUE_CHARS) {
                 long weight = (long) value.length() * 2L;
                 while (!cache.isEmpty() && (cache.size() >= CACHE_MAX_ENTRIES || cachedBytes + weight > CACHE_MAX_BYTES)) {
-                    Map.Entry<Integer, RichTextString> eldest = cache.entrySet().iterator().next();
-                    cachedBytes -= (long) eldest.getValue().getString().length() * 2L;
+                    Map.Entry<Integer, String> eldest = cache.entrySet().iterator().next();
+                    cachedBytes -= (long) eldest.getValue().length() * 2L;
                     cache.remove(eldest.getKey());
                     evictions++;
                 }
                 if (weight <= CACHE_MAX_BYTES) {
-                    cache.put(index, result);
+                    cache.put(index, value);
                     cachedBytes += weight;
                 }
             } else {
                 oversizedValues++;
             }
-            return result;
+            return value;
         } catch (IOException exception) {
             throw new IllegalStateException("No se pudo leer una cadena del Excel.", exception);
         } finally {

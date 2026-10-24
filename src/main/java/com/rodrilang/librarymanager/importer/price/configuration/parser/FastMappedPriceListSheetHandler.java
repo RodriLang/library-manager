@@ -236,7 +236,9 @@ final class FastMappedPriceListSheetHandler extends DefaultHandler {
         if ("s".equals(currentCellType)) {
             try {
                 int index = Integer.parseInt(raw);
-                return sharedStrings.getItemAt(index).getString().strip();
+                return (sharedStrings instanceof DiskBackedSharedStrings diskStrings
+                        ? diskStrings.getStringAt(index)
+                        : sharedStrings.getItemAt(index).getString()).strip();
             } catch (RuntimeException exception) {
                 return "";
             }
