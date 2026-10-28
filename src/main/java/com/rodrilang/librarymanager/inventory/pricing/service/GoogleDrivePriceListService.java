@@ -63,6 +63,35 @@ public class GoogleDrivePriceListService {
         catch (Exception exception) { throw new BusinessException("No se pudo descargar el archivo de Google Drive."); }
     }
 
+    /** Stream directly from Drive to the HTTP client, bounded to 20 MB. */
+    public void streamDownload(String folderUrl, String fileId, java.io.OutputStream output) throws java.io.IOException {
+        String folderId = folderId(folderUrl);
+        if (fileId == null || !ID.matcher(fileId).matches()) throw new BusinessException("Identificador de archivo inválido.");
+        DriveFile file = list(folderId).stream().filter(f -> f.id().equals(fileId)).findFirst()
+                .orElseThrow(() -> new BusinessException("El archivo no pertenece a la carpeta indicada."));
+        if (file.size() > MAX_BYTES) throw new BusinessException("El archivo supera el límite de 20 MB.");
+        String uri = "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media&key=" + enc(apiKey);
+        try {
+            HttpResponse<java.io.InputStream> response = client.send(
+                    HttpRequest.newBuilder(URI.create(uri)).timeout(Duration.ofSeconds(90)).GET().build(),
+                    HttpResponse.BodyHandlers.ofInputStream());
+            try (var input = response.body()) {
+                if (response.statusCode() != 200) throw new BusinessException("Google Drive rechazó la descarga (HTTP " + response.statusCode() + ").");
+                byte[] buffer = new byte[64 * 1024];
+                long total = 0;
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    total += count;
+                    if (total > MAX_BYTES) throw new BusinessException("El archivo supera el límite de descarga.");
+                    output.write(buffer, 0, count);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new java.io.IOException("Descarga interrumpida", e);
+        }
+    }
+
     private List<DriveFile> list(String folderId) {
         if (apiKey == null || apiKey.isBlank()) throw new BusinessException("Falta configurar GOOGLE_DRIVE_API_KEY en el backend.");
         List<DriveFile> result = new ArrayList<>();
