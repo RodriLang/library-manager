@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import lombok.extern.slf4j.Slf4j;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -19,6 +21,7 @@ import java.util.regex.Pattern;
 
 /** Reads only public/shared Google Drive folders using the official Drive API. */
 @Service
+@Slf4j
 public class GoogleDrivePriceListService {
     private static final Pattern FOLDER = Pattern.compile("(?:https://)?drive\\.google\\.com/drive/(?:u/\\d+/)?folders/([a-zA-Z0-9_-]+)");
     private static final Pattern ID = Pattern.compile("[a-zA-Z0-9_-]{10,150}");
@@ -68,13 +71,31 @@ public class GoogleDrivePriceListService {
             do {
                 String query = "'" + folderId + "' in parents and trashed = false";
                 String endpoint = "https://www.googleapis.com/drive/v3/files?q=" + enc(query)
-                        + "&fields=" + enc("nextPageToken,files(id,name,mimeType,size,modifiedTime)")
-                        + "&pageSize=100&key=" + enc(apiKey) + (token == null ? "" : "&pageToken=" + enc(token));
+                        + "&fields=" + enc("nextPageToken,incompleteSearch,files(id,name,mimeType,size,modifiedTime,resourceKey)")
+                        + "&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true"
+                        + "&key=" + enc(apiKey) + (token == null ? "" : "&pageToken=" + enc(token));
+                log.info("DRIVE EXPLORE request folderId={} query={} pageSize=100 supportsAllDrives=true includeItemsFromAllDrives=true hasPageToken={}",
+                        folderId, query, token != null);
                 HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint)).timeout(Duration.ofSeconds(20)).GET().build();
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() != 200) throw new BusinessException("No se pudo explorar Drive. Verificá que la carpeta sea pública y que la API esté habilitada (HTTP " + response.statusCode() + ").");
+                log.info("DRIVE EXPLORE folderId={} httpStatus={} responseLength={}", folderId, response.statusCode(), response.body().length());
+                if (response.statusCode() != 200) {
+                    log.warn("DRIVE EXPLORE folderId={} errorHttp={} (sin registrar URL ni credenciales)", folderId, response.statusCode());
+                    throw new BusinessException("No se pudo explorar Drive. Verificá que la carpeta sea pública y que la API esté habilitada (HTTP " + response.statusCode() + ").");
+                }
                 JsonNode root = mapper.readTree(response.body());
-                for (JsonNode file : root.path("files")) {
+                JsonNode files = root.path("files");
+                if (files.isArray() && files.isEmpty() && token == null) {
+                    probeFolderMetadata(folderId);
+                    log.warn("DRIVE EXPLORE folderId={} Drive files.list devolvió cero elementos. "
+                            + "Comprobar credenciales del backend frente al API Explorer (pueden ser diferentes).", folderId);
+                }
+                int acceptedThisPage = 0;
+                log.info("DRIVE EXPLORE folderId={} rawFileCount={} nextPage={} incompleteSearch={}",
+                        folderId, files.size(), root.hasNonNull("nextPageToken"), root.path("incompleteSearch").asBoolean(false));
+                for (JsonNode file : files) {
+                    log.info("DRIVE RAW FILE folderId={} name={} mimeType={} size={}", folderId,
+                            file.path("name").asText(""), file.path("mimeType").asText(""), file.path("size").asText(""));
                     String name = file.path("name").asText("");
                     String mime = file.path("mimeType").asText("");
                     if (!(name.toLowerCase(java.util.Locale.ROOT).endsWith(".xls") || name.toLowerCase(java.util.Locale.ROOT).endsWith(".xlsx"))) continue;
@@ -82,8 +103,13 @@ public class GoogleDrivePriceListService {
                     long size = file.path("size").asLong(0);
                     if (size <= 0 || size > MAX_BYTES) continue;
                     result.add(new DriveFile(file.path("id").asText(), name, size, file.path("modifiedTime").asText("")));
-                    if (result.size() >= MAX_FILES) return result;
+                    acceptedThisPage++;
+                    if (result.size() >= MAX_FILES) {
+                        log.info("DRIVE EXPLORE folderId={} acceptedTotal={} maxReached=true", folderId, result.size());
+                        return result;
+                    }
                 }
+                log.info("DRIVE EXPLORE folderId={} acceptedThisPage={} acceptedTotal={}", folderId, acceptedThisPage, result.size());
                 token = root.path("nextPageToken").asText(null);
             } while (token != null && !token.isBlank());
             return result;
@@ -91,10 +117,37 @@ public class GoogleDrivePriceListService {
         catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new BusinessException("Se interrumpió la consulta a Google Drive."); }
         catch (Exception e) { throw new BusinessException("No se pudo consultar la carpeta de Google Drive."); }
     }
+    /** Diagnostics only: never logs the API key, raw response body, or a credentialed URL. */
+    private void probeFolderMetadata(String folderId) {
+        try {
+            String endpoint = "https://www.googleapis.com/drive/v3/files/" + folderId
+                    + "?fields=" + enc("id,name,mimeType,resourceKey")
+                    + "&supportsAllDrives=true&key=" + enc(apiKey);
+            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint))
+                    .timeout(Duration.ofSeconds(15)).GET().build();
+            HttpResponse<String> response = client.send(request, BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonNode metadata = mapper.readTree(response.body());
+                log.info("DRIVE FOLDER PROBE folderId={} httpStatus=200 name={} mimeType={} resourceKeyPresent={}",
+                        folderId, metadata.path("name").asText(""), metadata.path("mimeType").asText(""),
+                        metadata.hasNonNull("resourceKey"));
+            } else {
+                log.warn("DRIVE FOLDER PROBE folderId={} httpStatus={} (no credentials logged)",
+                        folderId, response.statusCode());
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            log.warn("DRIVE FOLDER PROBE folderId={} interrupted", folderId);
+        } catch (Exception exception) {
+            log.warn("DRIVE FOLDER PROBE folderId={} failed: {}", folderId,
+                    exception.getClass().getSimpleName());
+        }
+    }
+
     private static String folderId(String url) {
         Matcher matcher = FOLDER.matcher(url == null ? "" : url.trim());
         if (!matcher.find()) throw new BusinessException("Ingresá un enlace válido a una carpeta de Google Drive.");
         return matcher.group(1);
     }
-    private static String enc(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8); }
+    private static String enc(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20"); }
 }
