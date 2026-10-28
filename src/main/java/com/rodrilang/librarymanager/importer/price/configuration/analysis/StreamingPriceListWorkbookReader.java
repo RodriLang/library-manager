@@ -8,6 +8,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.FormulaEvaluator;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import com.rodrilang.librarymanager.importer.price.configuration.parser.LegacyXlsSupport;
+import com.rodrilang.librarymanager.importer.price.configuration.dto.analysis.PriceListPreviewRowResponse;
 import com.rodrilang.librarymanager.importer.price.configuration.parser.StreamingExcelDataFormatter;
 import org.apache.poi.util.XMLHelper;
 import org.apache.poi.xssf.model.SharedStrings;
@@ -19,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.xml.sax.InputSource;
 import org.xml.sax.XMLReader;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -43,10 +50,51 @@ public class StreamingPriceListWorkbookReader {
         Path temporaryFile = fileStorage.store(file);
 
         try {
-            return readFromPath(temporaryFile);
+            return LegacyXlsSupport.isXls(temporaryFile)
+                    ? readXls(temporaryFile) : readFromPath(temporaryFile);
 
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "No se pudo identificar el formato del archivo Excel", e
+            );
         } finally {
             fileStorage.deleteQuietly(temporaryFile);
+        }
+    }
+
+    private List<PriceListSheetPreview> readXls(Path filePath) {
+        try (HSSFWorkbook workbook = LegacyXlsSupport.open(filePath)) {
+            DataFormatter formatter = new DataFormatter(Locale.forLanguageTag("es-AR"));
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+            List<PriceListSheetPreview> previews = new ArrayList<>();
+            int sheetCount = Math.min(workbook.getNumberOfSheets(), properties.maxSheets());
+            for (int index = 0; index < sheetCount; index++) {
+                Sheet sheet = workbook.getSheetAt(index);
+                List<PriceListPreviewRowResponse> rows = new ArrayList<>();
+                int columns = 0;
+                int rowLimit = properties.maxPreviewRows();
+                for (int rowIndex = 0; rowIndex < rowLimit; rowIndex++) {
+                    Row row = sheet.getRow(rowIndex);
+                    if (row == null) continue;
+                    List<String> cells = LegacyXlsSupport.cells(row, properties.maxColumns(), formatter, evaluator);
+                    columns = Math.max(columns, cells.size());
+                    rows.add(new PriceListPreviewRowResponse(rowIndex, cells));
+                }
+                List<PriceListPreviewRowResponse> normalized = new ArrayList<>();
+                for (PriceListPreviewRowResponse row : rows) {
+                    List<String> values = new ArrayList<>(row.cells());
+                    while (values.size() < columns) values.add("");
+                    normalized.add(new PriceListPreviewRowResponse(row.rowIndex(), List.copyOf(values)));
+                }
+                previews.add(new PriceListSheetPreview(index, sheet.getSheetName(),
+                        normalized.size(), columns, sheet.getLastRowNum() >= rowLimit, List.copyOf(normalized)));
+            }
+            if (previews.isEmpty()) throw new BusinessException("El archivo Excel no contiene hojas analizables.");
+            return List.copyOf(previews);
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException("No se pudo analizar el archivo XLS: " + resolveExceptionMessage(exception));
         }
     }
 
@@ -227,9 +275,9 @@ public class StreamingPriceListWorkbookReader {
         String normalized =
                 fileName.toLowerCase(Locale.ROOT);
 
-        if (!normalized.endsWith(".xlsx")) {
+        if (!normalized.endsWith(".xlsx") && !normalized.endsWith(".xls")) {
             throw new BusinessException(
-                    "El análisis automático requiere un archivo .xlsx."
+                    "El análisis automático requiere un archivo .xls o .xlsx."
             );
         }
     }

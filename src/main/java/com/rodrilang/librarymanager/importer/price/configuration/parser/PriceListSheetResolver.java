@@ -52,7 +52,16 @@ public class PriceListSheetResolver {
             Workbook workbook,
             String name
     ) {
-        Sheet sheet = workbook.getSheet(name);
+        Sheet sheet = null;
+        if (name != null) {
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet candidate = workbook.getSheetAt(i);
+                if (candidate.getSheetName().equalsIgnoreCase(name.trim())) {
+                    sheet = candidate;
+                    break;
+                }
+            }
+        }
 
         if (sheet == null) {
             throw new BusinessException(
@@ -68,7 +77,7 @@ public class PriceListSheetResolver {
             String expected
     ) {
         String normalizedExpected =
-                expected.trim().toLowerCase();
+                expected.trim().toLowerCase(java.util.Locale.ROOT);
 
         for (int i = 0;
              i < workbook.getNumberOfSheets();
@@ -77,7 +86,7 @@ public class PriceListSheetResolver {
             Sheet sheet = workbook.getSheetAt(i);
 
             if (sheet.getSheetName()
-                    .toLowerCase()
+                    .toLowerCase(java.util.Locale.ROOT)
                     .contains(normalizedExpected)) {
 
                 return sheet;

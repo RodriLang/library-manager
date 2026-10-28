@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.importer.price.storage;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.importer.price.config.PriceListImportProperties;
+import com.rodrilang.librarymanager.importer.price.configuration.parser.LegacyXlsSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -52,7 +53,7 @@ public class PriceListImportFileStorage {
 
             applyPermissions(directory, DIRECTORY_PERMISSIONS);
 
-            Path target = directory.resolve("source.xlsx");
+            Path target = directory.resolve("source" + LegacyXlsSupport.extension(file.getOriginalFilename()));
 
             try (InputStream input = file.getInputStream()) {
                 Files.copy(
@@ -192,10 +193,10 @@ public class PriceListImportFileStorage {
 
         if (
                 filename == null
-                        || !filename.toLowerCase(Locale.ROOT).endsWith(".xlsx")
+                        || !(filename.toLowerCase(Locale.ROOT).endsWith(".xlsx") || filename.toLowerCase(Locale.ROOT).endsWith(".xls"))
         ) {
             throw new BusinessException(
-                    "La importación requiere un archivo .xlsx."
+                    "La importación requiere un archivo .xls o .xlsx."
             );
         }
     }

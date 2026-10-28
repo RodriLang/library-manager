@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.importer.price.configuration.analysis;
 
 import com.rodrilang.librarymanager.exception.BusinessException;
+import com.rodrilang.librarymanager.importer.price.configuration.parser.LegacyXlsSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -42,7 +43,7 @@ public class PriceListAnalysisFileStorage {
 
             applyOwnerOnlyPermissions(analysisDirectory);
 
-            Path target = analysisDirectory.resolve("source.xlsx");
+            Path target = analysisDirectory.resolve("source" + LegacyXlsSupport.extension(file.getOriginalFilename()));
 
             try (InputStream inputStream = file.getInputStream()) {
                 Files.copy(

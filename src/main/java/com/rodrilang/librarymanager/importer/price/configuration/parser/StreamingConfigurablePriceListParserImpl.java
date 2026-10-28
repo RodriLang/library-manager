@@ -8,6 +8,11 @@ import com.rodrilang.librarymanager.importer.price.dto.internal.PriceListRow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.FormulaEvaluator;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.util.XMLHelper;
 import org.apache.poi.xssf.model.SharedStrings;
 import org.apache.poi.xssf.eventusermodel.XSSFReader;
@@ -28,6 +33,7 @@ import java.util.function.Consumer;
 public class StreamingConfigurablePriceListParserImpl implements StreamingConfigurablePriceListParser {
 
     private final ConfigurableStreamingRowMapper rowMapper;
+    private final PriceListSheetResolver sheetResolver;
 
     @Override
     public void parse(
@@ -35,6 +41,16 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
             PriceListImportConfig config,
             Consumer<PriceListRow> rowConsumer
     ) {
+        try {
+            if (LegacyXlsSupport.isXls(filePath)) {
+                parseXls(filePath, config, rowConsumer);
+                return;
+            }
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException("No se pudo identificar el formato Excel: " + exception.getMessage());
+        }
         long overallStarted = System.nanoTime();
         PriceParserRuntimeMetrics runtimeMetrics = new PriceParserRuntimeMetrics();
         log.info("PRICE LIST PARSER OPEN START fileBytes={} sheetStrategy={} firstDataRow={} mappings={}",
@@ -136,6 +152,27 @@ public class StreamingConfigurablePriceListParserImpl implements StreamingConfig
         }
     }
 
+
+    private void parseXls(Path filePath, PriceListImportConfig config, Consumer<PriceListRow> consumer) {
+        try (HSSFWorkbook workbook = LegacyXlsSupport.open(filePath)) {
+            Sheet sheet = sheetResolver.resolve(workbook, config);
+            DataFormatter formatter = new DataFormatter(Locale.forLanguageTag("es-AR"));
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+            int maxColumns = config.getMappings().stream()
+                    .filter(PriceListColumnMapping::isActive)
+                    .mapToInt(mapping -> mapping.getColumnIndex() == null ? -1 : mapping.getColumnIndex())
+                    .max().orElse(-1) + 1;
+            for (Row row : sheet) {
+                if (row.getRowNum() < config.getFirstDataRowIndex()) continue;
+                consumer.accept(rowMapper.map(row.getRowNum(),
+                        LegacyXlsSupport.cells(row, maxColumns, formatter, evaluator), config));
+            }
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException("No se pudo leer la lista de precios XLS: " + safeMessage(exception));
+        }
+    }
 
     private static long millisSince(long started) {
         return (System.nanoTime() - started) / 1_000_000L;
