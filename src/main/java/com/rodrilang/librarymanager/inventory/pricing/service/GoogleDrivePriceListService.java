@@ -53,7 +53,11 @@ public class GoogleDrivePriceListService {
             HttpRequest request = HttpRequest.newBuilder(URI.create(uri)).timeout(Duration.ofSeconds(60)).GET().build();
             HttpResponse<java.io.InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
             try (java.io.InputStream stream = response.body()) {
-                if (response.statusCode() != 200) throw new BusinessException("Google Drive no permitió descargar el archivo (HTTP " + response.statusCode() + ").");
+                if (response.statusCode() != 200) {
+                    byte[] errorBody = stream.readNBytes(16 * 1024);
+                    logGoogleError("DOWNLOAD", folderId, fileId, response.statusCode(), errorBody);
+                    throw new BusinessException("Google Drive no permitió descargar el archivo (HTTP " + response.statusCode() + ").");
+                }
                 byte[] contents = stream.readNBytes((int) MAX_BYTES + 1);
                 if (contents.length > MAX_BYTES) throw new BusinessException("El archivo descargado supera 20 MB.");
                 return new DownloadedFile(file.name(), contents);
@@ -63,32 +67,57 @@ public class GoogleDrivePriceListService {
         catch (Exception exception) { throw new BusinessException("No se pudo descargar el archivo de Google Drive."); }
     }
 
-    /** Stream directly from Drive to the HTTP client, bounded to 20 MB. */
-    public void streamDownload(String folderUrl, String fileId, java.io.OutputStream output) throws java.io.IOException {
+    /** The remote response is checked before our controller starts an octet-stream response. */
+    public record OpenDownload(String filename, java.io.InputStream stream) implements AutoCloseable {
+        @Override public void close() throws java.io.IOException { stream.close(); }
+    }
+
+    public OpenDownload openDownload(String folderUrl, String fileId) {
         String folderId = folderId(folderUrl);
-        if (fileId == null || !ID.matcher(fileId).matches()) throw new BusinessException("Identificador de archivo inválido.");
+        if (fileId == null || !ID.matcher(fileId).matches()) {
+            throw new BusinessException("Identificador de archivo inválido.");
+        }
         DriveFile file = list(folderId).stream().filter(f -> f.id().equals(fileId)).findFirst()
                 .orElseThrow(() -> new BusinessException("El archivo no pertenece a la carpeta indicada."));
         if (file.size() > MAX_BYTES) throw new BusinessException("El archivo supera el límite de 20 MB.");
-        String uri = "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media&key=" + enc(apiKey);
+        String uri = "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media&supportsAllDrives=true&key=" + enc(apiKey);
         try {
             HttpResponse<java.io.InputStream> response = client.send(
                     HttpRequest.newBuilder(URI.create(uri)).timeout(Duration.ofSeconds(90)).GET().build(),
                     HttpResponse.BodyHandlers.ofInputStream());
-            try (var input = response.body()) {
-                if (response.statusCode() != 200) throw new BusinessException("Google Drive rechazó la descarga (HTTP " + response.statusCode() + ").");
-                byte[] buffer = new byte[64 * 1024];
-                long total = 0;
-                int count;
-                while ((count = input.read(buffer)) != -1) {
-                    total += count;
-                    if (total > MAX_BYTES) throw new BusinessException("El archivo supera el límite de descarga.");
-                    output.write(buffer, 0, count);
+            if (response.statusCode() != 200) {
+                try (var stream = response.body()) {
+                    logGoogleError("DOWNLOAD", folderId, fileId, response.statusCode(), stream.readNBytes(16 * 1024));
+                } catch (java.io.IOException exception) {
+                    log.warn("DRIVE DOWNLOAD error body unavailable folderId={} fileId={} httpStatus={} errorType={}",
+                            folderId, fileId, response.statusCode(), exception.getClass().getSimpleName());
                 }
+                throw new BusinessException("Google Drive no permitió descargar la lista (HTTP "
+                        + response.statusCode() + "). Revisá el log DRIVE DOWNLOAD denied.");
             }
-        } catch (InterruptedException e) {
+            return new OpenDownload(file.name(), response.body());
+        } catch (BusinessException exception) { throw exception; }
+        catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new java.io.IOException("Descarga interrumpida", e);
+            throw new BusinessException("Se interrumpió la descarga desde Google Drive.");
+        } catch (java.io.IOException exception) {
+            log.warn("DRIVE DOWNLOAD request failed folderId={} fileId={} type={}", folderId, fileId,
+                    exception.getClass().getSimpleName());
+            throw new BusinessException("No se pudo iniciar la descarga desde Google Drive.");
+        }
+    }
+
+    /** Stream one authorized download with a bounded buffer and size check. */
+    public void streamDownload(OpenDownload download, java.io.OutputStream output) throws java.io.IOException {
+        try (download) {
+            byte[] buffer = new byte[64 * 1024];
+            long total = 0;
+            int count;
+            while ((count = download.stream().read(buffer)) != -1) {
+                total += count;
+                if (total > MAX_BYTES) throw new java.io.IOException("El archivo supera el límite de descarga.");
+                output.write(buffer, 0, count);
+            }
         }
     }
 
@@ -109,7 +138,8 @@ public class GoogleDrivePriceListService {
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
                 log.info("DRIVE EXPLORE folderId={} httpStatus={} responseLength={}", folderId, response.statusCode(), response.body().length());
                 if (response.statusCode() != 200) {
-                    log.warn("DRIVE EXPLORE folderId={} errorHttp={} (sin registrar URL ni credenciales)", folderId, response.statusCode());
+                    logGoogleError("EXPLORE", folderId, null, response.statusCode(),
+                            response.body().substring(0, Math.min(response.body().length(), 16 * 1024)).getBytes(StandardCharsets.UTF_8));
                     throw new BusinessException("No se pudo explorar Drive. Verificá que la carpeta sea pública y que la API esté habilitada (HTTP " + response.statusCode() + ").");
                 }
                 JsonNode root = mapper.readTree(response.body());
@@ -170,6 +200,30 @@ public class GoogleDrivePriceListService {
         } catch (Exception exception) {
             log.warn("DRIVE FOLDER PROBE folderId={} failed: {}", folderId,
                     exception.getClass().getSimpleName());
+        }
+    }
+
+    /** Log only the structured error fields returned by Google; never the credentialed request URL or raw response. */
+    private void logGoogleError(String operation, String folderId, String fileId, int httpStatus, byte[] body) {
+        try {
+            JsonNode root = mapper.readTree(body);
+            JsonNode error = root.path("error");
+            String code = error.path("code").asText("unknown");
+            String status = error.path("status").asText("unknown");
+            String reason = error.path("errors").path(0).path("reason").asText("unknown");
+            if ("unknown".equals(reason)) {
+                reason = error.path("details").path(0).path("reason").asText("unknown");
+            }
+            // The message is diagnostic data, not a trusted string: limit size and redact credentials.
+            String message = error.path("message").asText("unavailable");
+            message = message.replaceAll("(?i)(key|api[_-]?key|access[_-]?token)=([^\\s&]+)", "$1=[REDACTED]")
+                    .replaceAll("[\\r\\n\\t]+", " ");
+            if (message.length() > 350) message = message.substring(0, 350) + "…";
+            log.warn("DRIVE {} denied folderId={} fileId={} httpStatus={} googleCode={} googleStatus={} reason={} message={}",
+                    operation, folderId, fileId == null ? "-" : fileId, httpStatus, code, status, reason, message);
+        } catch (Exception exception) {
+            log.warn("DRIVE {} denied folderId={} fileId={} httpStatus={} errorDetails=unparseable errorType={}",
+                    operation, folderId, fileId == null ? "-" : fileId, httpStatus, exception.getClass().getSimpleName());
         }
     }
 
