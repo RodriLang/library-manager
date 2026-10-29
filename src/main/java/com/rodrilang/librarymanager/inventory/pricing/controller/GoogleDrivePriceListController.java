@@ -22,9 +22,10 @@ public class GoogleDrivePriceListController {
     @PostMapping("/stream")
     public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> stream(
             @RequestBody DownloadRequest request) {
-        // A stream is never accumulated into a byte[] on the server.
+        // Validate Google Drive's HTTP status before committing a binary response.
+        var source = service.openDownload(request.url(), request.fileId());
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(output -> service.streamDownload(request.url(), request.fileId(), output));
+                .body(output -> service.streamDownload(source, output));
     }
 
     @PostMapping("/download")
