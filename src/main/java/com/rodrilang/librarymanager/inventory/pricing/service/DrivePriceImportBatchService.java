@@ -18,7 +18,7 @@ public class DrivePriceImportBatchService {
     private final GoogleDrivePriceListService drive;
 
     public record Item(long id, String driveFileId, String filename, long size, int position,
-                       String status, Long importId, String errorMessage) {}
+                       String status, Long importId, String errorMessage, Long formatId, String mappingJson, java.time.LocalDate effectiveFrom) {}
     public record Batch(long id, String folderUrl, List<Item> items) {}
 
     @Transactional
@@ -46,16 +46,46 @@ public class DrivePriceImportBatchService {
         var folderUrls = jdbc.query("SELECT folder_url FROM drive_price_import_batches WHERE id=? AND bookstore_id=?",
                 (rs, rowNum) -> rs.getString(1), id, tenant);
         if (folderUrls.isEmpty()) throw new BusinessException("No se encontró el lote para esta librería.");
-        List<Item> items = jdbc.query("SELECT id, drive_file_id, filename, file_size, position, status, import_id, error_message FROM drive_price_import_batch_items WHERE batch_id=? ORDER BY position",
+        List<Item> items = jdbc.query("SELECT id, drive_file_id, filename, file_size, position, status, import_id, error_message, format_id, mapping_json, effective_from FROM drive_price_import_batch_items WHERE batch_id=? ORDER BY position",
                 (rs, row) -> new Item(rs.getLong("id"), rs.getString("drive_file_id"), rs.getString("filename"), rs.getLong("file_size"), rs.getInt("position"),
-                        rs.getString("status"), (Long) rs.getObject("import_id"), rs.getString("error_message")), id);
+                        rs.getString("status"), (Long) rs.getObject("import_id"), rs.getString("error_message"), (Long) rs.getObject("format_id"), rs.getString("mapping_json"), rs.getObject("effective_from", java.time.LocalDate.class)), id);
         return new Batch(id, folderUrls.get(0), items);
+    }
+
+    /** Persist configuration without creating an import; tenant and format ownership are checked. */
+    @Transactional
+    public Batch prepare(long batchId, long itemId, Long formatId, String mappingJson, java.time.LocalDate effectiveFrom) {
+        get(batchId);
+        if ((formatId == null) == (mappingJson == null || mappingJson.isBlank()))
+            throw new BusinessException("Elegí un formato guardado o una configuración temporal.");
+        if (effectiveFrom == null) throw new BusinessException("Indicá la fecha de vigencia.");
+        if (formatId != null) {
+            Integer owned = jdbc.queryForObject("SELECT count(*) FROM bookstore_price_list_formats WHERE id=? AND bookstore_id=?",
+                    Integer.class, formatId, bookstore.getCurrentBookstoreId());
+            if (owned == null || owned == 0) throw new BusinessException("El formato no corresponde a esta librería.");
+        }
+        if (mappingJson != null) {
+            if (mappingJson.length() > 10000) throw new BusinessException("La configuración de columnas es demasiado extensa.");
+            try {
+                var mapping = new com.fasterxml.jackson.databind.ObjectMapper().readValue(mappingJson,
+                        com.rodrilang.librarymanager.inventory.pricing.dto.BookstorePriceListFormatRequest.class);
+                if (mapping.priceColumn() == null || (mapping.isbnColumn() == null && (mapping.titleColumn() == null || mapping.authorColumn() == null)))
+                    throw new BusinessException("La correspondencia necesita precio e ISBN, o título y autor.");
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new BusinessException("La configuración de columnas no es válida.");
+            }
+        }
+        int changed = jdbc.update("UPDATE drive_price_import_batch_items SET format_id=?, mapping_json=?, effective_from=?, " +
+                        "prepared_at=now(), status='PREPARED', error_message=NULL WHERE id=? AND batch_id=? AND import_id IS NULL AND status IN ('PENDING','PREPARED','ERROR')",
+                formatId, mappingJson, effectiveFrom, itemId, batchId);
+        if (changed != 1) throw new BusinessException("Esta lista ya fue analizada o no está disponible para preparación.");
+        return get(batchId);
     }
 
     @Transactional
     public Batch update(long batchId, long itemId, String status, Long importId, String error) {
         get(batchId); // tenant isolation
-        if (!Set.of("PENDING", "IN_REVIEW", "COMPLETED", "ERROR", "SKIPPED").contains(status))
+        if (!Set.of("PENDING", "PREPARED", "ANALYZING", "IN_REVIEW", "COMPLETED", "ERROR", "SKIPPED").contains(status))
             throw new BusinessException("Estado de lista inválido.");
         if (importId != null) {
             Integer owned = jdbc.queryForObject("SELECT count(*) FROM inventory_price_imports WHERE id=? AND bookstore_id=?",

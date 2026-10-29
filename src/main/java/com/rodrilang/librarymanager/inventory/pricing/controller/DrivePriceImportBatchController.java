@@ -13,6 +13,12 @@ public class DrivePriceImportBatchController {
     public record CreateRequest(String url, List<String> fileIds) {}
     public record UpdateRequest(String status, Long importId, String errorMessage) {}
 
+    public record PrepareRequest(Long formatId, String mappingJson, java.time.LocalDate effectiveFrom) {}
+    @PutMapping("/{id}/items/{itemId}/preparation")
+    public DrivePriceImportBatchService.Batch prepare(@PathVariable long id, @PathVariable long itemId,
+                                                      @RequestBody PrepareRequest request) {
+        return batches.prepare(id, itemId, request.formatId(), request.mappingJson(), request.effectiveFrom());
+    }
     @PostMapping
     public DrivePriceImportBatchService.Batch create(@RequestBody CreateRequest request) {
         return batches.create(request.url(), request.fileIds());
