@@ -294,7 +294,12 @@ public class BookServiceImpl implements BookService {
     ) {
         String query = criteria.query();
 
-        boolean identifierQuery = query.matches("[0-9Xx\\-\\s]+");
+        // Short numeric titles (e.g. "1984", "2001") are titles, not ISBN prefixes.
+        // Keep the existing ISBN prefix search for 8+ digit identifiers.
+        String normalizedIdentifier = normalizeSearchIdentifier(query);
+        boolean identifierQuery = query.matches("[0-9Xx\\-\\s]+")
+                && normalizedIdentifier != null
+                && normalizedIdentifier.length() >= 8;
 
         if (!criteria.force()) {
             int minimumLength = identifierQuery ? 8 : 3;
@@ -305,12 +310,6 @@ public class BookServiceImpl implements BookService {
         }
 
         if (identifierQuery) {
-            String normalizedIdentifier = normalizeSearchIdentifier(query);
-
-            if (normalizedIdentifier == null) {
-                return Page.empty(pageable);
-            }
-
             return bookCatalogQueryRepository.searchByIsbn(
                     criteria,
                     normalizedIdentifier,
