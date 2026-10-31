@@ -286,7 +286,55 @@ public class TiendanubePublicationContentService {
         Map<String, TiendanubeDuplicatePairResponse> matches = new LinkedHashMap<>();
         appendPairs(matches, dismissed, byTitle, "SAME_TITLE");
         appendPairs(matches, dismissed, byIsbn, "SAME_ISBN"); // ISBN exacto prevalece
+        appendSimilarTitlePairs(matches, dismissed, products);
         return new ArrayList<>(matches.values());
+    }
+
+    /** Coincidencias aproximadas de alta precisión: solo advertencias para revisión manual. */
+    private static void appendSimilarTitlePairs(Map<String, TiendanubeDuplicatePairResponse> matches,
+                                                Set<String> dismissed, List<TiendanubeProductResponse> products) {
+        // Prefiltro por tokens para no evaluar todos los pares de un catálogo grande.
+        Map<String, List<TiendanubeProductResponse>> index = new LinkedHashMap<>();
+        for (TiendanubeProductResponse product : products) {
+            Set<String> tokens = meaningfulTokens(normalizedName(product));
+            for (String token : tokens) {
+                if (token.length() >= 5) index.computeIfAbsent(token, ignored -> new ArrayList<>()).add(product);
+            }
+        }
+        Set<String> visited = new HashSet<>();
+        for (List<TiendanubeProductResponse> group : index.values()) {
+            // Tokens muy comunes producen grandes grupos; requieren otros criterios más selectivos.
+            if (group.size() > 250) continue;
+            for (int i = 0; i < group.size(); i++) for (int j = i + 1; j < group.size(); j++) {
+                TiendanubeProductResponse a = group.get(i), c = group.get(j);
+                if (a.id().equals(c.id())) continue;
+                String key = pairKey(a.id(), c.id());
+                if (!visited.add(key) || dismissed.contains(key) || matches.containsKey(key)) continue;
+                if (!similarPublicationNames(normalizedName(a), normalizedName(c))) continue;
+                matches.put(key, new TiendanubeDuplicatePairResponse(
+                        a.id(), displayName(a), c.id(), displayName(c), "SIMILAR_TITLE"));
+            }
+        }
+    }
+
+    private static Set<String> meaningfulTokens(String name) {
+        Set<String> result = new HashSet<>();
+        for (String token : name.split(" ")) {
+            if (token.length() >= 3 && !Set.of("los", "las", "del", "por", "con", "una", "uno", "para", "and", "the", "otros", "otras", "libro", "edicion").contains(token)) result.add(token);
+        }
+        return result;
+    }
+
+    static boolean similarPublicationNames(String a, String b) {
+        if (a.isBlank() || b.isBlank() || a.equals(b)) return false;
+        Set<String> left = meaningfulTokens(a), right = meaningfulTokens(b);
+        if (left.size() < 2 || right.size() < 2) return false;
+        Set<String> common = new HashSet<>(left);
+        common.retainAll(right);
+        // Al menos dos términos distintivos compartidos, y cobertura suficiente
+        // del título más corto. No se usa para decidir automáticamente vínculos.
+        return common.size() >= 2 && (double) common.size() / Math.min(left.size(), right.size()) >= 0.75
+                && (double) common.size() / Math.max(left.size(), right.size()) >= 0.40;
     }
 
     private static void appendPairs(Map<String, TiendanubeDuplicatePairResponse> matches, Set<String> dismissed,
