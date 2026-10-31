@@ -23,7 +23,7 @@ public class TiendanubeImportAnalysisTextMatcher {
 
     private static final int RETURNED_CANDIDATE_LIMIT = 5;
     private static final int CATALOG_CANDIDATE_LIMIT = 15;
-    private static final double MIN_TITLE_SCORE = 0.45;
+    private static final double MIN_TITLE_SCORE = 0.70;
     private static final double HIGH_CONFIDENCE_TITLE_SCORE = 0.90;
     private static final double HIGH_CONFIDENCE_SCORE = 0.80;
     private static final double HIGH_CONFIDENCE_GAP = 0.12;
@@ -34,8 +34,8 @@ public class TiendanubeImportAnalysisTextMatcher {
             String remoteName,
             List<Inventory> inventories
     ) {
-        String remoteSearch = TextNormalizer.normalizeForSearch(remoteName);
-        String remoteMatch = TextNormalizer.normalizeForMatch(remoteName);
+        String remoteSearch = TextNormalizer.normalizeForSearch(remoteTitle(remoteName));
+        String remoteMatch = TextNormalizer.normalizeForMatch(remoteAuthor(remoteName));
 
         if (remoteSearch == null || remoteSearch.isBlank()) {
             return List.of();
@@ -43,7 +43,7 @@ public class TiendanubeImportAnalysisTextMatcher {
 
         return inventories.stream()
                 .map(inventory -> scoreInventory(remoteSearch, remoteMatch, inventory))
-                .filter(candidate -> candidate.titleScore() >= MIN_TITLE_SCORE)
+                .filter(candidate -> candidate != null)
                 .sorted(Comparator.comparingDouble(TiendanubeImportAnalysisScoredInventory::score).reversed())
                 .limit(RETURNED_CANDIDATE_LIMIT)
                 .toList();
@@ -51,8 +51,8 @@ public class TiendanubeImportAnalysisTextMatcher {
 
     @Transactional(readOnly = true)
     public List<TiendanubeImportAnalysisScoredBook> scoreCatalog(String remoteName) {
-        String remoteSearch = TextNormalizer.normalizeForSearch(remoteName);
-        String remoteMatch = TextNormalizer.normalizeForMatch(remoteName);
+        String remoteSearch = TextNormalizer.normalizeForSearch(remoteTitle(remoteName));
+        String remoteMatch = TextNormalizer.normalizeForMatch(remoteAuthor(remoteName));
 
         if (remoteSearch == null || remoteSearch.isBlank()) {
             return List.of();
@@ -75,7 +75,7 @@ public class TiendanubeImportAnalysisTextMatcher {
 
         return bookRepository.findAllWithDetailsByIdIn(candidateIds).stream()
                 .map(book -> scoreBook(remoteSearch, remoteMatch, book))
-                .filter(candidate -> candidate.titleScore() >= MIN_TITLE_SCORE)
+                .filter(candidate -> candidate != null)
                 .sorted(Comparator.comparingDouble(TiendanubeImportAnalysisScoredBook::score).reversed())
                 .limit(RETURNED_CANDIDATE_LIMIT)
                 .toList();
@@ -85,7 +85,8 @@ public class TiendanubeImportAnalysisTextMatcher {
             TiendanubeImportAnalysisScoredInventory best,
             TiendanubeImportAnalysisScoredInventory second
     ) {
-        if (best.titleScore() < HIGH_CONFIDENCE_TITLE_SCORE || best.score() < HIGH_CONFIDENCE_SCORE) {
+        if (best.titleScore() < HIGH_CONFIDENCE_TITLE_SCORE || best.score() < HIGH_CONFIDENCE_SCORE
+                || best.matchType() != TiendanubeImportAnalysisMatchType.INVENTORY_TITLE_AUTHOR) {
             return false;
         }
 
@@ -100,7 +101,8 @@ public class TiendanubeImportAnalysisTextMatcher {
         Book book = inventory.getBook();
         double titleScore = titleScore(remoteSearch, book.getTitleSearch());
         double authorScore = titleScore >= MIN_TITLE_SCORE ? authorScore(remoteMatch, book) : 0;
-        double publisherScore = titleScore >= MIN_TITLE_SCORE ? publisherScore(remoteMatch, book) : 0;
+        double publisherScore = 0; // La publicación remota no aporta una editorial estructurada.
+        if (!isPlausible(titleScore, authorScore)) return null;
         double score = weightedScore(titleScore, authorScore, publisherScore);
 
         return new TiendanubeImportAnalysisScoredInventory(
@@ -118,13 +120,20 @@ public class TiendanubeImportAnalysisTextMatcher {
     ) {
         double titleScore = titleScore(remoteSearch, book.getTitleSearch());
         double authorScore = titleScore >= MIN_TITLE_SCORE ? authorScore(remoteMatch, book) : 0;
-        double publisherScore = titleScore >= MIN_TITLE_SCORE ? publisherScore(remoteMatch, book) : 0;
+        double publisherScore = 0; // La publicación remota no aporta una editorial estructurada.
 
+        if (!isPlausible(titleScore, authorScore)) return null;
         return new TiendanubeImportAnalysisScoredBook(
                 book,
                 titleScore,
                 weightedScore(titleScore, authorScore, publisherScore)
         );
+    }
+
+    private boolean isPlausible(double title, double author) {
+        // Título completo idéntico: se puede revisar incluso si el autor difiere.
+        // Título parcial: exige corroboración del autor, nunca una palabra aislada.
+        return title >= 0.98 || (title >= MIN_TITLE_SCORE && author >= 0.45);
     }
 
     private double weightedScore(double titleScore, double authorScore, double publisherScore) {
@@ -174,41 +183,46 @@ public class TiendanubeImportAnalysisTextMatcher {
         return publisher == null || publisher.isBlank() ? 0 : titleScore(remoteName, publisher);
     }
 
+    // Tiendanube suele publicar "Título - Autor" en un único campo. No se debe
+    // usar el apellido del autor como prueba de coincidencia con el título.
+    private String remoteTitle(String name) {
+        if (name == null) return null;
+        int separator = name.lastIndexOf(" - ");
+        return separator > 0 ? name.substring(0, separator).trim() : name;
+    }
+
+    private String remoteAuthor(String name) {
+        if (name == null) return null;
+        int separator = name.lastIndexOf(" - ");
+        return separator > 0 ? name.substring(separator + 3).trim() : null;
+    }
+
     private double titleScore(String remoteName, String title) {
-        if (remoteName == null || remoteName.isBlank() || title == null || title.isBlank()) {
-            return 0;
-        }
+        if (remoteName == null || remoteName.isBlank() || title == null || title.isBlank()) return 0;
+        List<String> remote = significantTokens(remoteName);
+        List<String> candidate = significantTokens(TextNormalizer.normalizeForSearch(title));
+        if (remote.isEmpty() || candidate.isEmpty()) return 0;
+        double forward = tokenCoverage(remote, candidate);
+        double backward = tokenCoverage(candidate, remote);
+        // Cobertura bidireccional: "Nada" no equivale a "Rezos a la Nada".
+        // No se recompensa repetir una misma palabra varias veces.
+        double harmonic = forward + backward == 0 ? 0 : 2 * forward * backward / (forward + backward);
+        // Coincidencias parciales sin el título completo necesitan pruebas adicionales.
+        return harmonic;
+    }
 
-        List<String> remoteTokens = significantTokens(remoteName);
-        List<String> titleTokens = significantTokens(title);
-
-        if (remoteTokens.isEmpty() || titleTokens.isEmpty()) {
-            return 0;
-        }
-
+    private double tokenCoverage(List<String> source, List<String> target) {
         double total = 0;
-
-        for (String titleToken : titleTokens) {
-            double bestMatch = remoteTokens.stream()
-                    .mapToDouble(remoteToken -> tokenSimilarity(titleToken, remoteToken))
-                    .max()
-                    .orElse(0);
-
-            total += bestMatch;
+        for (String word : source) {
+            total += target.stream().mapToDouble(other -> tokenSimilarity(word, other)).max().orElse(0);
         }
-
-        double coverage = total / titleTokens.size();
-
-        if (titleTokens.size() == 1 && remoteTokens.size() >= 3) {
-            coverage *= 0.65;
-        }
-
-        return coverage;
+        return total / source.size();
     }
 
     private List<String> significantTokens(String value) {
         return Stream.of(value.split("\\s+"))
                 .filter(token -> token.length() > 1)
+                .filter(token -> !java.util.Set.of("de", "del", "la", "las", "los", "el", "un", "una", "unos", "unas", "en", "por", "para", "con", "sin", "y", "al", "a", "the", "and").contains(token))
                 .toList();
     }
 
