@@ -111,7 +111,7 @@ public class TiendanubeImportAnalysisResolutionItemService {
         Long bookId = bookService.create(request.book()).id();
         var inventoryRequest = new TiendanubeImportAnalysisCreateInventoryRequest(
                 bookId, request.salePrice(), request.initialStock(),
-                request.minimumStock(), request.syncStock());
+                request.minimumStock(), request.syncStock(), request.resolvedPriceSource());
         Inventory inventory = analysisInventoryService.createOrReactivate(bookstoreId, inventoryRequest);
         validateInventory(inventory, bookstoreId);
         validateCanLink(item, inventory);
