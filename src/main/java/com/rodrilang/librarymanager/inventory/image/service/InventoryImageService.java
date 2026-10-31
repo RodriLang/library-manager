@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.inventory.image.service;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.catalog.contribution.service.BookstoreBookFieldOverrideService;
 import com.rodrilang.librarymanager.exception.BusinessException;
 import com.rodrilang.librarymanager.inventory.image.dto.*;
 import com.rodrilang.librarymanager.inventory.image.model.InventoryImage;
@@ -39,6 +40,7 @@ public class InventoryImageService {
     private final InventoryImageRepository imageRepository;
     private final InventoryImageAssetRepository assetRepository;
     private final BookstoreContext bookstoreContext;
+    private final BookstoreBookFieldOverrideService bookFieldOverrideService;
     private final ImageOptimizer imageOptimizer;
     private final ImageValidator imageValidator;
     private final ImageHashService imageHashService;
@@ -241,11 +243,12 @@ public class InventoryImageService {
     private InventoryImageGalleryResponse buildGallery(Inventory inventory, List<InventoryImage> custom) {
         List<InventoryImageResponse> result = new ArrayList<>();
         boolean customPrimary = custom.stream().anyMatch(image -> image.getSortOrder() == 0);
-        if (hasBookCover(inventory)) {
+        String effectiveCoverUrl = effectiveBookCoverUrl(inventory);
+        if (effectiveCoverUrl != null) {
             int order = customPrimary ? 1 : 0;
             result.add(new InventoryImageResponse(
                     null,
-                    inventory.getBook().getCoverUrl(),
+                    effectiveCoverUrl,
                     "BOOK_COVER",
                     order,
                     !customPrimary,
@@ -280,9 +283,13 @@ public class InventoryImageService {
     }
 
     private boolean hasBookCover(Inventory inventory) {
-        return inventory.getBook() != null
-                && inventory.getBook().getCoverUrl() != null
-                && !inventory.getBook().getCoverUrl().isBlank();
+        return effectiveBookCoverUrl(inventory) != null;
+    }
+
+    private String effectiveBookCoverUrl(Inventory inventory) {
+        if (inventory.getBook() == null) return null;
+        String coverUrl = bookFieldOverrideService.resolve(inventory.getBook(), inventory.getBookstore().getId()).coverUrl();
+        return coverUrl == null || coverUrl.isBlank() ? null : coverUrl;
     }
 
     private String normalizeUrl(String value) {
