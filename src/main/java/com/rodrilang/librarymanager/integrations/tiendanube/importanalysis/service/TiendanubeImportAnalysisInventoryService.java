@@ -77,7 +77,7 @@ public class TiendanubeImportAnalysisInventoryService {
                     saved,
                     request.salePrice(),
                     inventoryPriceService.today(),
-                    InventoryPriceSource.TIENDANUBE_IMPORT,
+                    request.resolvedPriceSource(),
                     null
             );
         }
@@ -130,7 +130,7 @@ public class TiendanubeImportAnalysisInventoryService {
                     inventory,
                     request.salePrice(),
                     inventoryPriceService.today(),
-                    InventoryPriceSource.TIENDANUBE_IMPORT,
+                    request.resolvedPriceSource(),
                     null
             );
         }
