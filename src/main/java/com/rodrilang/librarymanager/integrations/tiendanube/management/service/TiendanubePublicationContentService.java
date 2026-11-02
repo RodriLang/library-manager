@@ -132,6 +132,41 @@ public class TiendanubePublicationContentService {
         return client.createCategory(store.getStoreId(), name.strip(), parent);
     }
 
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse editCategory(
+            Long categoryId, String name, Long parent) {
+        if (categoryId == null || categoryId <= 0 || name == null || name.isBlank() || name.strip().length() > 150)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nombre o ID de categoría inválido");
+        var store = activeStore();
+        var categories = client.getCategories(store.getStoreId());
+        var current = categories.stream().filter(c -> categoryId.equals(c.id())).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría no encontrada"));
+        if (parent != null && parent > 0) {
+            if (parent.equals(categoryId) || categories.stream().noneMatch(c -> parent.equals(c.id())))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoría padre inválida");
+            var parentById = new java.util.HashMap<Long, Long>();
+            for (var c : categories) parentById.put(c.id(), c.parent());
+            var visited = new java.util.HashSet<Long>();
+            Long step = parent;
+            while (step != null && step > 0 && visited.add(step)) {
+                if (step.equals(categoryId)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede mover una categoría dentro de una subcategoría propia");
+                step = parentById.get(step);
+            }
+            if (step != null && step > 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jerarquía de categorías inválida");
+        }
+        return client.updateCategory(store.getStoreId(), current.id(), name.strip(), parent);
+    }
+
+    public void deleteCategory(Long categoryId) {
+        if (categoryId == null || categoryId <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ID de categoría inválido");
+        var store = activeStore();
+        var categories = client.getCategories(store.getStoreId());
+        if (categories.stream().noneMatch(c -> categoryId.equals(c.id())))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría no encontrada");
+        if (categories.stream().anyMatch(c -> categoryId.equals(c.parent())))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Esta categoría contiene subcategorías. Movelas o eliminalas antes de continuar");
+        client.deleteCategory(store.getStoreId(), categoryId);
+    }
+
     public List<Long> publicationCategories(Long productId) {
         var store = activeStore();
         var product = client.getProduct(store.getStoreId(), productId);

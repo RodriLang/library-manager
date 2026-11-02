@@ -105,6 +105,43 @@ public class TiendanubeClient {
                 .retrieve().toEntity(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse.class));
     }
 
+    /** Preserve every i18n property; Tiendanube clears omitted localized fields on PUT. */
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse updateCategory(
+            Long storeId, Long categoryId, String name, Long parent) {
+        TiendanubeStore store = getActiveStore(storeId);
+        String path = properties.endpoints().products().replaceAll("/products$", "/categories") + "/" + categoryId;
+        JsonNode existing = executeBody(store, "leer categoría", () -> tiendanubeRestClient.get()
+                .uri(path, storeId).header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE).accept(MediaType.APPLICATION_JSON)
+                .retrieve().toEntity(JsonNode.class));
+        if (existing == null || !existing.isObject()) throw new IllegalStateException("No se pudo recuperar la categoría");
+        var payload = new java.util.HashMap<String, Object>();
+        for (String field : List.of("name", "description", "handle", "seo_title", "seo_description")) {
+            JsonNode value = existing.get(field);
+            if (value == null || !value.isObject()) throw new IllegalStateException("Falta el campo " + field + " en Tiendanube; se cancela la edición para proteger las traducciones");
+            payload.put(field, value);
+        }
+        if (name != null) {
+            var names = ((com.fasterxml.jackson.databind.node.ObjectNode) existing.get("name")).deepCopy();
+            names.put("es", name);
+            payload.put("name", names);
+        }
+        payload.put("parent", parent);
+        return executeBody(store, "editar categoría", () -> tiendanubeRestClient.put()
+                .uri(path, storeId).header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE).contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON).body(payload)
+                .retrieve().toEntity(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse.class));
+    }
+
+    public void deleteCategory(Long storeId, Long categoryId) {
+        TiendanubeStore store = getActiveStore(storeId);
+        String path = properties.endpoints().products().replaceAll("/products$", "/categories") + "/" + categoryId;
+        executeEntity(store, "eliminar categoría", () -> tiendanubeRestClient.delete()
+                .uri(path, storeId).header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE).retrieve().toBodilessEntity());
+    }
+
     /** Only categories are sent: never change the product description, stock or price. */
     public void updateProductCategories(Long storeId, Long productId, List<Long> categoryIds) {
         TiendanubeStore store = getActiveStore(storeId);
