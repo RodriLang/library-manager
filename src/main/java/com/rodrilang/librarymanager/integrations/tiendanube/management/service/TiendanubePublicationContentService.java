@@ -115,6 +115,35 @@ public class TiendanubePublicationContentService {
         return remoteResponse(store, client.getProduct(store.getStoreId(), productId));
     }
 
+    public List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> categories() {
+        return client.getCategories(activeStore().getStoreId());
+    }
+
+    public List<Long> publicationCategories(Long productId) {
+        var store = activeStore();
+        var product = client.getProduct(store.getStoreId(), productId);
+        if (product.categories() == null) return List.of();
+        return product.categories().stream().map(node -> {
+            if (node.isNumber()) return node.longValue();
+            if (node.isObject() && node.hasNonNull("id")) return node.path("id").asLong();
+            return null;
+        }).filter(Objects::nonNull).distinct().toList();
+    }
+
+    public List<Long> updatePublicationCategories(Long productId, List<Long> categoryIds) {
+        if (categoryIds == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Faltan categorías");
+        if (categoryIds.stream().anyMatch(Objects::isNull) || categoryIds.size() != new HashSet<>(categoryIds).size())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categorías inválidas o repetidas");
+        var store = activeStore();
+        var allowed = client.getCategories(store.getStoreId()).stream()
+                .map(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse::id)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!allowed.containsAll(categoryIds))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Hay categorías que no existen en la tienda conectada");
+        client.updateProductCategories(store.getStoreId(), productId, categoryIds);
+        return publicationCategories(productId);
+    }
+
     private TiendanubeStore activeStore() {
         return storeRepository.findByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Tiendanube no conectada"));

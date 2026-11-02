@@ -43,6 +43,24 @@ public class TiendanubeManagementController {
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeIgnoredPublicationService ignoredPublications;
     private final TiendanubePublicationContentService publicationContentService;
 
+    @GetMapping("/categories")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> categories() {
+        return publicationContentService.categories();
+    }
+
+    @GetMapping("/publications/{productId}/categories")
+    public java.util.List<Long> publicationCategories(@PathVariable Long productId) {
+        return publicationContentService.publicationCategories(productId);
+    }
+
+    public record CategorySelection(java.util.List<Long> categories) {}
+
+    @PutMapping("/publications/{productId}/categories")
+    public java.util.List<Long> updatePublicationCategories(@PathVariable Long productId,
+                                                             @RequestBody CategorySelection selection) {
+        return publicationContentService.updatePublicationCategories(productId, selection.categories());
+    }
+
     @GetMapping("/publications")
     public PageResponse<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse>
     searchPublications(@RequestParam(required = false) String q,
