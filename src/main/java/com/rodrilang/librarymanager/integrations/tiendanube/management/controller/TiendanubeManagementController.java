@@ -44,6 +44,29 @@ public class TiendanubeManagementController {
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeIgnoredPublicationService ignoredPublications;
     private final TiendanubePublicationContentService publicationContentService;
 
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService commercialCategories;
+
+    @GetMapping("/commercial-categories")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.Category> commercialCategories() {
+        return commercialCategories.list();
+    }
+
+    @PostMapping("/commercial-categories/import-tiendanube")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.Category> importCommercialCategories() {
+        return commercialCategories.importRemote();
+    }
+
+    @GetMapping("/inventories/{inventoryId}/commercial-categories")
+    public java.util.List<Long> inventoryCommercialCategories(@PathVariable Long inventoryId) {
+        return commercialCategories.categoriesForInventory(inventoryId);
+    }
+
+    @PutMapping("/inventories/{inventoryId}/commercial-categories")
+    public java.util.List<Long> updateInventoryCommercialCategories(@PathVariable Long inventoryId,
+            @RequestBody CategorySelection selection) {
+        return commercialCategories.assignToInventory(inventoryId, selection == null ? null : selection.categories());
+    }
+
     @GetMapping("/categories")
     public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> categories() {
         return publicationContentService.categories();
