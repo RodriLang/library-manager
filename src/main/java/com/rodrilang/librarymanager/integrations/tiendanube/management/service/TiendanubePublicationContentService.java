@@ -119,6 +119,19 @@ public class TiendanubePublicationContentService {
         return client.getCategories(activeStore().getStoreId());
     }
 
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse createCategory(
+            String name, Long parent) {
+        if (name == null || name.isBlank() || name.strip().length() > 150)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ingresá un nombre de categoría de 1 a 150 caracteres");
+        var store = activeStore();
+        if (parent != null) {
+            var available = client.getCategories(store.getStoreId()).stream()
+                    .anyMatch(category -> parent.equals(category.id()));
+            if (!available) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La categoría padre no existe en la tienda conectada");
+        }
+        return client.createCategory(store.getStoreId(), name.strip(), parent);
+    }
+
     public List<Long> publicationCategories(Long productId) {
         var store = activeStore();
         var product = client.getProduct(store.getStoreId(), productId);

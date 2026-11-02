@@ -87,6 +87,24 @@ public class TiendanubeClient {
         return categories;
     }
 
+    /** Creates a category in the currently connected Tiendanube store. */
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse createCategory(
+            Long storeId, String name, Long parent) {
+        TiendanubeStore store = getActiveStore(storeId);
+        String path = properties.endpoints().products().replaceAll("/products$", "/categories");
+        var payload = new java.util.HashMap<String, Object>();
+        payload.put("name", java.util.Map.of("es", name));
+        if (parent != null) payload.put("parent", parent);
+        return executeBody(store, "crear categoría", () -> tiendanubeRestClient.post()
+                .uri(path, storeId)
+                .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(payload)
+                .retrieve().toEntity(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse.class));
+    }
+
     /** Only categories are sent: never change the product description, stock or price. */
     public void updateProductCategories(Long storeId, Long productId, List<Long> categoryIds) {
         TiendanubeStore store = getActiveStore(storeId);

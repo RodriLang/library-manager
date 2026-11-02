@@ -48,6 +48,15 @@ public class TiendanubeManagementController {
         return publicationContentService.categories();
     }
 
+    public record CreateCategoryRequest(String name, Long parent) {}
+
+    @PostMapping("/categories")
+    @ResponseStatus(HttpStatus.CREATED)
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse createCategory(
+            @RequestBody CreateCategoryRequest request) {
+        return publicationContentService.createCategory(request == null ? null : request.name(), request == null ? null : request.parent());
+    }
+
     @GetMapping("/publications/{productId}/categories")
     public java.util.List<Long> publicationCategories(@PathVariable Long productId) {
         return publicationContentService.publicationCategories(productId);
