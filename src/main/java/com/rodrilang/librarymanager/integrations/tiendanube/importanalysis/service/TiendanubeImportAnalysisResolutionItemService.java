@@ -111,7 +111,7 @@ public class TiendanubeImportAnalysisResolutionItemService {
                 .orElseThrow(() -> new BusinessException("No se encontró el caso de Tiendanube"));
         validateItemStatus(item.status());
 
-        Long bookId = bookService.create(withRemoteMeasures(item, request.book())).id();
+        Long bookId = bookService.create(request.book()).id();
         var inventoryRequest = new TiendanubeImportAnalysisCreateInventoryRequest(
                 bookId, request.salePrice(), request.initialStock(),
                 request.minimumStock(), request.syncStock(), request.resolvedPriceSource());
@@ -121,6 +121,20 @@ public class TiendanubeImportAnalysisResolutionItemService {
         linkAndResolve(runId, item, inventory, request.shouldSyncStock(), true);
         return inventory.getId();
     }
+
+    /** Preview shipping measurements for the exact variant being linked. */
+    @Transactional
+    public RemoteMeasures remoteMeasures(Long runId, Long itemId, Long bookstoreId) {
+        var item = itemWriteRepository.lockItem(runId, itemId, bookstoreId)
+                .orElseThrow(() -> new BusinessException("No se encontró el caso de Tiendanube"));
+        var variant = remoteVariant(item);
+        if (variant == null) return new RemoteMeasures(null, null, null, null);
+        return new RemoteMeasures(grams(variant.weight()), positive(variant.width()),
+                positive(variant.height()), positive(variant.depth()));
+    }
+
+    public record RemoteMeasures(java.math.BigDecimal weightGrams, java.math.BigDecimal widthCm,
+                                 java.math.BigDecimal heightCm, java.math.BigDecimal depthCm) {}
 
     /** Tiendanube reports shipping measurements (kg and cm); only fill missing book values. */
     private void completeMissingMeasures(TiendanubeImportAnalysisItemLock item, com.rodrilang.librarymanager.model.Book book) {
