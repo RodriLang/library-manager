@@ -16,6 +16,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.job.service.Tiendanu
 import com.rodrilang.librarymanager.integrations.tiendanube.job.service.TiendanubeJobResultService;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.service.TiendanubePublicationSyncService;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationTemplateResponse;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationTemplateService;
 import com.rodrilang.librarymanager.integrations.tiendanube.service.TiendanubeProductMatchingService;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,9 @@ class TiendanubePublishJobHandlerTest {
 
     @Mock
     private TiendanubePublicationTemplateService publicationTemplateService;
+
+    @Mock
+    private BookstoreCommercialCategoryService commercialCategoryService;
 
     @Mock
     private TiendanubePublicationSnapshot publicationSnapshot;
@@ -117,8 +121,14 @@ class TiendanubePublishJobHandlerTest {
 
     private TiendanubePublishJobHandler handler() {
         return new TiendanubePublishJobHandler(
-                connectionGuard, dataService, resultService, matchingService, publicationSyncService, client,
-                publicationTemplateService
+                connectionGuard,
+                dataService,
+                resultService,
+                matchingService,
+                publicationSyncService,
+                client,
+                publicationTemplateService,
+                commercialCategoryService
         );
     }
 
@@ -135,7 +145,8 @@ class TiendanubePublishJobHandlerTest {
                 Map.of(),
                 List.of(),
                 List.of(new TiendanubeCreateImageRequest("https://cover", 1)),
-                true
+                true,
+                null
         );
         TiendanubeUpdateVariantRequest variantRequest = new TiendanubeUpdateVariantRequest(
                 "9789500000001", "9789500000001", BigDecimal.valueOf(1000), 2, true,
