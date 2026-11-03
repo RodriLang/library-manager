@@ -6,6 +6,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.repository.Tiendanub
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.*;
 
@@ -24,12 +25,13 @@ public class InventoryCategorySyncService {
         if (inventoryId == null || inventoryId <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Inventario inválido");
         var store = stores.findByBookstoreIdAndActiveTrue(context.getCurrentBookstoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Tiendanube no conectada"));
-        var link = links.findByInventoryIdAndTiendanubeStoreIdAndActiveTrue(inventoryId, store.getStoreId())
+        var link = links.findWithInventoryByInventoryIdAndTiendanubeStoreIdAndActiveTrue(inventoryId, store.getStoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "El inventario no tiene una publicación vinculada"));
         if (!Objects.equals(link.getInventory().getBookstore().getId(), context.getCurrentBookstoreId()))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Inventario no encontrado");
         return link.getTiendanubeProductId();
     }
+    @Transactional(readOnly = true)
     public Comparison compare(Long inventoryId) {
         Long productId = productId(inventoryId);
         List<Long> local = commercialCategories.remoteCategoryIdsForInventory(context.getCurrentBookstoreId(), inventoryId);
@@ -41,6 +43,7 @@ public class InventoryCategorySyncService {
         return new Comparison(productId, List.copyOf(localSet), List.copyOf(remoteSet), add, remove, !localSet.equals(remoteSet));
     }
     /** Rechaza selecciones locales o remotas que hayan cambiado desde la vista previa. */
+    @Transactional
     public Comparison apply(Long inventoryId, List<Long> expectedLocal, List<Long> expectedRemote) {
         if (expectedLocal == null || expectedRemote == null || expectedLocal.contains(null) || expectedRemote.contains(null))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta la comparación previa");
