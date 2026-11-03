@@ -33,6 +33,8 @@ public class TiendanubeImportAnalysisResolutionItemService {
     private final TiendanubeJobRequestService jobRequestService;
     private final TiendanubeImportAnalysisInventoryService analysisInventoryService;
     private final BookService bookService;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient tiendanubeClient;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService commercialCategories;
 
     @Transactional
     public Long resolve(
@@ -57,6 +59,7 @@ public class TiendanubeImportAnalysisResolutionItemService {
         validateInventory(inventory, bookstoreId);
         validateCanLink(item, inventory);
 
+        completeMissingMeasures(item, inventory.getBook());
         linkAndResolve(runId, item, inventory, syncStock, refreshCounts);
         return inventory.getId();
     }
@@ -86,6 +89,7 @@ public class TiendanubeImportAnalysisResolutionItemService {
         validateInventory(inventory, bookstoreId);
         validateCanLink(item, inventory);
 
+        completeMissingMeasures(item, inventory.getBook());
         linkAndResolve(
                 runId,
                 item,
@@ -117,6 +121,64 @@ public class TiendanubeImportAnalysisResolutionItemService {
         validateCanLink(item, inventory);
         linkAndResolve(runId, item, inventory, request.shouldSyncStock(), true);
         return inventory.getId();
+    }
+
+    /** Preview shipping measurements for the exact variant being linked. */
+    @Transactional
+    public RemoteMeasures remoteMeasures(Long runId, Long itemId, Long bookstoreId) {
+        var item = itemWriteRepository.lockItem(runId, itemId, bookstoreId)
+                .orElseThrow(() -> new BusinessException("No se encontró el caso de Tiendanube"));
+        var variant = remoteVariant(item);
+        if (variant == null) return new RemoteMeasures(null, null, null, null);
+        return new RemoteMeasures(grams(variant.weight()), positive(variant.width()),
+                positive(variant.height()), positive(variant.depth()));
+    }
+
+    public record RemoteMeasures(java.math.BigDecimal weightGrams, java.math.BigDecimal widthCm,
+                                 java.math.BigDecimal heightCm, java.math.BigDecimal depthCm) {}
+
+    /** Tiendanube reports shipping measurements (kg and cm); only fill missing book values. */
+    private void completeMissingMeasures(TiendanubeImportAnalysisItemLock item, com.rodrilang.librarymanager.model.Book book) {
+        var variant = remoteVariant(item);
+        if (variant == null) return;
+        if (book.getWeightGrams() == null) book.setWeightGrams(grams(variant.weight()));
+        if (book.getWidthCm() == null) book.setWidthCm(positive(variant.width()));
+        if (book.getHeightCm() == null) book.setHeightCm(positive(variant.height()));
+        if (book.getDepthCm() == null) book.setDepthCm(positive(variant.depth()));
+    }
+
+    private com.rodrilang.librarymanager.dto.request.BookRequest withRemoteMeasures(
+            TiendanubeImportAnalysisItemLock item, com.rodrilang.librarymanager.dto.request.BookRequest b) {
+        var v = remoteVariant(item);
+        if (v == null) return b;
+        return new com.rodrilang.librarymanager.dto.request.BookRequest(
+                b.isbn(), b.withoutIsbn(), b.title(), b.subtitle(), b.description(), b.language(),
+                b.publicationYear(), b.publicationMonth(), b.coverUrl(), b.categoryName(), b.genreName(),
+                b.pageCount(), b.weightGrams() == null ? grams(v.weight()) : b.weightGrams(),
+                b.widthCm() == null ? positive(v.width()) : b.widthCm(),
+                b.heightCm() == null ? positive(v.height()) : b.heightCm(),
+                b.depthCm() == null ? positive(v.depth()) : b.depthCm(), b.publisherId(), b.authorIds());
+    }
+
+    private com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeVariantResponse remoteVariant(
+            TiendanubeImportAnalysisItemLock item) {
+        // Remote lookup is intentionally best-effort: network problems must not block linking.
+        try {
+            var product = tiendanubeClient.getProduct(item.storeId(), item.productId());
+            if (product.variants() == null) return null;
+            return product.variants().stream()
+                    .filter(v -> java.util.Objects.equals(v.id(), item.variantId())).findFirst().orElse(null);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private java.math.BigDecimal positive(java.math.BigDecimal value) {
+        return value != null && value.signum() > 0 ? value : null;
+    }
+    private java.math.BigDecimal grams(java.math.BigDecimal kilograms) {
+        var valid = positive(kilograms);
+        return valid == null ? null : valid.multiply(java.math.BigDecimal.valueOf(1000));
     }
 
     @Transactional
@@ -153,6 +215,26 @@ public class TiendanubeImportAnalysisResolutionItemService {
 
         productLinkRepository.save(link);
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.LINKED);
+        // Recupera las categorías comerciales de la publicación si el inventario
+        // todavía no fue categorizado en Anaquel. No escribe en Tiendanube.
+        try {
+            var product = tiendanubeClient.getProduct(item.storeId(), item.productId());
+            if (product != null && product.categories() != null) {
+                var remoteIds = product.categories().stream().map(node -> {
+                    if (node == null) return (Long) null;
+                    if (node.isNumber()) return node.longValue();
+                    if (node.isObject() && node.hasNonNull("id")) return node.path("id").asLong();
+                    return (Long) null;
+                }).filter(java.util.Objects::nonNull).distinct().toList();
+                commercialCategories.assignRemoteCategoriesIfEmpty(
+                        inventory.getBookstore().getId(), inventory.getId(), remoteIds);
+            }
+        } catch (com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException e) {
+            // Una falla de red no debe bloquear la vinculación del inventario.
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn(
+                    "No se pudieron importar las categorías de publicación {}", item.productId(), e);
+        }
+
 
         Instant now = Instant.now();
 

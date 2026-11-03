@@ -66,6 +66,95 @@ public class TiendanubeClient {
     private final TiendanubeConnectionService connectionService;
     private final TiendanubeApiRateLimitService rateLimitService;
 
+    /** Fetch the entire remote category tree, using the authenticated shop and API rate limits. */
+    public List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> getCategories(Long storeId) {
+        TiendanubeStore store = getActiveStore(storeId);
+        String path = properties.endpoints().products().replaceAll("/products$", "/categories");
+        if (path.equals(properties.endpoints().products())) throw new IllegalStateException("Endpoint de categorías no configurado");
+        List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> categories = new ArrayList<>();
+        for (int page = 1; page <= 100; page++) {
+            final int current = page;
+            var response = executeBody(store, "obtener categorías", () -> tiendanubeRestClient.get()
+                    .uri(path + "?page={page}&per_page=200", storeId, current)
+                    .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve().toEntity(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse[].class));
+            if (response == null || response.length == 0) break;
+            categories.addAll(Arrays.asList(response));
+            if (response.length < 200) break;
+        }
+        return categories;
+    }
+
+    /** Creates a category in the currently connected Tiendanube store. */
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse createCategory(
+            Long storeId, String name, Long parent) {
+        TiendanubeStore store = getActiveStore(storeId);
+        String path = properties.endpoints().products().replaceAll("/products$", "/categories");
+        var payload = new java.util.HashMap<String, Object>();
+        payload.put("name", java.util.Map.of("es", name));
+        if (parent != null) payload.put("parent", parent);
+        return executeBody(store, "crear categoría", () -> tiendanubeRestClient.post()
+                .uri(path, storeId)
+                .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(payload)
+                .retrieve().toEntity(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse.class));
+    }
+
+    /** Preserve every i18n property; Tiendanube clears omitted localized fields on PUT. */
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse updateCategory(
+            Long storeId, Long categoryId, String name, Long parent) {
+        TiendanubeStore store = getActiveStore(storeId);
+        String path = properties.endpoints().products().replaceAll("/products$", "/categories") + "/" + categoryId;
+        JsonNode existing = executeBody(store, "leer categoría", () -> tiendanubeRestClient.get()
+                .uri(path, storeId).header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE).accept(MediaType.APPLICATION_JSON)
+                .retrieve().toEntity(JsonNode.class));
+        if (existing == null || !existing.isObject()) throw new IllegalStateException("No se pudo recuperar la categoría");
+        var payload = new java.util.HashMap<String, Object>();
+        for (String field : List.of("name", "description", "handle", "seo_title", "seo_description")) {
+            JsonNode value = existing.get(field);
+            if (value == null || !value.isObject()) throw new IllegalStateException("Falta el campo " + field + " en Tiendanube; se cancela la edición para proteger las traducciones");
+            payload.put(field, value);
+        }
+        if (name != null) {
+            var names = ((com.fasterxml.jackson.databind.node.ObjectNode) existing.get("name")).deepCopy();
+            names.put("es", name);
+            payload.put("name", names);
+        }
+        payload.put("parent", parent);
+        return executeBody(store, "editar categoría", () -> tiendanubeRestClient.put()
+                .uri(path, storeId).header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE).contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON).body(payload)
+                .retrieve().toEntity(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse.class));
+    }
+
+    public void deleteCategory(Long storeId, Long categoryId) {
+        TiendanubeStore store = getActiveStore(storeId);
+        String path = properties.endpoints().products().replaceAll("/products$", "/categories") + "/" + categoryId;
+        executeEntity(store, "eliminar categoría", () -> tiendanubeRestClient.delete()
+                .uri(path, storeId).header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE).retrieve().toBodilessEntity());
+    }
+
+    /** Only categories are sent: never change the product description, stock or price. */
+    public void updateProductCategories(Long storeId, Long productId, List<Long> categoryIds) {
+        TiendanubeStore store = getActiveStore(storeId);
+        executeEntity(store, "actualizar categorías", () -> tiendanubeRestClient.put()
+                .uri(properties.endpoints().product(), storeId, productId)
+                .header(HttpHeaders.AUTHORIZATION, buildAuthorizationHeader(store))
+                .header(HttpHeaders.USER_AGENT, USER_AGENT_VALUE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(java.util.Map.of("categories", categoryIds))
+                .retrieve().toEntity(TiendanubeProductResponse.class));
+    }
+
     public TiendanubeProductResponse createProduct(Long storeId, TiendanubeCreateProductRequest request) {
         TiendanubeStore store = getActiveStore(storeId);
         return executeBody(store, "crear producto", () -> tiendanubeRestClient.post()

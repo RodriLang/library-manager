@@ -115,6 +115,83 @@ public class TiendanubePublicationContentService {
         return remoteResponse(store, client.getProduct(store.getStoreId(), productId));
     }
 
+    public List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> categories() {
+        return client.getCategories(activeStore().getStoreId());
+    }
+
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse createCategory(
+            String name, Long parent) {
+        if (name == null || name.isBlank() || name.strip().length() > 150)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ingresá un nombre de categoría de 1 a 150 caracteres");
+        var store = activeStore();
+        if (parent != null) {
+            var available = client.getCategories(store.getStoreId()).stream()
+                    .anyMatch(category -> parent.equals(category.id()));
+            if (!available) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La categoría padre no existe en la tienda conectada");
+        }
+        return client.createCategory(store.getStoreId(), name.strip(), parent);
+    }
+
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse editCategory(
+            Long categoryId, String name, Long parent) {
+        if (categoryId == null || categoryId <= 0 || name == null || name.isBlank() || name.strip().length() > 150)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nombre o ID de categoría inválido");
+        var store = activeStore();
+        var categories = client.getCategories(store.getStoreId());
+        var current = categories.stream().filter(c -> categoryId.equals(c.id())).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría no encontrada"));
+        if (parent != null && parent > 0) {
+            if (parent.equals(categoryId) || categories.stream().noneMatch(c -> parent.equals(c.id())))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoría padre inválida");
+            var parentById = new java.util.HashMap<Long, Long>();
+            for (var c : categories) parentById.put(c.id(), c.parent());
+            var visited = new java.util.HashSet<Long>();
+            Long step = parent;
+            while (step != null && step > 0 && visited.add(step)) {
+                if (step.equals(categoryId)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede mover una categoría dentro de una subcategoría propia");
+                step = parentById.get(step);
+            }
+            if (step != null && step > 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jerarquía de categorías inválida");
+        }
+        return client.updateCategory(store.getStoreId(), current.id(), name.strip(), parent);
+    }
+
+    public void deleteCategory(Long categoryId) {
+        if (categoryId == null || categoryId <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ID de categoría inválido");
+        var store = activeStore();
+        var categories = client.getCategories(store.getStoreId());
+        if (categories.stream().noneMatch(c -> categoryId.equals(c.id())))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría no encontrada");
+        if (categories.stream().anyMatch(c -> categoryId.equals(c.parent())))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Esta categoría contiene subcategorías. Movelas o eliminalas antes de continuar");
+        client.deleteCategory(store.getStoreId(), categoryId);
+    }
+
+    public List<Long> publicationCategories(Long productId) {
+        var store = activeStore();
+        var product = client.getProduct(store.getStoreId(), productId);
+        if (product.categories() == null) return List.of();
+        return product.categories().stream().map(node -> {
+            if (node.isNumber()) return node.longValue();
+            if (node.isObject() && node.hasNonNull("id")) return node.path("id").asLong();
+            return null;
+        }).filter(Objects::nonNull).distinct().toList();
+    }
+
+    public List<Long> updatePublicationCategories(Long productId, List<Long> categoryIds) {
+        if (categoryIds == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Faltan categorías");
+        if (categoryIds.stream().anyMatch(Objects::isNull) || categoryIds.size() != new HashSet<>(categoryIds).size())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categorías inválidas o repetidas");
+        var store = activeStore();
+        var allowed = client.getCategories(store.getStoreId()).stream()
+                .map(com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse::id)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!allowed.containsAll(categoryIds))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Hay categorías que no existen en la tienda conectada");
+        client.updateProductCategories(store.getStoreId(), productId, categoryIds);
+        return publicationCategories(productId);
+    }
+
     private TiendanubeStore activeStore() {
         return storeRepository.findByBookstoreIdAndActiveTrue(bookstoreContext.getCurrentBookstoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Tiendanube no conectada"));

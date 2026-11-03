@@ -35,6 +35,7 @@ public class TiendanubePublishJobHandler implements TiendanubeJobHandler {
     private final TiendanubePublicationSyncService publicationSyncService;
     private final TiendanubeClient client;
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationTemplateService templateService;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService commercialCategoryService;
 
     @Override
     public TiendanubeJobType type() {
@@ -69,7 +70,7 @@ public class TiendanubePublishJobHandler implements TiendanubeJobHandler {
                 resultService.markPublishing(snapshot.inventoryId());
                 TiendanubeProductResponse product = client.createProduct(
                         snapshot.storeId(),
-                        withoutImages(withTemplate(snapshot))
+                        withCommercialCategories(snapshot, withoutImages(withTemplate(snapshot)))
                 );
                 TiendanubeVariantResponse variant = getMainVariant(product);
 
@@ -159,13 +160,19 @@ public class TiendanubePublishJobHandler implements TiendanubeJobHandler {
         var request = snapshot.productRequest();
         String source = request.description() == null ? "" : request.description().getOrDefault("es", "");
         var description = java.util.Map.of("es", templateService.render(source, snapshot.isbn(), template));
-        return new TiendanubeCreateProductRequest(request.name(), description, request.variants(), request.images(), request.published());
+        return new TiendanubeCreateProductRequest(request.name(), description, request.variants(), request.images(), request.published(), request.categories());
     }
 
     private TiendanubeCreateProductRequest withoutImages(TiendanubeCreateProductRequest request) {
         return new TiendanubeCreateProductRequest(
-                request.name(), request.description(), request.variants(), List.of(), request.published()
+                request.name(), request.description(), request.variants(), List.of(), request.published(), request.categories()
         );
+    }
+
+    private TiendanubeCreateProductRequest withCommercialCategories(TiendanubePublishSnapshot snapshot, TiendanubeCreateProductRequest request) {
+        List<Long> remoteIds = commercialCategoryService.remoteCategoryIdsForInventory(snapshot.bookstoreId(), snapshot.inventoryId());
+        if (remoteIds.isEmpty()) return request; // Preserve Tiendanube defaults when nothing is assigned.
+        return new TiendanubeCreateProductRequest(request.name(), request.description(), request.variants(), request.images(), request.published(), remoteIds);
     }
 
     private String resolveSearchQuery(TiendanubePublishSnapshot snapshot) {

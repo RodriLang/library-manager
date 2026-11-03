@@ -25,6 +25,13 @@ public interface TiendanubeProductLinkRepository extends JpaRepository<Tiendanub
             Long tiendanubeStoreId
     );
 
+    /** Load inventory ownership explicitly for commercial-category synchronization. */
+    @EntityGraph(attributePaths = {"inventory", "inventory.bookstore"})
+    Optional<TiendanubeProductLink> findWithInventoryByInventoryIdAndTiendanubeStoreIdAndActiveTrue(
+            Long inventoryId,
+            Long tiendanubeStoreId
+    );
+
     @EntityGraph(attributePaths = {
             "inventory",
             "inventory.book",

@@ -13,6 +13,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.management.service.T
 import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationContentService;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.request.TiendanubePublicationContentRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationContentResponse;
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000import o00000000000000000000000000rg.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -42,6 +43,85 @@ public class TiendanubeManagementController {
     private final TiendanubeManagementService managementService;
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeIgnoredPublicationService ignoredPublications;
     private final TiendanubePublicationContentService publicationContentService;
+
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService commercialCategories;
+
+    @GetMapping("/commercial-categories")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.Category> commercialCategories() {
+        return commercialCategories.list();
+    }
+
+    @PostMapping("/commercial-categories/import-tiendanube")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.Category> importCommercialCategories() {
+        return commercialCategories.importRemote();
+    }
+
+    @GetMapping("/inventories/{inventoryId}/commercial-categories")
+    public java.util.List<Long> inventoryCommercialCategories(@PathVariable Long inventoryId) {
+        return commercialCategories.categoriesForInventory(inventoryId);
+    }
+
+    @PutMapping("/inventories/{inventoryId}/commercial-categories")
+    public java.util.List<Long> updateInventoryCommercialCategories(@PathVariable Long inventoryId,
+            @RequestBody CategorySelection selection) {
+        return commercialCategories.assignToInventory(inventoryId, selection == null ? null : selection.categories());
+    }
+
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.InventoryCategorySyncService inventoryCategorySync;
+
+    @GetMapping("/inventories/{inventoryId}/commercial-categories/compare-remote")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.InventoryCategorySyncService.Comparison compareInventoryCategories(@PathVariable Long inventoryId) {
+        return inventoryCategorySync.compare(inventoryId);
+    }
+
+    public record ApplyCategorySyncRequest(java.util.List<Long> expectedLocal, java.util.List<Long> expectedRemote) {}
+
+    @PostMapping("/inventories/{inventoryId}/commercial-categories/sync-remote")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.InventoryCategorySyncService.Comparison syncInventoryCategories(
+            @PathVariable Long inventoryId, @RequestBody ApplyCategorySyncRequest request) {
+        return inventoryCategorySync.apply(inventoryId, request == null ? null : request.expectedLocal(), request == null ? null : request.expectedRemote());
+    }
+
+    @GetMapping("/categories")
+    public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> categories() {
+        return publicationContentService.categories();
+    }
+
+    public record CreateCategoryRequest(String name, Long parent) {}
+
+    @PostMapping("/categories")
+    @ResponseStatus(HttpStatus.CREATED)
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse createCategory(
+            @RequestBody CreateCategoryRequest request) {
+        return publicationContentService.createCategory(request == null ? null : request.name(), request == null ? null : request.parent());
+    }
+
+    public record EditCategoryRequest(String name, Long parent) {}
+
+    @PutMapping("/categories/{categoryId}")
+    public com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse editCategory(
+            @PathVariable Long categoryId, @RequestBody EditCategoryRequest request) {
+        return publicationContentService.editCategory(categoryId, request == null ? null : request.name(), request == null ? null : request.parent());
+    }
+
+    @DeleteMapping("/categories/{categoryId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCategory(@PathVariable Long categoryId) {
+        publicationContentService.deleteCategory(categoryId);
+    }
+
+    @GetMapping("/publications/{productId}/categories")
+    public java.util.List<Long> publicationCategories(@PathVariable Long productId) {
+        return publicationContentService.publicationCategories(productId);
+    }
+
+    public record CategorySelection(java.util.List<Long> categories) {}
+
+    @PutMapping("/publications/{productId}/categories")
+    public java.util.List<Long> updatePublicationCategories(@PathVariable Long productId,
+                                                             @RequestBody CategorySelection selection) {
+        return publicationContentService.updatePublicationCategories(productId, selection.categories());
+    }
 
     @GetMapping("/publications")
     public PageResponse<com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationQualityResponse>

@@ -38,6 +38,8 @@ public class TiendanubeImportAnalysisController {
 
     private final TiendanubeImportAnalysisManagementService managementService;
     private final TiendanubeImportAnalysisResolutionService resolutionService;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.service.TiendanubeImportAnalysisResolutionItemService resolutionItemService;
+    private final com.rodrilang.librarymanager.bookstore.BookstoreContext bookstoreContext;
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -82,6 +84,13 @@ public class TiendanubeImportAnalysisController {
             @PathVariable Long itemId
     ) {
         return managementService.getItem(runId, itemId);
+    }
+
+    @GetMapping("/{runId}/items/{itemId}/remote-measures")
+    public com.rodrilang.librarymanager.integrations.tiendanube.importanalysis.service.TiendanubeImportAnalysisResolutionItemService.RemoteMeasures remoteMeasures(
+            @PathVariable Long runId, @PathVariable Long itemId) {
+        managementService.getItem(runId, itemId);
+        return resolutionItemService.remoteMeasures(runId, itemId, bookstoreContext.getCurrentBookstoreId());
     }
 
     @PostMapping("/{runId}/items/{itemId}/resolve")
