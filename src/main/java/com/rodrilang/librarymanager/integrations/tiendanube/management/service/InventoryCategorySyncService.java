@@ -31,7 +31,9 @@ public class InventoryCategorySyncService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Inventario no encontrado");
         return link.getTiendanubeProductId();
     }
-    @Transactional(readOnly = true)
+    // La consulta remota registra el estado del rate limit en PostgreSQL.
+    // Por eso esta operación requiere una transacción de lectura/escritura.
+    @Transactional
     public Comparison compare(Long inventoryId) {
         Long productId = productId(inventoryId);
         List<Long> local = commercialCategories.remoteCategoryIdsForInventory(context.getCurrentBookstoreId(), inventoryId);

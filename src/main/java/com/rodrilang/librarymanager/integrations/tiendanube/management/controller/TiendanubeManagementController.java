@@ -13,7 +13,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.management.service.T
 import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationContentService;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.request.TiendanubePublicationContentRequest;
 import com.rodrilang.librarymanager.integrations.tiendanube.management.dto.response.TiendanubePublicationContentResponse;
-import org.springframework.web.bind.annotation.DeleteMapping;
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000import o00000000000000000000000000rg.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
