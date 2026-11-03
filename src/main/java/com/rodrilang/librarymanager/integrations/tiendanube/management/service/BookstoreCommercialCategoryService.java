@@ -85,6 +85,51 @@ public class BookstoreCommercialCategoryService {
         return categoriesForInventory(inventoryId);
     }
 
+    /**
+     * Conserva las categorías de una publicación importada sin modificar selecciones
+     * comerciales que el usuario ya haya guardado para este inventario.
+     * Sólo vincula categorías ya conocidas en el árbol local de la librería.
+     */
+    @Transactional
+    public void assignRemoteCategoriesIfEmpty(Long bookstoreId, Long inventoryId, List<Long> remoteIds) {
+        if (remoteIds == null || remoteIds.isEmpty()) return;
+        Boolean belongs = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM inventory WHERE id = ? AND bookstore_id = ?)",
+                Boolean.class, inventoryId, bookstoreId);
+        if (!Boolean.TRUE.equals(belongs)) return;
+        Boolean alreadyAssigned = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM inventory_commercial_categories WHERE bookstore_id = ? AND inventory_id = ?)",
+                Boolean.class, bookstoreId, inventoryId);
+        if (Boolean.TRUE.equals(alreadyAssigned)) return;
+        // Si la librería todavía no importó alguna categoría de la publicación,
+        // se trae el árbol de Tiendanube antes de resolver sus IDs locales.
+        String placeholders = String.join(",", Collections.nCopies(remoteIds.size(), "?"));
+        Object[] args = new Object[remoteIds.size() + 1];
+        args[0] = bookstoreId;
+        for (int i = 0; i < remoteIds.size(); i++) args[i + 1] = remoteIds.get(i);
+        Integer known = jdbc.queryForObject(
+                "SELECT COUNT(DISTINCT tiendanube_category_id) FROM bookstore_commercial_categories WHERE bookstore_id = ? AND tiendanube_category_id IN (" + placeholders + ")",
+                Integer.class, args);
+        if (known == null || known < new HashSet<>(remoteIds).size()) {
+            try {
+                importRemote();
+            } catch (com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException ex) {
+                // Si falla Tiendanube, se utilizan las categorías locales conocidas.
+                org.slf4j.LoggerFactory.getLogger(getClass()).warn(
+                        "No se pudo actualizar el árbol de categorías de Tiendanube", ex);
+            }
+        }
+        for (Long remoteId : new LinkedHashSet<>(remoteIds)) {
+            if (remoteId == null || remoteId <= 0) continue;
+            jdbc.update("""
+                INSERT INTO inventory_commercial_categories (bookstore_id, inventory_id, category_id)
+                SELECT ?, ?, id FROM bookstore_commercial_categories
+                WHERE bookstore_id = ? AND tiendanube_category_id = ?
+                ON CONFLICT DO NOTHING
+                """, bookstoreId, inventoryId, bookstoreId, remoteId);
+        }
+    }
+
     /** Only mapped categories are sent to Tiendanube; no mapping means leave remote categories unspecified. */
     public List<Long> remoteCategoryIdsForInventory(Long bookstoreId, Long inventoryId) {
         return jdbc.query("""

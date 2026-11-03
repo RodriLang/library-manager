@@ -34,6 +34,7 @@ public class TiendanubeImportAnalysisResolutionItemService {
     private final TiendanubeImportAnalysisInventoryService analysisInventoryService;
     private final BookService bookService;
     private final com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient tiendanubeClient;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService commercialCategories;
 
     @Transactional
     public Long resolve(
@@ -214,6 +215,26 @@ public class TiendanubeImportAnalysisResolutionItemService {
 
         productLinkRepository.save(link);
         inventory.setTiendanubeStatus(TiendanubeInventoryStatus.LINKED);
+        // Recupera las categorías comerciales de la publicación si el inventario
+        // todavía no fue categorizado en Anaquel. No escribe en Tiendanube.
+        try {
+            var product = tiendanubeClient.getProduct(item.storeId(), item.productId());
+            if (product != null && product.categories() != null) {
+                var remoteIds = product.categories().stream().map(node -> {
+                    if (node == null) return (Long) null;
+                    if (node.isNumber()) return node.longValue();
+                    if (node.isObject() && node.hasNonNull("id")) return node.path("id").asLong();
+                    return (Long) null;
+                }).filter(java.util.Objects::nonNull).distinct().toList();
+                commercialCategories.assignRemoteCategoriesIfEmpty(
+                        inventory.getBookstore().getId(), inventory.getId(), remoteIds);
+            }
+        } catch (com.rodrilang.librarymanager.integrations.tiendanube.exception.TiendanubeApiException e) {
+            // Una falla de red no debe bloquear la vinculación del inventario.
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn(
+                    "No se pudieron importar las categorías de publicación {}", item.productId(), e);
+        }
+
 
         Instant now = Instant.now();
 
