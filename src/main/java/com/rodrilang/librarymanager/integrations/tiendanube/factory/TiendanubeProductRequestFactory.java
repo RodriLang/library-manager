@@ -57,7 +57,8 @@ public class TiendanubeProductRequestFactory {
                 buildDescription(values),
                 List.of(variant),
                 images,
-                true
+                true,
+                null
         );
     }
 

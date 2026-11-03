@@ -13,7 +13,10 @@ public record TiendanubeCreateProductRequest(
 
         List<TiendanubeCreateImageRequest> images,
 
-        Boolean published
+        Boolean published,
+
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        List<Long> categories
 
 ) {
 }

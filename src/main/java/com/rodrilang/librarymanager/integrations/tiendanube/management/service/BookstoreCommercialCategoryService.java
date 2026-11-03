@@ -85,6 +85,18 @@ public class BookstoreCommercialCategoryService {
         return categoriesForInventory(inventoryId);
     }
 
+    /** Only mapped categories are sent to Tiendanube; no mapping means leave remote categories unspecified. */
+    public List<Long> remoteCategoryIdsForInventory(Long bookstoreId, Long inventoryId) {
+        return jdbc.query("""
+                SELECT DISTINCT c.tiendanube_category_id
+                FROM inventory_commercial_categories ic
+                JOIN bookstore_commercial_categories c ON c.id = ic.category_id AND c.bookstore_id = ic.bookstore_id
+                WHERE ic.bookstore_id = ? AND ic.inventory_id = ?
+                  AND c.tiendanube_category_id IS NOT NULL
+                ORDER BY c.tiendanube_category_id
+                """, (rs, i) -> rs.getLong(1), bookstoreId, inventoryId);
+    }
+
     private void assertInventory(Long inventoryId) {
         if (inventoryId == null || inventoryId <= 0 || Boolean.FALSE.equals(jdbc.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM inventory WHERE id = ? AND bookstore_id = ?)", Boolean.class, inventoryId, bookstoreId())))
