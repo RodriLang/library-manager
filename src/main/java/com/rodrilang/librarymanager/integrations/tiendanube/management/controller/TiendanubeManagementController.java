@@ -67,6 +67,21 @@ public class TiendanubeManagementController {
         return commercialCategories.assignToInventory(inventoryId, selection == null ? null : selection.categories());
     }
 
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.InventoryCategorySyncService inventoryCategorySync;
+
+    @GetMapping("/inventories/{inventoryId}/commercial-categories/compare-remote")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.InventoryCategorySyncService.Comparison compareInventoryCategories(@PathVariable Long inventoryId) {
+        return inventoryCategorySync.compare(inventoryId);
+    }
+
+    public record ApplyCategorySyncRequest(java.util.List<Long> expectedLocal, java.util.List<Long> expectedRemote) {}
+
+    @PostMapping("/inventories/{inventoryId}/commercial-categories/sync-remote")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.InventoryCategorySyncService.Comparison syncInventoryCategories(
+            @PathVariable Long inventoryId, @RequestBody ApplyCategorySyncRequest request) {
+        return inventoryCategorySync.apply(inventoryId, request == null ? null : request.expectedLocal(), request == null ? null : request.expectedRemote());
+    }
+
     @GetMapping("/categories")
     public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.dto.response.TiendanubeCategoryResponse> categories() {
         return publicationContentService.categories();
