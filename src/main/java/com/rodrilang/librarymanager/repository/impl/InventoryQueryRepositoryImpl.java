@@ -60,7 +60,7 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         }
 
         if (identifierQuery) {
-            return searchByIsbn(
+            return searchIdentifier(
                     bookstoreId,
                     query,
                     criteria,
@@ -490,7 +490,7 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         }
 
         if (identifierQuery) {
-            return findIdsByIsbn(
+            return findIdsByIdentifier(
                     bookstoreId,
                     query,
                     criteria,
@@ -535,6 +535,37 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                 pageable,
                 query -> {
                 }
+        );
+    }
+
+
+    private Page<Inventory> searchIdentifier(
+            Long bookstoreId,
+            String value,
+            InventorySearchCriteria criteria,
+            Pageable pageable
+    ) {
+        String normalizedIdentifier =
+                normalizeSearchIdentifier(value);
+
+        if (normalizedIdentifier == null) {
+            return Page.empty(pageable);
+        }
+
+        if (normalizedIdentifier.length() < 8) {
+            return searchText(
+                    bookstoreId,
+                    value,
+                    criteria,
+                    pageable
+            );
+        }
+
+        return searchByIsbn(
+                bookstoreId,
+                value,
+                criteria,
+                pageable
         );
     }
 
@@ -1272,6 +1303,37 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
         );
 
         return extractIds(query);
+    }
+
+
+    private List<Long> findIdsByIdentifier(
+            Long bookstoreId,
+            String value,
+            InventorySearchCriteria criteria,
+            Collection<Long> excludedInventoryIds
+    ) {
+        String normalizedIdentifier =
+                normalizeSearchIdentifier(value);
+
+        if (normalizedIdentifier == null) {
+            return List.of();
+        }
+
+        if (normalizedIdentifier.length() < 8) {
+            return findIdsByText(
+                    bookstoreId,
+                    value,
+                    criteria,
+                    excludedInventoryIds
+            );
+        }
+
+        return findIdsByIsbn(
+                bookstoreId,
+                value,
+                criteria,
+                excludedInventoryIds
+        );
     }
 
     private List<Long> findIdsByIsbn(
