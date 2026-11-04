@@ -1,6 +1,7 @@
 package com.rodrilang.librarymanager.inventory.category.service;
 
 import com.rodrilang.librarymanager.bookstore.BookstoreContext;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategorySyncStateService;
 import com.rodrilang.librarymanager.inventory.bulk.dto.request.InventoryBulkSelectionRequest;
 import com.rodrilang.librarymanager.inventory.bulk.service.InventoryBulkSelectionService;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class CommercialCategorySuggestionService {
     private final JdbcTemplate jdbc;
     private final BookstoreContext context;
     private final InventoryBulkSelectionService selectionService;
+    private final TiendanubeCategorySyncStateService syncStates;
 
     public record Suggestion(Long inventoryId, String title, Long categoryId, String path,
                              String reason, String sourceValue) {}
@@ -60,15 +62,19 @@ public class CommercialCategorySuggestionService {
                     "Las sugerencias cambiaron. Consultalas nuevamente antes de confirmar.");
         }
         int added = 0;
+        List<Long> changedInventories = new ArrayList<>();
         for (var item : accepted.entrySet()) {
-            added += jdbc.update("""
+            int changed = jdbc.update("""
                 INSERT INTO inventory_commercial_categories(bookstore_id, inventory_id, category_id)
                 SELECT ?, i.id, c.id FROM inventory i
                 JOIN bookstore_commercial_categories c ON c.bookstore_id = i.bookstore_id AND c.id = ?
                 WHERE i.bookstore_id = ? AND i.id = ?
                 ON CONFLICT DO NOTHING
                 """, bookstore, item.getValue(), bookstore, item.getKey());
+            added += changed;
+            if (changed > 0) changedInventories.add(item.getKey());
         }
+        syncStates.localAssignmentsChanged(bookstore, changedInventories);
         return new Applied(accepted.size(), added, accepted.size() - added);
     }
 

@@ -30,6 +30,7 @@ public class CommercialCategoryRemoteLinkService {
     private final BookstoreContext bookstoreContext;
     private final TiendanubeStoreRepository stores;
     private final TiendanubeClient client;
+    private final TiendanubeCategorySyncStateService syncStates;
 
     public record LinkResult(Long categoryId, Long remoteCategoryId, int created, int reused) {}
 
@@ -240,6 +241,11 @@ public class CommercialCategoryRemoteLinkService {
                     """, remoteId, local.id(), bookstore);
             if (changed != 1) throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "La categoría cambió durante la operación. Actualizá la pantalla.");
+            List<Long> affected = jdbc.queryForList("""
+                    SELECT DISTINCT inventory_id FROM inventory_commercial_categories
+                    WHERE bookstore_id = ? AND category_id = ?
+                    """, Long.class, bookstore, local.id());
+            syncStates.localAssignmentsChanged(bookstore, affected);
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "La categoría remota ya fue vinculada. Actualizá la pantalla.", ex);

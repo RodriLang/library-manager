@@ -34,6 +34,8 @@ public record TiendanubeManagedInventoryResponse(
         TiendanubeJobStatus latestJobStatus,
         String latestJobErrorType,
         String latestJobErrorMessage,
-        Instant latestJobCreatedAt
+        Instant latestJobCreatedAt,
+        String categorySyncStatus,
+        Instant categoryLastVerifiedAt
 ) {
 }

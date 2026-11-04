@@ -72,6 +72,7 @@ class TiendanubeManagementServiceTest {
                 TiendanubeAdminPublicationFilter.NOT_PUBLISHED,
                 null,
                 TiendanubeAdminStockFilter.ALL,
+                null,
                 null
         );
 

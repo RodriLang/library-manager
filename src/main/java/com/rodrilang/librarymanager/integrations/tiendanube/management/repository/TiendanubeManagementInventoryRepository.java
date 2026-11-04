@@ -39,6 +39,38 @@ public class TiendanubeManagementInventoryRepository {
             "lastSyncedAt", "link.last_synced_at"
     );
 
+    private static final String CATEGORY_SYNC_STATUS_EXPRESSION = """
+            CASE
+              WHEN link.id IS NULL THEN 'UNVERIFIED'
+              WHEN category_job.status IN ('FAILED','BLOCKED')
+                AND (category_state.changed_at IS NULL OR category_job.created_at >= category_state.changed_at)
+                THEN 'ERROR'
+              WHEN category_job.status IN ('PENDING','PROCESSING','RETRY_WAIT')
+                AND (category_state.changed_at IS NULL OR category_job.created_at >= category_state.changed_at)
+                THEN 'PENDING'
+              WHEN category_state.state = 'SYNCED' THEN 'SYNCED'
+              WHEN category_state.state = 'PENDING' THEN 'PENDING'
+              ELSE 'UNVERIFIED'
+            END
+            """;
+
+    private static final String CATEGORY_SYNC_JOINS = """
+            LEFT JOIN tiendanube_category_sync_states category_state
+              ON category_state.bookstore_id = i.bookstore_id
+             AND category_state.inventory_id = i.id
+             AND category_state.store_id = current_store.store_id
+            LEFT JOIN LATERAL (
+              SELECT job.status, job.created_at
+              FROM tiendanube_sync_jobs job
+              WHERE job.inventory_id = i.id
+                AND job.tiendanube_store_id = current_store.id
+                AND job.store_id = current_store.store_id
+                AND job.type = 'SYNC_CATEGORIES'
+              ORDER BY job.created_at DESC, job.id DESC
+              LIMIT 1
+            ) category_job ON TRUE
+            """;
+
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
     public Page<TiendanubeManagedInventoryResponse> search(
@@ -78,6 +110,9 @@ public class TiendanubeManagementInventoryRepository {
                     latest_job.last_error_type AS latest_job_error_type,
                     latest_job.last_error_message AS latest_job_error_message,
                     latest_job.created_at AS latest_job_created_at,
+                    category_state.last_verified_at AS category_last_verified_at,
+                    """ + CATEGORY_SYNC_STATUS_EXPRESSION + """
+                    AS category_sync_status,
                     COUNT(*) OVER() AS total_count
                 FROM inventory i
                 JOIN books b ON b.id = i.book_id
@@ -107,6 +142,7 @@ public class TiendanubeManagementInventoryRepository {
                         job.id DESC
                     LIMIT 1
                 ) latest_job ON TRUE
+                """ + CATEGORY_SYNC_JOINS + """
                 WHERE i.bookstore_id = :bookstoreId
                   AND i.active = TRUE
                 """ + filterSql(filter)
@@ -204,6 +240,7 @@ public class TiendanubeManagementInventoryRepository {
                         job.id DESC
                     LIMIT 1
                 ) latest_job ON TRUE
+                """ + CATEGORY_SYNC_JOINS + """
                 WHERE i.bookstore_id = :bookstoreId
                   AND i.active = TRUE
                 """ + filterSql(filter)
@@ -243,6 +280,9 @@ public class TiendanubeManagementInventoryRepository {
         if (filter.priceSyncEnabled() != null) {
             params.addValue("priceSyncEnabled", filter.priceSyncEnabled());
         }
+        if (filter.categorySyncStatus() != null) {
+            params.addValue("categorySyncStatus", filter.categorySyncStatus());
+        }
 
         return params;
     }
@@ -277,6 +317,9 @@ public class TiendanubeManagementInventoryRepository {
             sql.append(" AND COALESCE(i.tiendanube_price_sync_enabled, FALSE) = :priceSyncEnabled\n");
         }
 
+        if (filter.categorySyncStatus() != null) {
+            sql.append(" AND (").append(CATEGORY_SYNC_STATUS_EXPRESSION).append(") = :categorySyncStatus\n");
+        }
         appendPublicationFilter(sql, filter.publication());
         appendStockFilter(sql, filter.stock());
         return sql.toString();
@@ -363,7 +406,9 @@ public class TiendanubeManagementInventoryRepository {
                 enumValue(TiendanubeJobStatus.class, rs.getString("latest_job_status")),
                 rs.getString("latest_job_error_type"),
                 rs.getString("latest_job_error_message"),
-                instant(rs, "latest_job_created_at")
+                instant(rs, "latest_job_created_at"),
+                rs.getString("category_sync_status"),
+                instant(rs, "category_last_verified_at")
         );
     }
 

@@ -20,6 +20,7 @@ public class BookstoreCommercialCategoryService {
     private final BookstoreContext context;
     private final TiendanubeStoreRepository stores;
     private final TiendanubeClient client;
+    private final TiendanubeCategorySyncStateService syncStates;
 
     public record Category(Long id, String name, Long parentId, Long tiendanubeCategoryId) {}
 
@@ -225,8 +226,11 @@ public class BookstoreCommercialCategoryService {
             Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM bookstore_commercial_categories WHERE bookstore_id = ? AND id IN (" + placeholders + ")", Integer.class, params);
             if (count == null || count != categoryIds.size()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categorías ajenas a la librería o inexistentes");
         }
+        List<Long> existing = categoriesForInventory(inventoryId);
+        if (new HashSet<>(existing).equals(new HashSet<>(categoryIds))) return existing;
         jdbc.update("DELETE FROM inventory_commercial_categories WHERE bookstore_id = ? AND inventory_id = ?", bookstore, inventoryId);
         for (Long id : categoryIds) jdbc.update("INSERT INTO inventory_commercial_categories (bookstore_id, inventory_id, category_id) VALUES (?, ?, ?)", bookstore, inventoryId, id);
+        syncStates.localAssignmentsChanged(bookstore, List.of(inventoryId));
         return categoriesForInventory(inventoryId);
     }
 
@@ -264,15 +268,17 @@ public class BookstoreCommercialCategoryService {
                         "No se pudo actualizar el árbol de categorías de Tiendanube", ex);
             }
         }
+        int added = 0;
         for (Long remoteId : new LinkedHashSet<>(remoteIds)) {
             if (remoteId == null || remoteId <= 0) continue;
-            jdbc.update("""
+            added += jdbc.update("""
                 INSERT INTO inventory_commercial_categories (bookstore_id, inventory_id, category_id)
                 SELECT ?, ?, id FROM bookstore_commercial_categories
                 WHERE bookstore_id = ? AND tiendanube_category_id = ?
                 ON CONFLICT DO NOTHING
                 """, bookstoreId, inventoryId, bookstoreId, remoteId);
         }
+        if (added > 0) syncStates.localAssignmentsChanged(bookstoreId, List.of(inventoryId));
     }
 
     /** Only mapped categories are sent to Tiendanube; no mapping means leave remote categories unspecified. */

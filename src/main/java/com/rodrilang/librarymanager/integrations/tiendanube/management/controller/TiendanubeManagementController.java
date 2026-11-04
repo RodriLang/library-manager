@@ -305,6 +305,7 @@ public class TiendanubeManagementController {
             @RequestParam(required = false) Long publisherId,
             @RequestParam(defaultValue = "ALL") TiendanubeAdminStockFilter stock,
             @RequestParam(required = false) Boolean priceSyncEnabled,
+            @RequestParam(required = false) String categorySyncStatus,
             @PageableDefault(size = 50, sort = "title") Pageable pageable
     ) {
         return PageResponse.of(
@@ -314,7 +315,8 @@ public class TiendanubeManagementController {
                                 publication,
                                 publisherId,
                                 stock,
-                                priceSyncEnabled
+                                priceSyncEnabled,
+                                categorySyncStatus
                         ),
                         pageable
                 )

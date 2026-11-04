@@ -27,6 +27,7 @@ public class TiendanubeCategoryBulkPreviewService {
     private final TiendanubeProductLinkRepository links;
     private final BookstoreCommercialCategoryService categories;
     private final TiendanubeClient client;
+    private final TiendanubeCategorySyncStateService syncStates;
 
     public record Item(Long inventoryId, Long productId, List<Long> localCategoryIds,
                        List<Long> remoteCategoryIds, List<Long> toAdd, List<Long> toRemove,
@@ -68,6 +69,7 @@ public class TiendanubeCategoryBulkPreviewService {
                         "Sin publicación vinculada a esta tienda"));
                 continue;
             }
+            long revision = syncStates.revision(bookstoreId, inventoryId, store.getStoreId());
             List<Long> local = categories.remoteCategoryIdsForInventory(bookstoreId, inventoryId);
             try {
                 var product = client.getProduct(store.getStoreId(), link.get().getTiendanubeProductId());
@@ -81,7 +83,13 @@ public class TiendanubeCategoryBulkPreviewService {
                 Set<Long> desired = new TreeSet<>(local);
                 List<Long> add = desired.stream().filter(id -> !remote.contains(id)).toList();
                 List<Long> remove = remote.stream().filter(id -> !desired.contains(id)).toList();
-                if (add.isEmpty() && remove.isEmpty()) alreadySynced++; else changed++;
+                if (add.isEmpty() && remove.isEmpty()) {
+                    alreadySynced++;
+                    syncStates.verified(bookstoreId, inventoryId, store.getStoreId(), revision);
+                } else {
+                    changed++;
+                    syncStates.differs(bookstoreId, inventoryId, store.getStoreId(), revision);
+                }
                 items.add(new Item(inventoryId, product.id(), List.copyOf(desired), List.copyOf(remote), add, remove, null));
             } catch (RuntimeException ex) {
                 // Never silently claim no changes when a remote query failed.

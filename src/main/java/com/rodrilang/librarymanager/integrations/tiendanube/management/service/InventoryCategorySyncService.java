@@ -18,6 +18,7 @@ public class InventoryCategorySyncService {
     private final TiendanubeProductLinkRepository links;
     private final BookstoreCommercialCategoryService commercialCategories;
     private final TiendanubePublicationContentService publications;
+    private final TiendanubeCategorySyncStateService syncStates;
 
     public record Comparison(Long productId, List<Long> localCategoryIds, List<Long> remoteCategoryIds,
                              List<Long> toAdd, List<Long> toRemove, boolean different) {}
@@ -36,12 +37,20 @@ public class InventoryCategorySyncService {
     @Transactional
     public Comparison compare(Long inventoryId) {
         Long productId = productId(inventoryId);
+        var store = stores.findByBookstoreIdAndActiveTrue(context.getCurrentBookstoreId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Tiendanube no conectada"));
+        long revision = syncStates.revision(context.getCurrentBookstoreId(), inventoryId, store.getStoreId());
         List<Long> local = commercialCategories.remoteCategoryIdsForInventory(context.getCurrentBookstoreId(), inventoryId);
         List<Long> remote = publications.publicationCategories(productId);
         Set<Long> localSet = new TreeSet<>(local);
         Set<Long> remoteSet = new TreeSet<>(remote);
         List<Long> add = localSet.stream().filter(id -> !remoteSet.contains(id)).toList();
         List<Long> remove = remoteSet.stream().filter(id -> !localSet.contains(id)).toList();
+        if (localSet.equals(remoteSet)) {
+            syncStates.verified(context.getCurrentBookstoreId(), inventoryId, store.getStoreId(), revision);
+        } else {
+            syncStates.differs(context.getCurrentBookstoreId(), inventoryId, store.getStoreId(), revision);
+        }
         return new Comparison(productId, List.copyOf(localSet), List.copyOf(remoteSet), add, remove, !localSet.equals(remoteSet));
     }
     /** Rechaza selecciones locales o remotas que hayan cambiado desde la vista previa. */

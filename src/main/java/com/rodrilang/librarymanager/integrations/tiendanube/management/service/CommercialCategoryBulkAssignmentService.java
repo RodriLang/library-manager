@@ -21,6 +21,7 @@ public class CommercialCategoryBulkAssignmentService {
     private final JdbcTemplate jdbc;
     private final BookstoreContext bookstoreContext;
     private final InventoryBulkSelectionService selectionService;
+    private final TiendanubeCategorySyncStateService syncStates;
 
     public enum Mode { ADD, REPLACE, REMOVE }
     public record Request(InventoryBulkSelectionRequest selection, List<Long> categoryIds, Mode mode) {}
@@ -78,6 +79,7 @@ public class CommercialCategoryBulkAssignmentService {
                 }
             }
         }
+        if (added > 0 || removed > 0) syncStates.localAssignmentsChanged(bookstore, ids);
         return new Result(ids.size(), added, removed, request.mode());
     }
 

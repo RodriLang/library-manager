@@ -2,6 +2,7 @@ package com.rodrilang.librarymanager.integrations.tiendanube.job.handler.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.rodrilang.librarymanager.integrations.tiendanube.client.TiendanubeClient;
+import com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategorySyncStateService;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.dto.TiendanubeJobExecutionContext;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.TiendanubeJobType;
 import com.rodrilang.librarymanager.integrations.tiendanube.job.handler.TiendanubeJobHandler;
@@ -25,6 +26,7 @@ public class TiendanubeCategoriesJobHandler implements TiendanubeJobHandler {
     private final TiendanubeProductLinkRepository links;
     private final BookstoreCommercialCategoryService categories;
     private final TiendanubeClient client;
+    private final TiendanubeCategorySyncStateService syncStates;
 
     @Override
     public TiendanubeJobType type() {
@@ -42,6 +44,7 @@ public class TiendanubeCategoriesJobHandler implements TiendanubeJobHandler {
             throw TiendanubeJobExecutionException.nonRetryable(
                     "BOOKSTORE_MISMATCH", "El inventario pertenece a otra librería", null);
         }
+        long revision = syncStates.revision(context.bookstoreId(), context.inventoryId(), context.storeId());
         List<Long> desired = categories.remoteCategoryIdsForInventory(context.bookstoreId(), context.inventoryId());
         var product = client.getProduct(context.storeId(), link.getTiendanubeProductId());
         Set<Long> remote = new TreeSet<>();
@@ -54,6 +57,21 @@ public class TiendanubeCategoriesJobHandler implements TiendanubeJobHandler {
         }
         if (!remote.equals(new TreeSet<>(desired))) {
             client.updateProductCategories(context.storeId(), link.getTiendanubeProductId(), desired);
+            // Verify the remote response, rather than assuming an accepted write was applied.
+            var verifiedProduct = client.getProduct(context.storeId(), link.getTiendanubeProductId());
+            Set<Long> verified = new TreeSet<>();
+            if (verifiedProduct.categories() != null) {
+                for (JsonNode node : verifiedProduct.categories()) {
+                    Long id = node.isNumber() ? node.longValue()
+                            : node.isObject() && node.hasNonNull("id") ? node.path("id").asLong() : null;
+                    if (id != null) verified.add(id);
+                }
+            }
+            if (!verified.equals(new TreeSet<>(desired))) {
+                throw TiendanubeJobExecutionException.retryable(
+                        "CATEGORIES_NOT_APPLIED", "Tiendanube no devolvió las categorías esperadas después de guardar", null);
+            }
         }
+        syncStates.verified(context.bookstoreId(), context.inventoryId(), context.storeId(), revision);
     }
 }
