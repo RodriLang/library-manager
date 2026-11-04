@@ -28,6 +28,127 @@ public class BookstoreCommercialCategoryService {
                 (rs, i) -> new Category(rs.getLong(1), rs.getString(2), (Long)rs.getObject(3), (Long)rs.getObject(4)), bookstoreId());
     }
 
+    /** CRUD de categorías comerciales locales, independiente de la conexión con Tiendanube. */
+    @Transactional
+    public Category createLocal(String name, Long parentId) {
+        Long bookstore = bookstoreId();
+        String cleanName = validateName(name);
+        validateParent(bookstore, parentId, null);
+        assertNoSiblingWithName(bookstore, parentId, cleanName, null);
+        Long id = jdbc.queryForObject("""
+                INSERT INTO bookstore_commercial_categories (bookstore_id, name, parent_id)
+                VALUES (?, ?, ?) RETURNING id
+                """, Long.class, bookstore, cleanName, parentId);
+        return getLocal(bookstore, id);
+    }
+
+    @Transactional
+    public Category updateLocal(Long id, String name, Long parentId) {
+        Long bookstore = bookstoreId();
+        Category original = getLocal(bookstore, id);
+        assertLocallyEditable(original);
+        String cleanName = validateName(name);
+        validateParent(bookstore, parentId, id);
+        assertNoSiblingWithName(bookstore, parentId, cleanName, id);
+        jdbc.update("""
+                UPDATE bookstore_commercial_categories
+                SET name = ?, parent_id = ?, updated_at = NOW()
+                WHERE id = ? AND bookstore_id = ?
+                """, cleanName, parentId, id, bookstore);
+        return getLocal(bookstore, id);
+    }
+
+    @Transactional
+    public void deleteLocal(Long id) {
+        Long bookstore = bookstoreId();
+        Category original = getLocal(bookstore, id);
+        assertLocallyEditable(original);
+        if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM bookstore_commercial_categories
+                               WHERE bookstore_id = ? AND parent_id = ?)
+                """, Boolean.class, bookstore, id))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La categoría tiene subcategorías. Movelas o eliminálas antes.");
+        }
+        if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM inventory_commercial_categories
+                               WHERE bookstore_id = ? AND category_id = ?)
+                """, Boolean.class, bookstore, id))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La categoría tiene libros asignados. Quitalos antes de eliminarla.");
+        }
+        jdbc.update("DELETE FROM bookstore_commercial_categories WHERE id = ? AND bookstore_id = ?",
+                id, bookstore);
+    }
+
+    private Category getLocal(Long bookstore, Long id) {
+        if (id == null || id <= 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría inexistente");
+        }
+        return jdbc.query("""
+                SELECT id, name, parent_id, tiendanube_category_id
+                FROM bookstore_commercial_categories WHERE bookstore_id = ? AND id = ?
+                """, (rs, row) -> new Category(rs.getLong(1), rs.getString(2),
+                        (Long) rs.getObject(3), (Long) rs.getObject(4)), bookstore, id)
+                .stream().findFirst().orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría inexistente en la librería"));
+    }
+
+    private void assertLocallyEditable(Category category) {
+        if (category.tiendanubeCategoryId() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Esta categoría está vinculada con Tiendanube. Administrala desde la integración.");
+        }
+    }
+
+    private String validateName(String name) {
+        String cleaned = name == null ? "" : name.strip();
+        if (cleaned.isEmpty() || cleaned.length() > 255) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El nombre debe tener entre 1 y 255 caracteres");
+        }
+        return cleaned;
+    }
+
+    private void validateParent(Long bookstore, Long parentId, Long currentId) {
+        if (parentId == null) return;
+        getLocal(bookstore, parentId); // También valida que pertenezca a esta librería.
+        if (parentId.equals(currentId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Una categoría no puede ser su propia categoría padre");
+        }
+        if (currentId != null && Boolean.TRUE.equals(jdbc.queryForObject("""
+                WITH RECURSIVE descendants AS (
+                    SELECT id FROM bookstore_commercial_categories
+                    WHERE bookstore_id = ? AND parent_id = ?
+                    UNION
+                    SELECT child.id FROM bookstore_commercial_categories child
+                    JOIN descendants d ON child.parent_id = d.id
+                    WHERE child.bookstore_id = ?
+                )
+                SELECT EXISTS (SELECT 1 FROM descendants WHERE id = ?)
+                """, Boolean.class, bookstore, currentId, bookstore, parentId))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No podés mover una categoría dentro de una de sus subcategorías");
+        }
+    }
+
+    private void assertNoSiblingWithName(Long bookstore, Long parentId, String name, Long currentId) {
+        Boolean duplicate = jdbc.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1 FROM bookstore_commercial_categories
+                    WHERE bookstore_id = ?
+                      AND parent_id IS NOT DISTINCT FROM ?
+                      AND LOWER(name) = LOWER(?)
+                      AND (? IS NULL OR id <> ?)
+                )
+                """, Boolean.class, bookstore, parentId, name, currentId, currentId);
+        if (Boolean.TRUE.equals(duplicate)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe una categoría con ese nombre en el mismo nivel");
+        }
+    }
+
     /** Importación de la jerarquía, sin borrar categorías locales ni asignaciones existentes. */
     @Transactional
     public List<Category> importRemote() {
