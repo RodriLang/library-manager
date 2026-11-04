@@ -134,15 +134,33 @@ public class BookstoreCommercialCategoryService {
     }
 
     private void assertNoSiblingWithName(Long bookstore, Long parentId, String name, Long currentId) {
-        Boolean duplicate = jdbc.queryForObject("""
+        // PostgreSQL no puede inferir el tipo de un parámetro nulo en "? IS NULL".
+        // Construimos solo las condiciones aplicables y no enviamos parámetros nulos.
+        StringBuilder sql = new StringBuilder("""
                 SELECT EXISTS (
                     SELECT 1 FROM bookstore_commercial_categories
                     WHERE bookstore_id = ?
-                      AND parent_id IS NOT DISTINCT FROM ?
-                      AND LOWER(name) = LOWER(?)
-                      AND (? IS NULL OR id <> ?)
-                )
-                """, Boolean.class, bookstore, parentId, name, currentId, currentId);
+                """);
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(bookstore);
+
+        if (parentId == null) {
+            sql.append(" AND parent_id IS NULL\n");
+        } else {
+            sql.append(" AND parent_id = ?\n");
+            parameters.add(parentId);
+        }
+
+        sql.append(" AND LOWER(name) = LOWER(?)\n");
+        parameters.add(name);
+
+        if (currentId != null) {
+            sql.append(" AND id <> ?\n");
+            parameters.add(currentId);
+        }
+
+        sql.append(" )");
+        Boolean duplicate = jdbc.queryForObject(sql.toString(), Boolean.class, parameters.toArray());
         if (Boolean.TRUE.equals(duplicate)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe una categoría con ese nombre en el mismo nivel");
