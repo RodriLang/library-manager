@@ -56,6 +56,24 @@ public class TiendanubeManagementController {
         return commercialCategories.importRemote();
     }
 
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryBulkAssignmentService categoryBulkAssignment;
+
+    @GetMapping("/commercial-categories/{categoryId}/inventories")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.CategoryInventoryPage categoryInventories(
+            @PathVariable Long categoryId,
+            @RequestParam(defaultValue = "false") boolean includeSubcategories,
+            @RequestParam(defaultValue = "") String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+        return commercialCategories.inventoriesInCategory(categoryId, includeSubcategories, q, page, size);
+    }
+
+    @PostMapping("/commercial-categories/bulk-assign")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryBulkAssignmentService.Result bulkAssignCommercialCategories(
+            @RequestBody com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryBulkAssignmentService.Request request) {
+        return categoryBulkAssignment.apply(request);
+    }
+
     @GetMapping("/inventories/{inventoryId}/commercial-categories")
     public java.util.List<Long> inventoryCommercialCategories(@PathVariable Long inventoryId) {
         return commercialCategories.categoriesForInventory(inventoryId);

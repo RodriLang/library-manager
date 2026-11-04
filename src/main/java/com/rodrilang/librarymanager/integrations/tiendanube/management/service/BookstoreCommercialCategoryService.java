@@ -142,6 +142,53 @@ public class BookstoreCommercialCategoryService {
                 """, (rs, i) -> rs.getLong(1), bookstoreId, inventoryId);
     }
 
+    public record CategoryInventory(Long inventoryId, Long bookId, String title, String isbn) {}
+    public record CategoryInventoryPage(List<CategoryInventory> items, long total, int page, int size) {}
+
+    /** Browse directly assigned inventories or the complete subtree, without changing assignments. */
+    public CategoryInventoryPage inventoriesInCategory(Long categoryId, boolean includeSubcategories,
+                                                        String search, int page, int size) {
+        Long bookstore = bookstoreId();
+        if (categoryId == null || categoryId <= 0 || !Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM bookstore_commercial_categories WHERE bookstore_id = ? AND id = ?)",
+                Boolean.class, bookstore, categoryId))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría no encontrada en esta librería");
+        }
+        int safePage = Math.max(0, page), safeSize = Math.max(1, Math.min(100, size));
+        String trimmed = search == null ? "" : search.strip();
+        String categoryCte = includeSubcategories ? """
+                WITH RECURSIVE subtree AS (
+                    SELECT id FROM bookstore_commercial_categories WHERE bookstore_id = ? AND id = ?
+                    UNION ALL
+                    SELECT child.id FROM bookstore_commercial_categories child
+                    JOIN subtree parent ON child.parent_id = parent.id
+                    WHERE child.bookstore_id = ?
+                )
+                """ : "WITH subtree AS (SELECT id FROM bookstore_commercial_categories WHERE bookstore_id = ? AND id = ?) ";
+        String baseSql = """
+                FROM inventory i
+                JOIN books b ON b.id = i.book_id
+                WHERE i.bookstore_id = ?
+                  AND EXISTS (SELECT 1 FROM inventory_commercial_categories ic
+                              JOIN subtree sub ON sub.id = ic.category_id
+                              WHERE ic.bookstore_id = ? AND ic.inventory_id = i.id)
+                  AND (? = '' OR LOWER(b.title) LIKE LOWER(?) OR LOWER(COALESCE(b.isbn_13, b.isbn_10, '')) LIKE LOWER(?))
+                """;
+        List<Object> params = new ArrayList<>();
+        params.add(bookstore); params.add(categoryId);
+        if (includeSubcategories) params.add(bookstore);
+        params.add(bookstore); params.add(bookstore);
+        params.add(trimmed); params.add("%" + trimmed + "%"); params.add("%" + trimmed + "%");
+        Long total = jdbc.queryForObject(categoryCte + "SELECT COUNT(*) " + baseSql, Long.class, params.toArray());
+        List<Object> paged = new ArrayList<>(params);
+        paged.add(safeSize); paged.add(safePage * safeSize);
+        List<CategoryInventory> results = jdbc.query(categoryCte +
+                "SELECT i.id, b.id, b.title, COALESCE(b.isbn_13, b.isbn_10) " + baseSql + "ORDER BY b.title, i.id LIMIT ? OFFSET ?",
+                (rs, n) -> new CategoryInventory(rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getString(4)),
+                paged.toArray());
+        return new CategoryInventoryPage(results, total == null ? 0 : total, safePage, safeSize);
+    }
+
     private void assertInventory(Long inventoryId) {
         if (inventoryId == null || inventoryId <= 0 || Boolean.FALSE.equals(jdbc.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM inventory WHERE id = ? AND bookstore_id = ?)", Boolean.class, inventoryId, bookstoreId())))
