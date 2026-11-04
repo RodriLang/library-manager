@@ -45,6 +45,35 @@ public class TiendanubeManagementController {
     private final TiendanubePublicationContentService publicationContentService;
 
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService commercialCategories;
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryRemoteLinkService remoteCategoryLinks;
+
+    public record LinkExistingCategoryRequest(Long remoteCategoryId) {}
+
+    @GetMapping("/commercial-categories/link-suggestions")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryRemoteLinkService.LinkPreview categoryLinkSuggestions() {
+        return remoteCategoryLinks.previewExactLinks();
+    }
+
+    public record ConfirmCategoryLinks(java.util.List<Long> categoryIds) {}
+
+    @PostMapping("/commercial-categories/link-suggestions/apply")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryRemoteLinkService.BulkLinkResult applyCategoryLinkSuggestions(
+            @RequestBody ConfirmCategoryLinks request) {
+        return remoteCategoryLinks.applyExactLinks(request == null ? null : request.categoryIds());
+    }
+
+    @PostMapping("/commercial-categories/{categoryId}/link-existing")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryRemoteLinkService.LinkResult linkExistingCategory(
+            @PathVariable Long categoryId, @RequestBody LinkExistingCategoryRequest request) {
+        return remoteCategoryLinks.linkExisting(categoryId, request == null ? null : request.remoteCategoryId());
+    }
+
+    @PostMapping("/commercial-categories/{categoryId}/create-remote")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryRemoteLinkService.LinkResult createRemoteCategory(
+            @PathVariable Long categoryId) {
+        return remoteCategoryLinks.createRemote(categoryId);
+    }
+
 
     @GetMapping("/commercial-categories")
     public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.Category> commercialCategories() {

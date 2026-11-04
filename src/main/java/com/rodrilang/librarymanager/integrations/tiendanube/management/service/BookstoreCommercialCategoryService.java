@@ -180,9 +180,14 @@ public class BookstoreCommercialCategoryService {
             String name = r.name() == null ? "Categoría #" + r.id() :
                     r.name().getOrDefault("es", r.name().values().stream().findFirst().orElse("Categoría #" + r.id()));
             jdbc.update("""
-                INSERT INTO bookstore_commercial_categories (bookstore_id, name, tiendanube_category_id)
-                VALUES (?, ?, ?) ON CONFLICT (bookstore_id, tiendanube_category_id)
-                DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
+                INSERT INTO bookstore_commercial_categories
+                    (bookstore_id, name, tiendanube_category_id, remote_managed)
+                VALUES (?, ?, ?, TRUE)
+                ON CONFLICT (bookstore_id, tiendanube_category_id)
+                DO UPDATE SET
+                    name = CASE WHEN bookstore_commercial_categories.remote_managed
+                                THEN EXCLUDED.name ELSE bookstore_commercial_categories.name END,
+                    updated_at = NOW()
                 """, bookstore, name, r.id());
         }
         // Segunda pasada: se resuelven relaciones por IDs remotos (sin depender del orden).
@@ -194,6 +199,7 @@ public class BookstoreCommercialCategoryService {
                     WHERE parent.bookstore_id = ? AND parent.tiendanube_category_id = ?
                 ), updated_at = NOW()
                 WHERE child.bookstore_id = ? AND child.tiendanube_category_id = ?
+                  AND child.remote_managed = TRUE
                 """, bookstore, r.parent(), bookstore, r.id());
         }
         return list();
