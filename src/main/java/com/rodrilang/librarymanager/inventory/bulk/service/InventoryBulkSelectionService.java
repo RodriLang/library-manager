@@ -100,7 +100,10 @@ public class InventoryBulkSelectionService {
                         resolved.authorIds(),
                         resolved.priceMode(),
                         resolved.active(),
-                        resolved.consignment()
+                        resolved.consignment(),
+                        resolved.commercialCategoryIds(),
+                        resolved.includeCommercialSubcategories(),
+                        resolved.withoutCommercialCategory()
                 );
 
         /*

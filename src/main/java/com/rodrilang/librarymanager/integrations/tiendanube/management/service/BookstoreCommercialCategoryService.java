@@ -281,6 +281,40 @@ public class BookstoreCommercialCategoryService {
                 """, (rs, i) -> rs.getLong(1), bookstoreId, inventoryId);
     }
 
+    public record CategoryCount(Long categoryId, long direct, long includingSubcategories) {}
+
+    /** Counts are grouped in the database, not fetched category by category. */
+    @Transactional(readOnly = true)
+    public List<CategoryCount> counts() {
+        Long bookstore = bookstoreId();
+        return jdbc.query("""
+                WITH RECURSIVE descendants(root_id, category_id) AS (
+                    SELECT id, id FROM bookstore_commercial_categories WHERE bookstore_id = ?
+                    UNION
+                    SELECT d.root_id, child.id
+                    FROM descendants d
+                    JOIN bookstore_commercial_categories child
+                      ON child.parent_id = d.category_id AND child.bookstore_id = ?
+                ), direct_counts AS (
+                    SELECT category_id, COUNT(DISTINCT inventory_id) AS total
+                    FROM inventory_commercial_categories WHERE bookstore_id = ?
+                    GROUP BY category_id
+                ), subtree_counts AS (
+                    SELECT d.root_id, COUNT(DISTINCT ic.inventory_id) AS total
+                    FROM descendants d
+                    JOIN inventory_commercial_categories ic
+                      ON ic.category_id = d.category_id AND ic.bookstore_id = ?
+                    GROUP BY d.root_id
+                )
+                SELECT c.id, COALESCE(dc.total, 0), COALESCE(sc.total, 0)
+                FROM bookstore_commercial_categories c
+                LEFT JOIN direct_counts dc ON dc.category_id = c.id
+                LEFT JOIN subtree_counts sc ON sc.root_id = c.id
+                WHERE c.bookstore_id = ? ORDER BY c.id
+                """, (rs, row) -> new CategoryCount(rs.getLong(1), rs.getLong(2), rs.getLong(3)),
+                bookstore, bookstore, bookstore, bookstore, bookstore);
+    }
+
     public record CategoryInventory(Long inventoryId, Long bookId, String title, String isbn) {}
     public record CategoryInventoryPage(List<CategoryInventory> items, long total, int page, int size) {}
 

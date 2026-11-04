@@ -101,6 +101,9 @@ public class InventoryController {
             @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
             @RequestParam(defaultValue = "ACTIVE") InventoryActiveFilter active,
             @RequestParam(required = false) Boolean consignment,
+            @RequestParam(required = false) List<Long> commercialCategoryIds,
+            @RequestParam(defaultValue = "false") Boolean includeCommercialSubcategories,
+            @RequestParam(defaultValue = "false") Boolean withoutCommercialCategory,
             @ParameterObject
             @PageableDefault(
                     size = 30,
@@ -116,7 +119,10 @@ public class InventoryController {
                         authorIds,
                         priceMode,
                         active,
-                        consignment
+                        consignment,
+                        commercialCategoryIds,
+                        includeCommercialSubcategories,
+                        withoutCommercialCategory
                 );
 
         InventorySearchCriteria criteria =
@@ -144,7 +150,10 @@ public class InventoryController {
             @RequestParam(required = false) List<Long> authorIds,
             @RequestParam(defaultValue = "ALL") InventoryPriceMode priceMode,
             @RequestParam(defaultValue = "ACTIVE") InventoryActiveFilter active,
-            @RequestParam(required = false) Boolean consignment
+            @RequestParam(required = false) Boolean consignment,
+            @RequestParam(required = false) List<Long> commercialCategoryIds,
+            @RequestParam(defaultValue = "false") Boolean includeCommercialSubcategories,
+            @RequestParam(defaultValue = "false") Boolean withoutCommercialCategory
     ) {
         InventoryAdvancedFilters filters =
                 new InventoryAdvancedFilters(
@@ -153,7 +162,10 @@ public class InventoryController {
                         authorIds,
                         priceMode,
                         active,
-                        consignment
+                        consignment,
+                        commercialCategoryIds,
+                        includeCommercialSubcategories,
+                        withoutCommercialCategory
                 );
 
         return ResponseEntity.ok(

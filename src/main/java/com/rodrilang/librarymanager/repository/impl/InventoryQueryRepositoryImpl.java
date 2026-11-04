@@ -1020,6 +1020,44 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     """);
         }
 
+        if (filters.unclassifiedOnly()) {
+            sql.append("""
+                    AND NOT EXISTS (
+                      SELECT 1 FROM inventory_commercial_categories ic_unclassified
+                      WHERE ic_unclassified.bookstore_id = :bookstoreId
+                        AND ic_unclassified.inventory_id = i.id
+                    )
+                    """);
+        } else if (!filters.commercialCategoryIds().isEmpty()) {
+            // EXITS evita filas repetidas cuando un libro pertenece a varias categorías.
+            // La recursión se limita a la librería actual y UNION evita ciclos.
+            if (filters.commercialSubcategoriesIncluded()) {
+                sql.append("""
+                    AND EXISTS (
+                      WITH RECURSIVE descendants(id) AS (
+                        SELECT c.id FROM bookstore_commercial_categories c
+                        WHERE c.bookstore_id = :bookstoreId AND c.id IN (:commercialCategoryIds)
+                        UNION
+                        SELECT c.id FROM bookstore_commercial_categories c
+                        JOIN descendants d ON c.parent_id = d.id
+                        WHERE c.bookstore_id = :bookstoreId
+                      )
+                      SELECT 1 FROM inventory_commercial_categories ic
+                      WHERE ic.inventory_id = i.id AND ic.bookstore_id = :bookstoreId
+                        AND ic.category_id IN (SELECT id FROM descendants)
+                    )
+                    """);
+            } else {
+                sql.append("""
+                    AND EXISTS (
+                      SELECT 1 FROM inventory_commercial_categories ic
+                      WHERE ic.inventory_id = i.id AND ic.bookstore_id = :bookstoreId
+                        AND ic.category_id IN (:commercialCategoryIds)
+                    )
+                    """);
+            }
+        }
+
         if (filters.consignmentOnly()) {
             sql.append("\n                    AND i.consignment_stock > 0\n                    ");
         }
@@ -1133,6 +1171,10 @@ public class InventoryQueryRepositoryImpl implements InventoryQueryRepository {
                     "publisherIds",
                     filters.publisherIds()
             );
+        }
+
+        if (!filters.unclassifiedOnly() && !filters.commercialCategoryIds().isEmpty()) {
+            bindIdList(query, "commercialCategoryIds", filters.commercialCategoryIds());
         }
 
         if (!filters.authorIds().isEmpty()) {

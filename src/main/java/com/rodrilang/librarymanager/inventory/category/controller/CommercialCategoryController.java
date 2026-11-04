@@ -14,6 +14,11 @@ public class CommercialCategoryController {
 
     public record CategoryRequest(String name, Long parentId) {}
 
+    @GetMapping("/counts")
+    public java.util.List<BookstoreCommercialCategoryService.CategoryCount> counts() {
+        return categories.counts();
+    }
+
     @PostMapping("/suggestions/preview")
     public com.rodrilang.librarymanager.inventory.category.service.CommercialCategorySuggestionService.Preview previewSuggestions(
             @RequestBody com.rodrilang.librarymanager.inventory.bulk.dto.request.InventoryBulkSelectionRequest selection) {
