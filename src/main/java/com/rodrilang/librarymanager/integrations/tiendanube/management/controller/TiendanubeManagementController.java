@@ -348,10 +348,11 @@ public class TiendanubeManagementController {
     @GetMapping("/bulk-operations/{operationId}/items")
     public PageResponse<TiendanubeBulkOperationItemResponse> getBulkOperationItems(
             @PathVariable Long operationId,
+            @RequestParam(defaultValue = "false") boolean failuresOnly,
             @PageableDefault(size = 50) Pageable pageable
     ) {
         return PageResponse.of(
-                managementService.getBulkOperationItems(operationId, pageable)
+                managementService.getBulkOperationItems(operationId, pageable, failuresOnly)
         );
     }
 
@@ -359,6 +360,17 @@ public class TiendanubeManagementController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public TiendanubeBulkOperationResponse cancelBulkOperation(@PathVariable Long operationId) {
         return managementService.cancelBulkOperation(operationId);
+    }
+
+    public record RetrySelectedCategoriesRequest(java.util.List<Long> inventoryIds) {}
+
+    @PostMapping("/bulk-operations/{operationId}/retry-selected-categories")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public TiendanubeBulkOperationResponse retrySelectedCategories(
+            @PathVariable Long operationId,
+            @RequestBody RetrySelectedCategoriesRequest request) {
+        return managementService.retrySelectedCategoryFailures(operationId,
+                request == null ? null : request.inventoryIds());
     }
 
     @PostMapping("/bulk-operations/{operationId}/retry-failed")

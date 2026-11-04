@@ -88,10 +88,10 @@ public class TiendanubeManagementService {
     }
 
     @Transactional(readOnly = true)
-    public Page<TiendanubeBulkOperationItemResponse> getBulkOperationItems(Long operationId, Pageable pageable) {
+    public Page<TiendanubeBulkOperationItemResponse> getBulkOperationItems(Long operationId, Pageable pageable, boolean failuresOnly) {
         Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
         requireOperation(operationId, bookstoreId);
-        return bulkJdbcRepository.findItems(operationId, bookstoreId, pageable);
+        return bulkJdbcRepository.findItems(operationId, bookstoreId, pageable, failuresOnly);
     }
 
     @Transactional
@@ -136,6 +136,37 @@ public class TiendanubeManagementService {
                 "Reintento de fallidos de operación #" + operationId,
                 inventoryIds
         );
+    }
+
+    /** Retries only failed category jobs explicitly selected by the user. */
+    @Transactional
+    public TiendanubeBulkOperationResponse retrySelectedCategoryFailures(Long operationId, List<Long> inventoryIds) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        TiendanubeBulkOperation original = requireOperation(operationId, bookstoreId);
+        TiendanubeBulkOperationResponse status = requireOperationResponse(operationId, bookstoreId);
+        if (original.getAction() != TiendanubeBulkAction.SYNC_CATEGORIES) {
+            throw new BusinessException("El reintento selectivo solo está disponible para sincronización de categorías");
+        }
+        if (status.status() == TiendanubeBulkOperationStatus.RUNNING
+                || status.status() == TiendanubeBulkOperationStatus.CANCEL_REQUESTED) {
+            throw new BusinessException("Esperá a que termine la operación antes de reintentar");
+        }
+        if (inventoryIds == null || inventoryIds.isEmpty() || inventoryIds.size() > 500) {
+            throw new BusinessException("Seleccioná entre 1 y 500 inventarios fallidos");
+        }
+        if (inventoryIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new BusinessException("La selección contiene identificadores inválidos");
+        }
+        Set<Long> requested = new TreeSet<>(inventoryIds);
+        Set<Long> failed = new java.util.HashSet<>(bulkJdbcRepository.findFailedInventoryIds(operationId));
+        if (!failed.containsAll(requested)) {
+            throw new BusinessException("La selección contiene inventarios que no están fallidos en esta operación");
+        }
+        TiendanubeStore store = requireStoreForAction(bookstoreId, original.getAction());
+        return createOperation(bookstoreId, store, original.getAction(),
+                TiendanubeBulkSelectionType.IDS,
+                "Reintento selectivo de categorías de operación #" + operationId,
+                List.copyOf(requested));
     }
 
     private TiendanubeBulkOperationResponse createOperation(

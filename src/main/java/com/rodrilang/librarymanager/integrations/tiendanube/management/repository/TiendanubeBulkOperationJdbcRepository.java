@@ -233,7 +233,8 @@ public class TiendanubeBulkOperationJdbcRepository {
     public Page<TiendanubeBulkOperationItemResponse> findItems(
             Long operationId,
             Long bookstoreId,
-            Pageable pageable
+            Pageable pageable,
+            boolean failuresOnly
     ) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("operationId", operationId)
@@ -267,6 +268,7 @@ public class TiendanubeBulkOperationJdbcRepository {
                 LEFT JOIN tiendanube_sync_jobs job ON job.id = item.job_id
                 WHERE item.operation_id = :operationId
                   AND operation.bookstore_id = :bookstoreId
+                """ + (failuresOnly ? " AND job.status IN ('FAILED', 'BLOCKED')\n" : "") + """
                 ORDER BY item.id
                 LIMIT :limit OFFSET :offset
                 """;
@@ -277,6 +279,16 @@ public class TiendanubeBulkOperationJdbcRepository {
             return mapItem(rs);
         });
 
+        if (content.isEmpty()) {
+            String countSql = """
+                    SELECT COUNT(*)
+                    FROM tiendanube_bulk_operation_items item
+                    JOIN tiendanube_bulk_operations operation ON operation.id = item.operation_id
+                    LEFT JOIN tiendanube_sync_jobs job ON job.id = item.job_id
+                    WHERE item.operation_id = :operationId AND operation.bookstore_id = :bookstoreId
+                    """ + (failuresOnly ? " AND job.status IN ('FAILED', 'BLOCKED')" : "");
+            total[0] = jdbcTemplate.queryForObject(countSql, params, Long.class);
+        }
         return new PageImpl<>(content, pageable, total[0]);
     }
 
