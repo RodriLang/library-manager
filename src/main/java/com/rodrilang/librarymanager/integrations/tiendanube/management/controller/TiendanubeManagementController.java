@@ -68,6 +68,14 @@ public class TiendanubeManagementController {
         return commercialCategories.inventoriesInCategory(categoryId, includeSubcategories, q, page, size);
     }
 
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryBulkPreviewService categoryBulkPreview;
+
+    @PostMapping("/commercial-categories/preview-remote-bulk")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryBulkPreviewService.Preview previewRemoteCategories(
+            @Valid @RequestBody com.rodrilang.librarymanager.integrations.tiendanube.management.dto.request.TiendanubeBulkSelectionRequest selection) {
+        return categoryBulkPreview.preview(selection);
+    }
+
     @PostMapping("/commercial-categories/bulk-assign")
     public com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryBulkAssignmentService.Result bulkAssignCommercialCategories(
             @RequestBody com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryBulkAssignmentService.Request request) {

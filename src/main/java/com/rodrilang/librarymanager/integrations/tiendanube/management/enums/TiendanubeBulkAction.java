@@ -5,6 +5,7 @@ import com.rodrilang.librarymanager.integrations.tiendanube.job.enums.Tiendanube
 public enum TiendanubeBulkAction {
     PUBLISH(TiendanubeJobType.PUBLISH),
     SYNC_PUBLICATION(TiendanubeJobType.SYNC_PUBLICATION),
+    SYNC_CATEGORIES(TiendanubeJobType.SYNC_CATEGORIES),
     SYNC_STOCK(TiendanubeJobType.SYNC_STOCK),
     SYNC_PRICE(TiendanubeJobType.SYNC_PRICE),
     DELETE_PUBLICATION(TiendanubeJobType.DELETE_PUBLICATION),

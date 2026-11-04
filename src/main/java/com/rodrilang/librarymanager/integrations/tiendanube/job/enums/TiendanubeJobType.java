@@ -5,5 +5,6 @@ public enum TiendanubeJobType {
     SYNC_STOCK,
     SYNC_PRICE,
     SYNC_PUBLICATION,
+    SYNC_CATEGORIES,
     DELETE_PUBLICATION
 }
