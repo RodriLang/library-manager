@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 
 public record TiendanubeBulkOperationRequest(
         @NotNull TiendanubeBulkAction action,
-        @Valid @NotNull TiendanubeBulkSelectionRequest selection
+        @Valid @NotNull TiendanubeBulkSelectionRequest selection,
+        String publicationCategoryMode
 ) {
 }

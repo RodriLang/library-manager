@@ -328,6 +328,12 @@ public class TiendanubeManagementController {
         );
     }
 
+    @PostMapping("/bulk-operations/publication-categories/preview")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubePublicationCategoryPreparationService.Preview previewPublicationCategories(
+            @Valid @RequestBody com.rodrilang.librarymanager.integrations.tiendanube.management.dto.request.TiendanubeBulkSelectionRequest selection) {
+        return managementService.previewPublicationCategories(selection);
+    }
+
     @PostMapping("/bulk-operations")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public TiendanubeBulkOperationResponse createBulkOperation(

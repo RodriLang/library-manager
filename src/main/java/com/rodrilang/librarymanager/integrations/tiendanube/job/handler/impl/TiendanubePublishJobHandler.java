@@ -172,6 +172,14 @@ public class TiendanubePublishJobHandler implements TiendanubeJobHandler {
     private TiendanubeCreateProductRequest withCommercialCategories(TiendanubePublishSnapshot snapshot, TiendanubeCreateProductRequest request) {
         List<Long> remoteIds = commercialCategoryService.remoteCategoryIdsForInventory(snapshot.bookstoreId(), snapshot.inventoryId());
         if (remoteIds.isEmpty()) return request; // Preserve Tiendanube defaults when nothing is assigned.
+        java.util.Set<Long> existingIds = new java.util.HashSet<>();
+        for (var remote : client.getCategories(snapshot.storeId())) {
+            if (remote.id() != null) existingIds.add(remote.id());
+        }
+        if (!existingIds.containsAll(remoteIds)) {
+            throw new IllegalStateException(
+                    "La publicación tiene categorías con vínculos rotos. Reparalas desde Inventario > Categorías antes de publicar");
+        }
         return new TiendanubeCreateProductRequest(request.name(), request.description(), request.variants(), request.images(), request.published(), remoteIds);
     }
 

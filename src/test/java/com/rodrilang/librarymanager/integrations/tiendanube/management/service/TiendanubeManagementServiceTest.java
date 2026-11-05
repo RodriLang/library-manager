@@ -58,6 +58,9 @@ class TiendanubeManagementServiceTest {
     @Mock
     private TiendanubeWorkNotifier workNotifier;
 
+    @Mock
+    private TiendanubePublicationCategoryPreparationService publicationCategoryPreparation;
+
     @Test
     void filterSelectionIsMaterializedWhenOperationIsCreated() {
         TiendanubeStore store = TiendanubeStore.builder()
@@ -82,7 +85,8 @@ class TiendanubeManagementServiceTest {
                         TiendanubeBulkSelectionType.FILTER,
                         null,
                         filter
-                )
+                ),
+                "LINKED_ONLY"
         );
 
         when(bookstoreContext.getCurrentBookstoreId()).thenReturn(1L);
@@ -132,7 +136,8 @@ class TiendanubeManagementServiceTest {
                         TiendanubeBulkSelectionType.IDS,
                         Set.of(11L, 99L),
                         null
-                )
+                ),
+                null
         );
 
         assertThrows(
@@ -150,7 +155,8 @@ class TiendanubeManagementServiceTest {
                 inventoryRepository,
                 operationRepository,
                 bulkRepository,
-                workNotifier
+                workNotifier,
+                publicationCategoryPreparation
         );
     }
 

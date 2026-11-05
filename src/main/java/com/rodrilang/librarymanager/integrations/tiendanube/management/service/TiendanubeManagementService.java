@@ -43,6 +43,7 @@ public class TiendanubeManagementService {
     private final TiendanubeBulkOperationRepository operationRepository;
     private final TiendanubeBulkOperationJdbcRepository bulkJdbcRepository;
     private final TiendanubeWorkNotifier workNotifier;
+    private final TiendanubePublicationCategoryPreparationService publicationCategoryPreparation;
 
     @Transactional(readOnly = true)
     public Page<TiendanubeManagedInventoryResponse> searchInventories(
@@ -67,6 +68,16 @@ public class TiendanubeManagementService {
         TiendanubeStore store = requireStoreForAction(bookstoreId, request.action());
         Selection selection = resolveSelection(bookstoreId, request.selection());
 
+        if (request.action() == TiendanubeBulkAction.PUBLISH) {
+            String mode = request.publicationCategoryMode() == null
+                    ? "LINKED_ONLY" : request.publicationCategoryMode();
+            if (!mode.equals("LINKED_ONLY") && !mode.equals("CREATE_MISSING")) {
+                throw new BusinessException("Modo de categorías inválido para publicar");
+            }
+            publicationCategoryPreparation.prepare(bookstoreId, store.getStoreId(),
+                    selection.inventoryIds(), mode.equals("CREATE_MISSING"));
+        }
+
         return createOperation(
                 bookstoreId,
                 store,
@@ -75,6 +86,15 @@ public class TiendanubeManagementService {
                 selection.description(),
                 selection.inventoryIds()
         );
+    }
+
+    @Transactional
+    public TiendanubePublicationCategoryPreparationService.Preview previewPublicationCategories(
+            TiendanubeBulkSelectionRequest selectionRequest) {
+        Long bookstoreId = bookstoreContext.getCurrentBookstoreId();
+        TiendanubeStore store = requireStoreForAction(bookstoreId, TiendanubeBulkAction.PUBLISH);
+        Selection selection = resolveSelection(bookstoreId, selectionRequest);
+        return publicationCategoryPreparation.preview(bookstoreId, store.getStoreId(), selection.inventoryIds());
     }
 
     @Transactional(readOnly = true)
