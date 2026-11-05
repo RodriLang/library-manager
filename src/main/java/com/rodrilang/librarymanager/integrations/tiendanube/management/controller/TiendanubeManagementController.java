@@ -47,6 +47,40 @@ public class TiendanubeManagementController {
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService commercialCategories;
     private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.CommercialCategoryRemoteLinkService remoteCategoryLinks;
 
+    private final com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService assignmentImports;
+
+    @GetMapping("/commercial-categories/assignment-imports/latest")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService.Summary latestAssignmentImport() {
+        return assignmentImports.latest();
+    }
+
+    @PostMapping("/commercial-categories/assignment-imports")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService.Summary startAssignmentImport() {
+        return assignmentImports.start();
+    }
+
+    @GetMapping("/commercial-categories/assignment-imports/{importId}")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService.Summary assignmentImport(
+            @PathVariable Long importId) {
+        return assignmentImports.required(importId);
+    }
+
+    @GetMapping("/commercial-categories/assignment-imports/{importId}/items")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService.ItemsPage assignmentImportItems(
+            @PathVariable Long importId, @RequestParam(defaultValue="0") int page,
+            @RequestParam(defaultValue="25") int size) {
+        return assignmentImports.items(importId, page, size);
+    }
+
+    public record ApplyAssignmentImportRequest(
+            com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService.Mode mode) {}
+
+    @PostMapping("/commercial-categories/assignment-imports/{importId}/apply")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService.Summary applyAssignmentImport(
+            @PathVariable Long importId, @RequestBody ApplyAssignmentImportRequest request) {
+        return assignmentImports.apply(importId, request == null ? null : request.mode());
+    }
+
     public record LinkExistingCategoryRequest(Long remoteCategoryId) {}
 
     @GetMapping("/commercial-categories/link-suggestions")
