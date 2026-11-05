@@ -82,6 +82,159 @@ public class BookstoreCommercialCategoryService {
                 id, bookstore);
     }
 
+    /** Edit a linked category locally or in both systems. Never silently alter the remote tree. */
+    @Transactional
+    public Category updateLinked(Long id, String name, Long parentId, boolean updateRemote) {
+        Long bookstore = bookstoreId();
+        Category original = getLocal(bookstore, id);
+        if (original.tiendanubeCategoryId() == null) {
+            return updateLocal(id, name, parentId);
+        }
+        String cleanName = validateName(name);
+        validateParent(bookstore, parentId, id);
+        assertNoSiblingWithName(bookstore, parentId, cleanName, id);
+
+        if (updateRemote) {
+            Long storeId = activeStoreId(bookstore);
+            var remote = client.getCategories(storeId);
+            var originalRemote = remote.stream()
+                    .filter(c -> Objects.equals(c.id(), original.tiendanubeCategoryId()))
+                    .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                            "La categoría ya no existe en Tiendanube. Actualizá la vinculación."));
+            Long remoteParent = originalRemote.parent();
+            if (!Objects.equals(original.parentId(), parentId)) {
+                if (parentId == null) {
+                    remoteParent = null;
+                } else {
+                    Category parent = getLocal(bookstore, parentId);
+                    if (parent.tiendanubeCategoryId() == null) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                                "Vinculá primero la categoría padre con Tiendanube para mover esta categoría en ambos sistemas.");
+                    }
+                    remoteParent = parent.tiendanubeCategoryId();
+                }
+            }
+            // Las jerarquías locales y remotas pueden diferir: validar ambos árboles.
+            Map<Long, Long> remoteParents = new HashMap<>();
+            for (var entry : remote) remoteParents.put(entry.id(), entry.parent());
+            Set<Long> visited = new HashSet<>();
+            Long cursor = remoteParent;
+            while (cursor != null && cursor != 0 && visited.add(cursor)) {
+                if (Objects.equals(cursor, original.tiendanubeCategoryId())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "El cambio formaría un ciclo en la jerarquía de Tiendanube.");
+                }
+                cursor = remoteParents.get(cursor);
+            }
+            client.updateCategory(storeId, original.tiendanubeCategoryId(), cleanName, remoteParent);
+        }
+        jdbc.update("""
+                UPDATE bookstore_commercial_categories
+                SET name = ?, parent_id = ?, remote_managed = FALSE, updated_at = NOW()
+                WHERE id = ? AND bookstore_id = ?
+                """, cleanName, parentId, id, bookstore);
+        return getLocal(bookstore, id);
+    }
+
+    /** Detach without changing either category or its inventory assignments. */
+    @Transactional
+    public Category unlinkLocal(Long id) {
+        Long bookstore = bookstoreId();
+        Category original = getLocal(bookstore, id);
+        if (original.tiendanubeCategoryId() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La categoría no está vinculada.");
+        }
+        jdbc.update("""
+                INSERT INTO bookstore_ignored_tiendanube_categories (bookstore_id, tiendanube_category_id)
+                VALUES (?, ?) ON CONFLICT DO NOTHING
+                """, bookstore, original.tiendanubeCategoryId());
+        jdbc.update("""
+                UPDATE bookstore_commercial_categories
+                SET tiendanube_category_id = NULL, remote_managed = FALSE, updated_at = NOW()
+                WHERE bookstore_id = ? AND id = ?
+                """, bookstore, id);
+        markAffectedInventoriesPending(bookstore, id);
+        return getLocal(bookstore, id);
+    }
+
+    /** Deletion is allowed only for empty leaf categories. The remote action is explicit. */
+    @Transactional
+    public void deleteWithScope(Long id, boolean deleteRemote) {
+        Long bookstore = bookstoreId();
+        Category original = getLocal(bookstore, id);
+        validateEmptyLeaf(bookstore, id);
+        if (deleteRemote) {
+            if (original.tiendanubeCategoryId() == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Esta categoría no está vinculada con Tiendanube.");
+            }
+            Long storeId = activeStoreId(bookstore);
+            var remote = client.getCategories(storeId);
+            boolean hasRemoteChildren = remote.stream().anyMatch(c ->
+                    Objects.equals(c.parent(), original.tiendanubeCategoryId()));
+            if (hasRemoteChildren) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La categoría tiene subcategorías en Tiendanube. Resolvelas antes de eliminarla.");
+            }
+            // No eliminar una categoría remota todavía utilizada por publicaciones.
+            // Es una operación explícita e infrecuente: comprobamos el catálogo remoto completo.
+            boolean remoteHasProducts = client.getProducts(storeId).stream().anyMatch(product ->
+                    product.categories() == null || product.categories().stream().anyMatch(category -> {
+                        if (category == null) return true;
+                        long remoteId = category.isNumber() ? category.asLong() :
+                                category.path("id").asLong(-1L);
+                        return Objects.equals(remoteId, original.tiendanubeCategoryId());
+                    }));
+            if (remoteHasProducts) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No se pudo confirmar que la categoría esté libre de publicaciones en Tiendanube. " +
+                        "Quitá sus productos asociados antes de eliminarla.");
+            }
+            client.deleteCategory(storeId, original.tiendanubeCategoryId());
+            jdbc.update("DELETE FROM bookstore_ignored_tiendanube_categories WHERE bookstore_id = ? AND tiendanube_category_id = ?",
+                    bookstore, original.tiendanubeCategoryId());
+        } else if (original.tiendanubeCategoryId() != null) {
+            jdbc.update("""
+                    INSERT INTO bookstore_ignored_tiendanube_categories (bookstore_id, tiendanube_category_id)
+                    VALUES (?, ?) ON CONFLICT DO NOTHING
+                    """, bookstore, original.tiendanubeCategoryId());
+        }
+        jdbc.update("DELETE FROM bookstore_commercial_categories WHERE bookstore_id = ? AND id = ?",
+                bookstore, id);
+    }
+
+    private void markAffectedInventoriesPending(Long bookstore, Long categoryId) {
+        List<Long> affected = jdbc.queryForList("""
+                SELECT DISTINCT inventory_id FROM inventory_commercial_categories
+                WHERE bookstore_id = ? AND category_id = ?
+                """, Long.class, bookstore, categoryId);
+        syncStates.localAssignmentsChanged(bookstore, affected);
+    }
+
+    private Long activeStoreId(Long bookstore) {
+        return stores.findByBookstoreIdAndActiveTrue(bookstore)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No hay una tienda Tiendanube conectada"))
+                .getStoreId();
+    }
+
+    private void validateEmptyLeaf(Long bookstore, Long id) {
+        if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM bookstore_commercial_categories
+                               WHERE bookstore_id = ? AND parent_id = ?)
+                """, Boolean.class, bookstore, id))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La categoría tiene subcategorías. Movelas o eliminálas antes.");
+        }
+        if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM inventory_commercial_categories
+                               WHERE bookstore_id = ? AND category_id = ?)
+                """, Boolean.class, bookstore, id))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La categoría tiene libros asignados. Quitalos antes de eliminarla.");
+        }
+    }
+
     private Category getLocal(Long bookstore, Long id) {
         if (id == null || id <= 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoría inexistente");
@@ -178,6 +331,11 @@ public class BookstoreCommercialCategoryService {
         // Primera pasada: todas las categorías existen antes de asignar padres.
         for (var r : remote) {
             if (r.id() == null || r.id() <= 0) continue;
+            Boolean ignored = jdbc.queryForObject("""
+                    SELECT EXISTS (SELECT 1 FROM bookstore_ignored_tiendanube_categories
+                        WHERE bookstore_id = ? AND tiendanube_category_id = ?)
+                    """, Boolean.class, bookstore, r.id());
+            if (Boolean.TRUE.equals(ignored)) continue;
             String name = r.name() == null ? "Categoría #" + r.id() :
                     r.name().getOrDefault("es", r.name().values().stream().findFirst().orElse("Categoría #" + r.id()));
             jdbc.update("""

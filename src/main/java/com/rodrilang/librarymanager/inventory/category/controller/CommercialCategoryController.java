@@ -45,6 +45,26 @@ public class CommercialCategoryController {
                 request == null ? null : request.parentId());
     }
 
+    public record LinkedCategoryRequest(String name, Long parentId, boolean updateRemote) {}
+
+    @PutMapping("/{id}/linked")
+    public BookstoreCommercialCategoryService.Category updateLinked(
+            @PathVariable Long id, @RequestBody LinkedCategoryRequest request) {
+        return categories.updateLinked(id, request.name(), request.parentId(), request.updateRemote());
+    }
+
+    @PostMapping("/{id}/unlink")
+    public BookstoreCommercialCategoryService.Category unlink(@PathVariable Long id) {
+        return categories.unlinkLocal(id);
+    }
+
+    @DeleteMapping("/{id}/linked")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteLinked(@PathVariable Long id,
+            @RequestParam(defaultValue = "false") boolean deleteRemote) {
+        categories.deleteWithScope(id, deleteRemote);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

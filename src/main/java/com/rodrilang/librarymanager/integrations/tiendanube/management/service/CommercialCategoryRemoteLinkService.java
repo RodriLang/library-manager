@@ -234,6 +234,8 @@ public class CommercialCategoryRemoteLinkService {
                     "Esta categoría de Tiendanube ya está vinculada a otra categoría local");
         }
         try {
+            jdbc.update("DELETE FROM bookstore_ignored_tiendanube_categories WHERE bookstore_id = ? AND tiendanube_category_id = ?",
+                    bookstore, remoteId);
             int changed = jdbc.update("""
                     UPDATE bookstore_commercial_categories
                     SET tiendanube_category_id = ?, remote_managed = FALSE, updated_at = NOW()
