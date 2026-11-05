@@ -68,8 +68,10 @@ public class TiendanubeManagementController {
     @GetMapping("/commercial-categories/assignment-imports/{importId}/items")
     public com.rodrilang.librarymanager.integrations.tiendanube.management.service.TiendanubeCategoryAssignmentImportService.ItemsPage assignmentImportItems(
             @PathVariable Long importId, @RequestParam(defaultValue="0") int page,
-            @RequestParam(defaultValue="25") int size) {
-        return assignmentImports.items(importId, page, size);
+            @RequestParam(defaultValue="25") int size,
+            @RequestParam(defaultValue="") String q,
+            @RequestParam(defaultValue="ALL") String filter) {
+        return assignmentImports.items(importId, page, size, q, filter);
     }
 
     public record ApplyAssignmentImportRequest(

@@ -75,24 +75,58 @@ public class TiendanubeCategoryAssignmentImportService {
         return summary;
     }
 
-    public ItemsPage items(Long id, int page, int size) {
+    /** Filters and pagination run in PostgreSQL; no inventory list is loaded in the browser. */
+    public ItemsPage items(Long id, int page, int size, String search, String filter) {
         required(id);
-        if (page < 0 || size < 1 || size > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Paginación inválida");
-        Long total = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM tiendanube_category_assignment_import_items
-                WHERE import_id = ? AND bookstore_id = ?
-                """, Long.class, id, bookstores.getCurrentBookstoreId());
-        List<Item> items = jdbc.query("""
-                SELECT ci.inventory_id, b.title, ci.remote_category_ids, ci.local_category_ids,
-                       ci.existing_category_ids, ci.missing_remote_category_ids, ci.status, ci.message
+        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Paginación inválida");
+
+        String normalizedSearch = search == null ? "" : search.strip();
+        if (normalizedSearch.length() > 120)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La búsqueda es demasiado larga");
+        String normalizedFilter = filter == null ? "ALL" : filter.strip().toUpperCase(java.util.Locale.ROOT);
+        String additionalFilter = switch (normalizedFilter) {
+            case "ALL" -> "";
+            case "RECOGNIZED" -> " AND ci.local_category_ids <> ''";
+            case "UNRESOLVED" -> " AND ci.missing_remote_category_ids <> ''";
+            case "WITHOUT_MATCH" -> " AND ci.local_category_ids = ''";
+            case "CHANGED", "SKIPPED", "ERROR", "READY" -> " AND ci.status = ?";
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Filtro de análisis inválido");
+        };
+        String searchSql = normalizedSearch.isEmpty() ? "" : """
+                 AND (b.title ILIKE ? OR b.isbn_13 ILIKE ? OR b.isbn_10 ILIKE ?
+                      OR CAST(ci.inventory_id AS TEXT) = ?)
+                """;
+        String from = """
                 FROM tiendanube_category_assignment_import_items ci
                 JOIN inventory i ON i.id=ci.inventory_id AND i.bookstore_id=ci.bookstore_id
                 JOIN books b ON b.id=i.book_id
-                WHERE ci.import_id = ? AND ci.bookstore_id = ? ORDER BY ci.inventory_id
-                LIMIT ? OFFSET ?
-                """, (rs, row) -> new Item(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8)),
-                id, bookstores.getCurrentBookstoreId(), size, page * size);
+                WHERE ci.import_id = ? AND ci.bookstore_id = ?
+                """ + additionalFilter + searchSql;
+        java.util.List<Object> args = new java.util.ArrayList<>();
+        args.add(id);
+        args.add(bookstores.getCurrentBookstoreId());
+        if (java.util.Set.of("CHANGED", "SKIPPED", "ERROR", "READY").contains(normalizedFilter))
+            args.add(normalizedFilter);
+        if (!normalizedSearch.isEmpty()) {
+            String pattern = "%" + normalizedSearch.replace("\\", "\\\\")
+                    .replace("%", "\\%").replace("_", "\\_") + "%";
+            args.add(pattern);
+            args.add(pattern);
+            args.add(pattern);
+            args.add(normalizedSearch);
+        }
+        Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, args.toArray());
+        java.util.List<Object> pageArgs = new java.util.ArrayList<>(args);
+        pageArgs.add(size);
+        pageArgs.add(page * size);
+        List<Item> items = jdbc.query("""
+                SELECT ci.inventory_id, b.title, ci.remote_category_ids, ci.local_category_ids,
+                       ci.existing_category_ids, ci.missing_remote_category_ids, ci.status, ci.message
+                """ + from + " ORDER BY ci.inventory_id LIMIT ? OFFSET ?",
+                (rs, row) -> new Item(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                        rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8)),
+                pageArgs.toArray());
         return new ItemsPage(total == null ? 0 : total, items);
     }
 
