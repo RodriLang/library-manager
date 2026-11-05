@@ -75,6 +75,11 @@ public class TiendanubeManagementController {
     }
 
 
+    @GetMapping("/commercial-categories/link-health")
+    public com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.LinkHealth verifyCategoryLinks() {
+        return commercialCategories.verifyRemoteLinks();
+    }
+
     @GetMapping("/commercial-categories")
     public java.util.List<com.rodrilang.librarymanager.integrations.tiendanube.management.service.BookstoreCommercialCategoryService.Category> commercialCategories() {
         return commercialCategories.list();

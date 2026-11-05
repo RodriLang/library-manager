@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.time.Instant;
@@ -21,7 +20,6 @@ public class ShipmentTrackingSyncJob {
     private final ShipmentTrackingService trackingService;
 
     @Scheduled(fixedDelayString = "${app.store.shipping.tracking-sync-ms:900000}")
-    @Transactional
     public void syncActiveShipments() {
         List<StoreShipment> shipments = shipmentRepository.findDueForTrackingSync(
                 List.of(ShipmentStatus.READY_TO_SHIP, ShipmentStatus.IN_TRANSIT, ShipmentStatus.OUT_FOR_DELIVERY, ShipmentStatus.EXCEPTION),
@@ -31,7 +29,7 @@ public class ShipmentTrackingSyncJob {
                 trackingService.refreshIfSupported(shipment);
             } catch (Exception ex) {
                 trackingService.markSyncFailure(shipment);
-                log.warn("No se pudo actualizar tracking shipmentId={} provider={} failures={}: {}", shipment.getId(), shipment.getProvider(), shipment.getTrackingSyncFailures(), ex.getMessage());
+                log.warn("No se pudo actualizar tracking shipmentId={} provider={}: {}", shipment.getId(), shipment.getProvider(), ex.getMessage());
             }
         }
     }

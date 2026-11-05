@@ -29,6 +29,34 @@ public class BookstoreCommercialCategoryService {
                 (rs, i) -> new Category(rs.getLong(1), rs.getString(2), (Long)rs.getObject(3), (Long)rs.getObject(4)), bookstoreId());
     }
 
+    /**
+     * Checks that stored remote IDs still exist. This is a read-only verification:
+     * an API outage must never detach categories or mark links as broken.
+     */
+    public record LinkHealth(List<Long> missingCategoryIds, int checked) {}
+
+    public LinkHealth verifyRemoteLinks() {
+        Long bookstore = bookstoreId();
+        List<Category> linked = list().stream()
+                .filter(category -> category.tiendanubeCategoryId() != null)
+                .toList();
+        if (linked.isEmpty()) {
+            return new LinkHealth(List.of(), 0);
+        }
+        Long storeId = activeStoreId(bookstore);
+        Set<Long> existingRemoteIds = new HashSet<>();
+        for (var remote : client.getCategories(storeId)) {
+            if (remote.id() != null) {
+                existingRemoteIds.add(remote.id());
+            }
+        }
+        List<Long> missing = linked.stream()
+                .filter(category -> !existingRemoteIds.contains(category.tiendanubeCategoryId()))
+                .map(Category::id)
+                .toList();
+        return new LinkHealth(missing, linked.size());
+    }
+
     /** CRUD de categorías comerciales locales, independiente de la conexión con Tiendanube. */
     @Transactional
     public Category createLocal(String name, Long parentId) {

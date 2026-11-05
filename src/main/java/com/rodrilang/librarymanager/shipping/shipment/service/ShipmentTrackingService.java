@@ -88,6 +88,10 @@ public class ShipmentTrackingService {
 
     @Transactional
     public boolean refreshIfSupported(StoreShipment shipment) {
+        // Each shipment is processed in its own transaction. The scheduled job does
+        // not share a transaction with other shipments or with failure recording.
+        shipment = shipmentRepository.findById(shipment.getId())
+                .orElseThrow(() -> new BusinessException("Envío inexistente"));
         var client = clientRegistry.find(shipment.getProvider());
         if (client.isEmpty()) {
             shipment.setTrackingLastSyncedAt(Instant.now());
@@ -103,6 +107,8 @@ public class ShipmentTrackingService {
 
     @Transactional
     public void markSyncFailure(StoreShipment shipment) {
+        shipment = shipmentRepository.findById(shipment.getId())
+                .orElseThrow(() -> new BusinessException("Envío inexistente"));
         int failures = shipment.getTrackingSyncFailures() == null ? 0 : shipment.getTrackingSyncFailures();
         failures = Math.min(8, failures + 1);
         shipment.setTrackingSyncFailures(failures);
